@@ -11,6 +11,7 @@ export type ImageAttachment = {
 
 type ImageAttachmentFieldProps = {
   attachments: readonly ImageAttachment[];
+  disabled?: boolean;
   label?: string;
   maxCount?: number;
   onAdd: () => void;
@@ -19,6 +20,7 @@ type ImageAttachmentFieldProps = {
 
 export function ImageAttachmentField({
   attachments,
+  disabled = false,
   label = '사진',
   maxCount = 5,
   onAdd,
@@ -51,9 +53,15 @@ export function ImageAttachmentField({
               <Pressable
                 accessibilityLabel={`${label} ${index + 1} 삭제`}
                 accessibilityRole="button"
-                hitSlop={SPACING.md}
+                accessibilityState={{ disabled }}
+                disabled={disabled}
+                hitSlop={SPACING.lg}
                 onPress={() => onRemove(attachment.id)}
-                style={({ pressed }) => [styles.removeButton, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.removeButton,
+                  disabled && styles.disabled,
+                  pressed && !disabled && styles.pressed,
+                ]}
               >
                 <AppIcon color={COLORS.background} name="close" size={16} />
               </Pressable>
@@ -66,8 +74,15 @@ export function ImageAttachmentField({
         <Pressable
           accessibilityLabel={`${label} 추가`}
           accessibilityRole="button"
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          hitSlop={SPACING.sm}
           onPress={onAdd}
-          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.addButton,
+            disabled && styles.disabled,
+            pressed && !disabled && styles.pressed,
+          ]}
         >
           <AppIcon color={COLORS.primary} name="add" size={16} />
           <Text style={styles.addButtonText}>사진 추가</Text>
@@ -139,5 +154,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.65,
+  },
+  disabled: {
+    opacity: 0.45,
   },
 });

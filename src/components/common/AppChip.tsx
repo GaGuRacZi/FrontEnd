@@ -15,6 +15,7 @@ export function AppChip({ label, onPress, selected = false, size = 'medium' }: A
       accessibilityRole={onPress ? 'button' : 'text'}
       accessibilityState={{ selected }}
       disabled={!onPress}
+      hitSlop={onPress ? SPACING.lg : undefined}
       onPress={onPress}
       style={({ pressed }) => [
         styles.chip,

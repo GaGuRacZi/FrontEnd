@@ -32,13 +32,11 @@ export function SegmentedControl<T extends string>({
             accessibilityState={{ selected: isActive }}
             key={option.value}
             onPress={() => onChange(option.value)}
-            style={({ pressed }) => [
-              styles.tab,
-              isActive && styles.activeTab,
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [styles.tabTouchTarget, pressed && styles.pressed]}
           >
-            <Text style={[styles.label, isActive && styles.activeLabel]}>{option.label}</Text>
+            <View style={[styles.tab, isActive && styles.activeTab]}>
+              <Text style={[styles.label, isActive && styles.activeLabel]}>{option.label}</Text>
+            </View>
           </Pressable>
         );
       })}
@@ -56,15 +54,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: SPACING.xs,
     height: SIZE.segmentHeight,
-    padding: SPACING.xs,
+    paddingHorizontal: SPACING.xs,
     ...SHADOWS.segment,
+  },
+  tabTouchTarget: {
+    alignItems: 'center',
+    flex: 1,
+    height: SIZE.touchTarget,
+    justifyContent: 'center',
   },
   tab: {
     alignItems: 'center',
     borderRadius: RADIUS.segment,
-    flex: 1,
     height: SIZE.segmentIndicatorHeight,
     justifyContent: 'center',
+    width: '100%',
   },
   activeTab: {
     backgroundColor: COLORS.primary,

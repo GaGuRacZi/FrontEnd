@@ -8,19 +8,26 @@ import { LAYOUT, SPACING } from '@/src/constants';
 import { AppScreen } from './AppScreen';
 import { TopHeader } from './TopHeader';
 
-type ScreenLayoutProps = PropsWithChildren<{
-  headerFullWidth?: boolean;
-  headerVariant?: 'auth' | 'tab';
-  leftAccessibilityLabel?: string;
-  leftContent?: ReactNode;
-  leftIcon?: AppIconName;
-  onLeftPress?: () => void;
-  onRightPress?: () => void;
-  rightAccessibilityLabel?: string;
-  rightContent?: ReactNode;
-  rightIcon?: AppIconName;
-  title?: string;
-}>;
+type LeftHeaderActionProps =
+  | { leftAccessibilityLabel: string; onLeftPress: () => void }
+  | { leftAccessibilityLabel?: string; onLeftPress?: undefined };
+
+type RightHeaderActionProps =
+  | { onRightPress: () => void; rightAccessibilityLabel: string }
+  | { onRightPress?: undefined; rightAccessibilityLabel?: string };
+
+type ScreenLayoutProps = PropsWithChildren<
+  {
+    headerFullWidth?: boolean;
+    headerVariant?: 'auth' | 'tab';
+    leftContent?: ReactNode;
+    leftIcon?: AppIconName;
+    rightContent?: ReactNode;
+    rightIcon?: AppIconName;
+    title?: string;
+  } & LeftHeaderActionProps &
+    RightHeaderActionProps
+>;
 
 export function ScreenLayout({
   children,
@@ -38,25 +45,35 @@ export function ScreenLayout({
 }: ScreenLayoutProps) {
   const router = useRouter();
   const isAuth = headerVariant === 'auth';
+  const canGoBack = isAuth && router.canGoBack();
   const handleLeftPress =
     onLeftPress ??
-    (isAuth
+    (canGoBack
       ? () => {
-          if (router.canGoBack()) {
-            router.back();
-          }
+          router.back();
         }
       : undefined);
+  const resolvedLeftIcon = leftIcon ?? (isAuth && handleLeftPress ? 'chevron-back' : undefined);
+  const leftActionProps = handleLeftPress
+    ? {
+        leftAccessibilityLabel: leftAccessibilityLabel ?? '뒤로가기',
+        onLeftPress: handleLeftPress,
+      }
+    : {};
+  const rightActionProps = onRightPress
+    ? {
+        onRightPress,
+        rightAccessibilityLabel: rightAccessibilityLabel ?? '알림 열기',
+      }
+    : {};
 
   return (
     <AppScreen edges={isAuth ? undefined : ['top', 'left', 'right']}>
       <TopHeader
-        leftAccessibilityLabel={leftAccessibilityLabel ?? (isAuth ? '뒤로가기' : undefined)}
+        {...leftActionProps}
+        {...rightActionProps}
         leftContent={leftContent}
-        leftIcon={leftIcon ?? (isAuth ? 'chevron-back' : undefined)}
-        onLeftPress={handleLeftPress}
-        onRightPress={onRightPress}
-        rightAccessibilityLabel={rightAccessibilityLabel ?? '알림 열기'}
+        leftIcon={resolvedLeftIcon}
         rightContent={rightContent}
         rightIcon={rightIcon ?? (isAuth ? undefined : 'notifications-outline')}
         style={headerFullWidth ? styles.fullWidthHeader : undefined}

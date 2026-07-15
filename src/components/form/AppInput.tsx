@@ -17,6 +17,7 @@ type AppInputProps = Omit<TextInputProps, 'style'> & {
 
 export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
   {
+    accessibilityLabel,
     containerStyle,
     error,
     helperText,
@@ -49,6 +50,7 @@ export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
       >
         {leftElement ? <View style={styles.leftElement}>{leftElement}</View> : null}
         <TextInput
+          accessibilityLabel={accessibilityLabel ?? label}
           accessibilityState={{ disabled: textInputProps.editable === false }}
           multiline={multiline}
           onBlur={(event) => {

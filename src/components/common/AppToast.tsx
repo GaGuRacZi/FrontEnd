@@ -51,6 +51,7 @@ export function AppToast({
 
   return (
     <Pressable
+      accessibilityLiveRegion="polite"
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [styles.container, pressed && styles.pressed]}

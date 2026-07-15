@@ -3,16 +3,26 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-type AppCheckboxProps = {
+type AppCheckboxLabelProps =
+  | { accessibilityLabel: string; label?: string }
+  | { accessibilityLabel?: string; label: string };
+
+type AppCheckboxProps = AppCheckboxLabelProps & {
   checked: boolean;
   disabled?: boolean;
-  label?: string;
   onChange: (checked: boolean) => void;
 };
 
-export function AppCheckbox({ checked, disabled = false, label, onChange }: AppCheckboxProps) {
+export function AppCheckbox({
+  accessibilityLabel,
+  checked,
+  disabled = false,
+  label,
+  onChange,
+}: AppCheckboxProps) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="checkbox"
       accessibilityState={{ checked, disabled }}
       disabled={disabled}

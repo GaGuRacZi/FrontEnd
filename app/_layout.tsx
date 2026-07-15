@@ -1,6 +1,7 @@
 import { NotoSansKR_400Regular } from '@expo-google-fonts/noto-sans-kr/400Regular';
 import { NotoSansKR_500Medium } from '@expo-google-fonts/noto-sans-kr/500Medium';
 import { NotoSansKR_700Bold } from '@expo-google-fonts/noto-sans-kr/700Bold';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -37,16 +38,17 @@ void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
+    ...Ionicons.font,
     NotoSansKR_400Regular,
     NotoSansKR_500Medium,
     NotoSansKR_700Bold,
   });
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontsLoaded || fontError) {
       void SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontError, fontsLoaded]);
 
   useEffect(() => {
     if (Platform.OS === 'android') {

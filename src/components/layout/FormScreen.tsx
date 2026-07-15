@@ -24,7 +24,7 @@ export function FormScreen({
   const insets = useSafeAreaInsets();
 
   return (
-    <AppScreen edges={['top', 'left', 'right']} padded={false}>
+    <AppScreen edges={footer ? ['top', 'left', 'right'] : undefined} padded={false}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={keyboardVerticalOffset}

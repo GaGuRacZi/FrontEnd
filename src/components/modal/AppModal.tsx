@@ -1,5 +1,15 @@
 import type { PropsWithChildren } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/src/components/common/AppButton';
@@ -34,7 +44,13 @@ export function AppModal({
   visible,
 }: AppModalProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const isBottomSheet = variant === 'bottomSheet';
+  const showCloseButton = Boolean(title) || !closeOnBackdropPress;
+  const maxHeight = Math.max(
+    0,
+    windowHeight - insets.top - insets.bottom - SPACING.xxxl * 2,
+  );
 
   return (
     <Modal
@@ -45,69 +61,88 @@ export function AppModal({
       transparent
       visible={visible}
     >
-      <View style={[styles.root, isBottomSheet ? styles.bottomAligned : styles.centered]}>
+      <View style={styles.root}>
         <Pressable
-          accessibilityLabel="모달 닫기"
+          accessibilityLabel={closeOnBackdropPress ? '모달 닫기' : undefined}
+          accessibilityRole={closeOnBackdropPress ? 'button' : undefined}
+          accessible={closeOnBackdropPress}
+          disabled={!closeOnBackdropPress}
           onPress={closeOnBackdropPress ? onClose : undefined}
           style={styles.backdrop}
         />
 
-        <View
-          style={[
-            styles.surface,
-            isBottomSheet ? styles.bottomSheet : styles.centerModal,
-            {
-              paddingBottom: isBottomSheet
-                ? Math.max(SPACING.xxxl, insets.bottom)
-                : SPACING.xxxl,
-            },
-          ]}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          pointerEvents="box-none"
+          style={[styles.modalLayer, isBottomSheet ? styles.bottomAligned : styles.centered]}
         >
-          {isBottomSheet ? <View style={styles.dragHandle} /> : null}
+          <View
+            style={[
+              styles.surface,
+              isBottomSheet ? styles.bottomSheet : styles.centerModal,
+              {
+                maxHeight,
+                paddingBottom: isBottomSheet
+                  ? Math.max(SPACING.xxxl, insets.bottom)
+                  : SPACING.xxxl,
+              },
+            ]}
+          >
+            {isBottomSheet ? <View style={styles.dragHandle} /> : null}
 
-          {title ? (
-            <View style={styles.header}>
-              <Text style={styles.title}>{title}</Text>
-              <Pressable
-                accessibilityLabel="닫기"
-                accessibilityRole="button"
-                hitSlop={SPACING.md}
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-              >
-                <AppIcon color={COLORS.gray600} name="close" size={24} />
-              </Pressable>
-            </View>
-          ) : null}
+            {showCloseButton ? (
+              <View style={styles.header}>
+                {title ? <Text style={styles.title}>{title}</Text> : null}
+                {showCloseButton ? (
+                  <Pressable
+                    accessibilityLabel="모달 닫기"
+                    accessibilityRole="button"
+                    hitSlop={SPACING.md}
+                    onPress={onClose}
+                    style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                  >
+                    <AppIcon color={COLORS.gray600} name="close" size={24} />
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
 
-          <View style={styles.content}>{children}</View>
+            <ScrollView
+              contentContainerStyle={styles.content}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={styles.contentScroll}
+            >
+              {children}
+            </ScrollView>
 
-          {primaryAction || secondaryAction ? (
-            <View style={styles.actions}>
-              {secondaryAction ? (
-                <AppButton
-                  disabled={secondaryAction.disabled}
-                  fullWidth={false}
-                  loading={secondaryAction.loading}
-                  onPress={secondaryAction.onPress}
-                  style={styles.actionButton}
-                  title={secondaryAction.label}
-                  variant="secondary"
-                />
-              ) : null}
-              {primaryAction ? (
-                <AppButton
-                  disabled={primaryAction.disabled}
-                  fullWidth={false}
-                  loading={primaryAction.loading}
-                  onPress={primaryAction.onPress}
-                  style={styles.actionButton}
-                  title={primaryAction.label}
-                />
-              ) : null}
-            </View>
-          ) : null}
-        </View>
+            {primaryAction || secondaryAction ? (
+              <View style={styles.actions}>
+                {secondaryAction ? (
+                  <AppButton
+                    disabled={secondaryAction.disabled}
+                    fullWidth={false}
+                    loading={secondaryAction.loading}
+                    onPress={secondaryAction.onPress}
+                    style={styles.actionButton}
+                    title={secondaryAction.label}
+                    variant="secondary"
+                  />
+                ) : null}
+                {primaryAction ? (
+                  <AppButton
+                    disabled={primaryAction.disabled}
+                    fullWidth={false}
+                    loading={primaryAction.loading}
+                    onPress={primaryAction.onPress}
+                    style={styles.actionButton}
+                    title={primaryAction.label}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -115,6 +150,9 @@ export function AppModal({
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+  modalLayer: {
     flex: 1,
   },
   bottomAligned: {
@@ -168,7 +206,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 36,
     justifyContent: 'center',
+    marginLeft: 'auto',
     width: 36,
+  },
+  contentScroll: {
+    flexShrink: 1,
   },
   content: {
     gap: SPACING.xl,

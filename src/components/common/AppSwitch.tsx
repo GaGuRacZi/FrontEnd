@@ -1,19 +1,27 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { COLORS, RADIUS, SIZE } from '@/src/constants';
+import { COLORS, RADIUS, SIZE, SPACING } from '@/src/constants';
 
 type AppSwitchProps = {
+  accessibilityLabel: string;
   disabled?: boolean;
   onChange: (value: boolean) => void;
   value: boolean;
 };
 
-export function AppSwitch({ disabled = false, onChange, value }: AppSwitchProps) {
+export function AppSwitch({
+  accessibilityLabel,
+  disabled = false,
+  onChange,
+  value,
+}: AppSwitchProps) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="switch"
       accessibilityState={{ checked: value, disabled }}
       disabled={disabled}
+      hitSlop={SPACING.md}
       onPress={() => onChange(!value)}
       style={({ pressed }) => [
         styles.track,

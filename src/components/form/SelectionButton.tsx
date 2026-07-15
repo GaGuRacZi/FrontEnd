@@ -1,7 +1,7 @@
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 type SelectionButtonProps = {
   disabled?: boolean;
@@ -44,8 +44,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.gray300,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    height: 42,
     justifyContent: 'center',
+    minHeight: SIZE.touchTarget,
     paddingHorizontal: SPACING.xxl,
   },
   selectedButton: {

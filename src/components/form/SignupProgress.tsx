@@ -8,22 +8,24 @@ type SignupProgressProps = {
 };
 
 export function SignupProgress({ currentStep, totalSteps = 5 }: SignupProgressProps) {
-  const safeStep = Math.min(Math.max(currentStep, 1), totalSteps);
+  const safeTotalSteps = Number.isFinite(totalSteps) ? Math.max(1, Math.floor(totalSteps)) : 1;
+  const normalizedCurrentStep = Number.isFinite(currentStep) ? Math.floor(currentStep) : 1;
+  const safeStep = Math.min(Math.max(normalizedCurrentStep, 1), safeTotalSteps);
 
   return (
     <View
-      accessibilityLabel={`${totalSteps}단계 중 ${safeStep}단계`}
+      accessibilityLabel={`${safeTotalSteps}단계 중 ${safeStep}단계`}
       accessibilityRole="progressbar"
       style={styles.container}
     >
-      {Array.from({ length: totalSteps }, (_, index) => {
+      {Array.from({ length: safeTotalSteps }, (_, index) => {
         const step = index + 1;
         const isReached = step <= safeStep;
 
         return (
           <View key={step} style={styles.step}>
             <View style={[styles.dot, isReached && styles.active]} />
-            {step < totalSteps ? (
+            {step < safeTotalSteps ? (
               <View style={[styles.line, step < safeStep && styles.active]} />
             ) : null}
           </View>

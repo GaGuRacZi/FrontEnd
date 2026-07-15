@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { COLORS, SIZE, TYPOGRAPHY } from '@/src/constants';
+import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 type SectionHeaderProps = {
   actionLabel?: string;
@@ -14,7 +14,9 @@ export function SectionHeader({ actionLabel, onActionPress, title }: SectionHead
       <Text style={styles.title}>{title}</Text>
       {actionLabel && onActionPress ? (
         <Pressable
+          accessibilityLabel={actionLabel}
           accessibilityRole="button"
+          hitSlop={SPACING.md}
           onPress={onActionPress}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
         >
@@ -40,6 +42,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: SIZE.touchTarget,
+    minWidth: SIZE.touchTarget,
   },
   actionLabel: {
     ...TYPOGRAPHY.label,
