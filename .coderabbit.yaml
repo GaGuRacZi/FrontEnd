@@ -25,6 +25,7 @@ reviews:
     - "!coverage/**"
     - "!assets/images/**"
     - "!package-lock.json"
+    - "!**/*.md"
 
   path_instructions:
     - path: "app/**/*.{ts,tsx}"
@@ -87,13 +88,6 @@ reviews:
         - 불필요한 패키지, 누락된 설정, 잘못된 스크립트가 없는지 검토해주세요.
         - API 키, 토큰, 비밀번호 등 민감한 값이 포함되지 않았는지 확인해주세요.
 
-ignore_patterns:
-  - "*.md"
-  - ".expo/**"
-  - "dist/**"
-  - "coverage/**"
-  - "assets/images/**"
-  - "package-lock.json"
-
 chat:
   auto_reply: true
+  allow_non_org_members: false

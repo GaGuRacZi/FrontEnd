@@ -1,7 +1,7 @@
 ---
 name: Deploy 이슈 템플릿
 about: Android 앱 빌드 및 배포 작업을 관리합니다.
-title: "[DEPLOY] production-release(v0.0.0)"
+title: "[DEPLOY] production-release"
 labels: ''
 assignees: ''
 ---
