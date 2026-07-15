@@ -10,12 +10,6 @@ assignees: ''
 
 <!-- 어떤 문제가 발생했는지 자세히 작성해주세요. -->
 
-## 📱 발생 환경
-
-- 실행 환경: <!-- Expo Go / Emulator / Simulator / Web -->
-- OS 및 버전:
-- 기기:
-- 앱 또는 Expo SDK 버전:
 
 ## 🔁 재현 방법
 
