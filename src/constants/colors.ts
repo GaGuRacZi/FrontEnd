@@ -1,0 +1,24 @@
+export const COLORS = {
+  primary: '#8CA9FF',
+  primarySoft: 'rgba(140, 169, 255, 0.16)',
+  sub: '#AAC4F5',
+  cream: '#FFF8DE',
+  yellow: '#FFF2C6',
+  kakao: '#FEE500',
+
+  background: '#FFFFFF',
+  overlay: 'rgba(26, 26, 26, 0.42)',
+  toastBackground: 'rgba(245, 245, 245, 0.96)',
+  error: '#B23A3A',
+  errorBackground: '#FDEAEA',
+  borderSoft: '#EDEFF5',
+  borderBlue: '#E3E7F0',
+
+  gray100: '#F7F7F7',
+  gray200: '#F0F0F0',
+  gray300: '#E3E3E3',
+  gray500: '#999999',
+  gray600: '#666666',
+  gray800: '#404040',
+  black: '#1A1A1A',
+} as const;

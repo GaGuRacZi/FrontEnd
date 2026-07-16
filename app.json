@@ -4,33 +4,67 @@
     "slug": "paw",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "backgroundColor": "#FFFFFF",
+    "primaryColor": "#8CA9FF",
+    "icon": "./assets/images/paw-logo.png",
     "scheme": "paw",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "androidStatusBar": {
+      "barStyle": "dark-content"
+    },
+    "androidNavigationBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#FFFFFF",
+      "enforceContrast": false
+    },
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/paw-main-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "allowBackup": false,
+      "backgroundColor": "#FFFFFF",
+      "package": "com.gaguraczi.paw",
+      "versionCode": 1,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/paw-logo.png",
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/paw-logo.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/noto-sans-kr/400Regular/NotoSansKR_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/noto-sans-kr/500Medium/NotoSansKR_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/noto-sans-kr/700Bold/NotoSansKR_700Bold.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/images/paw-main-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
