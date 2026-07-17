@@ -11,6 +11,7 @@ type AppCheckboxProps = AppCheckboxLabelProps & {
   checked: boolean;
   disabled?: boolean;
   onChange: (checked: boolean) => void;
+  size?: 'medium' | 'small';
 };
 
 export function AppCheckbox({
@@ -19,24 +20,31 @@ export function AppCheckbox({
   disabled = false,
   label,
   onChange,
+  size = 'medium',
 }: AppCheckboxProps) {
+  const isSmall = size === 'small';
+
   return (
     <Pressable
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="checkbox"
       accessibilityState={{ checked, disabled }}
       disabled={disabled}
+      hitSlop={isSmall ? 12 : undefined}
       onPress={() => onChange(!checked)}
       style={({ pressed }) => [
         styles.container,
+        isSmall ? styles.smallContainer : styles.mediumContainer,
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
       ]}
     >
-      <View style={[styles.box, checked && styles.checkedBox]}>
-        {checked ? <AppIcon color={COLORS.background} name="checkmark" size={16} /> : null}
+      <View style={[styles.box, isSmall && styles.smallBox, checked && styles.checkedBox]}>
+        {checked ? (
+          <AppIcon color={COLORS.background} name="checkmark" size={isSmall ? 12 : 16} />
+        ) : null}
       </View>
-      {label ? <Text style={styles.label}>{label}</Text> : null}
+      {label ? <Text style={[styles.label, isSmall && styles.smallLabel]}>{label}</Text> : null}
     </Pressable>
   );
 }
@@ -47,7 +55,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     flexDirection: 'row',
     gap: SPACING.md,
+  },
+  mediumContainer: {
     minHeight: SIZE.touchTarget,
+  },
+  smallContainer: {
+    minHeight: SIZE.checkboxSmall,
   },
   box: {
     alignItems: 'center',
@@ -59,6 +72,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: SIZE.checkbox,
   },
+  smallBox: {
+    borderRadius: 0,
+    height: SIZE.checkboxSmall,
+    width: SIZE.checkboxSmall,
+  },
   checkedBox: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
@@ -67,6 +85,9 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body2,
     color: COLORS.black,
     flexShrink: 1,
+  },
+  smallLabel: {
+    ...TYPOGRAPHY.checkboxLabel,
   },
   disabled: {
     opacity: 0.45,

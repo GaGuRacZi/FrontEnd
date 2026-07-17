@@ -63,7 +63,12 @@ export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
           }}
           placeholderTextColor={COLORS.gray500}
           ref={ref}
-          style={[styles.input, multiline && styles.multilineInput, inputStyle]}
+          style={[
+            styles.input,
+            leftElement ? styles.inputWithLeftElement : undefined,
+            multiline && styles.multilineInput,
+            inputStyle,
+          ]}
           {...textInputProps}
         />
         {rightElement ? <View style={styles.rightElement}>{rightElement}</View> : null}
@@ -106,6 +111,9 @@ const styles = StyleSheet.create({
     minHeight: SIZE.inputHeight,
     paddingHorizontal: SPACING.xxl,
     paddingVertical: 0,
+  },
+  inputWithLeftElement: {
+    paddingLeft: SPACING.xl,
   },
   multilineContainer: {
     alignItems: 'flex-start',
