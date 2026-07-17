@@ -24,6 +24,7 @@ export const RADIUS = {
   activeTab: 22,
   toast: 23,
   modal: 24,
+  authPanel: 34,
   round: 999,
 } as const;
 
@@ -34,6 +35,7 @@ export const SIZE = {
   buttonHeight: 56,
   buttonMediumHeight: 52,
   checkbox: 24,
+  checkboxSmall: 20,
   progressDot: 16,
   segmentHeight: 46,
   segmentIndicatorHeight: 36,

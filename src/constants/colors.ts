@@ -3,6 +3,7 @@ export const COLORS = {
   primarySoft: 'rgba(140, 169, 255, 0.16)',
   sub: '#AAC4F5',
   cream: '#FFF8DE',
+  logoBackground: '#FFFBEC',
   yellow: '#FFF2C6',
   kakao: '#FEE500',
 

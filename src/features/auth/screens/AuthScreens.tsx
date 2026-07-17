@@ -4,10 +4,6 @@ function AuthScreen({ title }: { title: string }) {
   return <ScreenLayout headerVariant="auth" title={title} />;
 }
 
-export function LoginScreen() {
-  return <AuthScreen title="로그인" />;
-}
-
 export function SignupScreen() {
   return <AuthScreen title="회원가입" />;
 }

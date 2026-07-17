@@ -22,6 +22,11 @@ export const TYPOGRAPHY = {
     fontSize: 20,
     lineHeight: 30,
   },
+  authTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 22,
+    lineHeight: 30,
+  },
   title3: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 17,
@@ -86,6 +91,11 @@ export const TYPOGRAPHY = {
     fontFamily: FONT_FAMILY.regular,
     fontSize: 10,
     lineHeight: 15,
+  },
+  checkboxLabel: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 12,
+    lineHeight: 20,
   },
   smallButton: {
     fontFamily: FONT_FAMILY.bold,
