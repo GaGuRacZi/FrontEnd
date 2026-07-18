@@ -37,9 +37,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   image: {
-    height: 224,
+    aspectRatio: 266 / 224,
     marginTop: 48,
+    maxWidth: 266,
     resizeMode: 'contain',
-    width: 266,
+    width: '100%',
   },
 });

@@ -20,7 +20,7 @@ export function SignupCompleteScreen() {
   }, []);
 
   return (
-    <AppScreen contentContainerStyle={styles.container}>
+    <AppScreen contentContainerStyle={styles.container} scrollable>
       <View style={styles.artwork}>
         <View style={[styles.confetti, styles.blueLeft]} />
         <View style={[styles.confetti, styles.pinkTop]} />
@@ -53,26 +53,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: LAYOUT.authContentPaddingHorizontal,
   },
   artwork: {
-    height: 300,
+    aspectRatio: 302 / 300,
     marginTop: 132,
+    maxWidth: 302,
     position: 'relative',
-    width: 302,
+    width: '100%',
   },
   logoGlow: {
     alignItems: 'center',
+    aspectRatio: 1,
     backgroundColor: COLORS.cream,
     borderRadius: RADIUS.round,
-    height: 200,
     justifyContent: 'center',
-    left: 51,
+    left: '17%',
     position: 'absolute',
-    top: 36,
-    width: 200,
+    top: '12%',
+    width: '66%',
   },
   logo: {
-    height: 175,
+    aspectRatio: 1,
     resizeMode: 'contain',
-    width: 175,
+    width: '88%',
   },
   confetti: {
     borderRadius: 2,

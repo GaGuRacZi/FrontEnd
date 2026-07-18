@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -46,16 +46,40 @@ export function SignupLocationScreen() {
   const [locationError, setLocationError] = useState<string>();
   const [currentLocationSelected, setCurrentLocationSelected] = useState(false);
   const locating = useRef(false);
+  const locationRequestId = useRef(0);
+
+  const invalidateLocationRequest = useCallback(() => {
+    locationRequestId.current += 1;
+    locating.current = false;
+  }, []);
+
+  const cancelLocationRequest = useCallback(() => {
+    invalidateLocationRequest();
+    setIsLocating(false);
+  }, [invalidateLocationRequest]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setIsLocating(false);
+
+      return () => invalidateLocationRequest();
+    }, [invalidateLocationRequest]),
+  );
 
   const handleCurrentLocation = async () => {
     if (locating.current) return;
 
     locating.current = true;
+    const requestId = locationRequestId.current + 1;
+    locationRequestId.current = requestId;
+    const isCurrentRequest = () => locationRequestId.current === requestId;
     setIsLocating(true);
     setLocationError(undefined);
 
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
+
+      if (!isCurrentRequest()) return;
 
       if (!permission.granted) {
         setLocationError('현재 위치를 사용하려면 위치 권한을 허용해주세요.');
@@ -88,6 +112,8 @@ export function SignupLocationScreen() {
 
       const servicesEnabled = await Location.hasServicesEnabledAsync();
 
+      if (!isCurrentRequest()) return;
+
       if (!servicesEnabled) {
         setLocationError('기기의 위치 서비스를 켠 뒤 다시 시도해주세요.');
         Alert.alert('위치 서비스가 꺼져 있어요', '기기 설정에서 위치 서비스를 켜주세요.', [
@@ -98,6 +124,8 @@ export function SignupLocationScreen() {
       }
 
       const position = await getBestCurrentPosition();
+
+      if (!isCurrentRequest()) return;
 
       if (!position) {
         setLocationError('현재 위치를 확인하지 못했어요. 지역을 직접 검색해주세요.');
@@ -114,6 +142,8 @@ export function SignupLocationScreen() {
 
       const region = await getRegionFromPosition(position);
 
+      if (!isCurrentRequest()) return;
+
       if (!region) {
         setLocationError('현재 위치의 지역 정보를 찾지 못했어요. 지역을 직접 검색해주세요.');
         return;
@@ -122,18 +152,26 @@ export function SignupLocationScreen() {
       updateField('region', region);
       setCurrentLocationSelected(true);
     } catch {
-      setLocationError('현재 위치를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+      if (isCurrentRequest()) {
+        setLocationError('현재 위치를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+      }
     } finally {
-      locating.current = false;
-      setIsLocating(false);
+      if (isCurrentRequest()) {
+        locating.current = false;
+        setIsLocating(false);
+      }
     }
   };
 
   if (searching) {
     return (
       <AddressSearchScreen
-        onBack={() => setSearching(false)}
+        onBack={() => {
+          cancelLocationRequest();
+          setSearching(false);
+        }}
         onSelect={(address) => {
+          cancelLocationRequest();
           updateField('region', address);
           setCurrentLocationSelected(false);
           setLocationError(undefined);
@@ -149,7 +187,10 @@ export function SignupLocationScreen() {
       buttonTitle="회원가입 완료하기"
       currentStep={5}
       nextDisabled={!data.region}
-      onNext={() => router.push('/signup/complete')}
+      onNext={() => {
+        cancelLocationRequest();
+        router.push('/signup/complete');
+      }}
       title="위치 정보를 설정해주세요"
     >
       <Text style={styles.description}>
@@ -161,7 +202,11 @@ export function SignupLocationScreen() {
         <Pressable
           accessibilityHint="지역 검색 화면을 엽니다"
           accessibilityRole="button"
-          onPress={() => setSearching(true)}
+          onPress={() => {
+            cancelLocationRequest();
+            setLocationError(undefined);
+            setSearching(true);
+          }}
           style={({ pressed }) => [styles.locationSelector, pressed && styles.pressed]}
         >
           <Text

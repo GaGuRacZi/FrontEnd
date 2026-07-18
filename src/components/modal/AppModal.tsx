@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
@@ -63,24 +63,33 @@ export function AppModal({
   const currentHeight = useRef(collapsedHeight);
   const dragStartHeight = useRef(collapsedHeight);
   const canResize = isBottomSheet && resizable && maxHeight > collapsedHeight;
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const animateHeight = useCallback(
-    (height: number) => {
+    (height: number, expanded: boolean) => {
       currentHeight.current = height;
       Animated.spring(sheetHeight, {
         bounciness: 0,
         speed: 18,
         toValue: height,
         useNativeDriver: false,
-      }).start();
+      }).start(({ finished }) => {
+        if (finished) {
+          setIsExpanded(expanded);
+        }
+      });
     },
     [sheetHeight],
   );
 
   useEffect(() => {
+    sheetHeight.stopAnimation();
     currentHeight.current = collapsedHeight;
     dragStartHeight.current = collapsedHeight;
     sheetHeight.setValue(collapsedHeight);
+    setIsExpanded(false);
+
+    return () => sheetHeight.stopAnimation();
   }, [collapsedHeight, sheetHeight, visible]);
 
   const panResponder = useMemo(
@@ -111,15 +120,13 @@ export function AppModal({
           const midpoint = collapsedHeight + (maxHeight - collapsedHeight) / 2;
           const shouldExpand =
             gesture.dy < -36 || gesture.vy < -0.2 || currentHeight.current > midpoint;
-          animateHeight(shouldExpand ? maxHeight : collapsedHeight);
+          animateHeight(shouldExpand ? maxHeight : collapsedHeight, shouldExpand);
         },
         onPanResponderTerminationRequest: () => false,
         onPanResponderTerminate: () => {
-          animateHeight(
-            currentHeight.current > collapsedHeight + (maxHeight - collapsedHeight) / 2
-              ? maxHeight
-              : collapsedHeight,
-          );
+          const shouldExpand =
+            currentHeight.current > collapsedHeight + (maxHeight - collapsedHeight) / 2;
+          animateHeight(shouldExpand ? maxHeight : collapsedHeight, shouldExpand);
         },
       }),
     [animateHeight, canResize, collapsedHeight, maxHeight, sheetHeight],
@@ -170,14 +177,20 @@ export function AppModal({
                 collapsable={false}
                 accessibilityLabel={canResize ? '모달 높이 조절' : undefined}
                 accessibilityRole={canResize ? 'adjustable' : undefined}
+                accessibilityValue={
+                  canResize ? { text: isExpanded ? '펼쳐짐' : '접힘' } : undefined
+                }
                 onAccessibilityAction={
                   canResize
-                    ? (event) =>
-                        animateHeight(
-                          event.nativeEvent.actionName === 'increment'
-                            ? maxHeight
-                            : collapsedHeight,
-                        )
+                    ? (event) => {
+                        if (event.nativeEvent.actionName === 'increment') {
+                          animateHeight(maxHeight, true);
+                        }
+
+                        if (event.nativeEvent.actionName === 'decrement') {
+                          animateHeight(collapsedHeight, false);
+                        }
+                      }
                     : undefined
                 }
                 style={styles.dragArea}
