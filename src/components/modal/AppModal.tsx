@@ -1,7 +1,10 @@
 import type { PropsWithChildren } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -25,8 +28,10 @@ type ModalAction = {
 
 type AppModalProps = PropsWithChildren<{
   closeOnBackdropPress?: boolean;
+  initialHeight?: number;
   onClose: () => void;
   primaryAction?: ModalAction;
+  resizable?: boolean;
   secondaryAction?: ModalAction;
   title?: string;
   variant?: 'bottomSheet' | 'center';
@@ -36,8 +41,10 @@ type AppModalProps = PropsWithChildren<{
 export function AppModal({
   children,
   closeOnBackdropPress = true,
+  initialHeight,
   onClose,
   primaryAction,
+  resizable = false,
   secondaryAction,
   title,
   variant = 'bottomSheet',
@@ -50,6 +57,72 @@ export function AppModal({
   const maxHeight = Math.max(
     0,
     windowHeight - insets.top - insets.bottom - SPACING.xxxl * 2,
+  );
+  const collapsedHeight = Math.min(initialHeight ?? maxHeight, maxHeight);
+  const sheetHeight = useRef(new Animated.Value(collapsedHeight)).current;
+  const currentHeight = useRef(collapsedHeight);
+  const dragStartHeight = useRef(collapsedHeight);
+  const canResize = isBottomSheet && resizable && maxHeight > collapsedHeight;
+
+  const animateHeight = useCallback(
+    (height: number) => {
+      currentHeight.current = height;
+      Animated.spring(sheetHeight, {
+        bounciness: 0,
+        speed: 18,
+        toValue: height,
+        useNativeDriver: false,
+      }).start();
+    },
+    [sheetHeight],
+  );
+
+  useEffect(() => {
+    currentHeight.current = collapsedHeight;
+    dragStartHeight.current = collapsedHeight;
+    sheetHeight.setValue(collapsedHeight);
+  }, [collapsedHeight, sheetHeight, visible]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => canResize,
+        onStartShouldSetPanResponderCapture: () => canResize,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          canResize && Math.abs(gesture.dy) > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          canResize && Math.abs(gesture.dy) > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderGrant: () => {
+          dragStartHeight.current = currentHeight.current;
+          sheetHeight.stopAnimation((height) => {
+            currentHeight.current = height;
+            dragStartHeight.current = height;
+          });
+        },
+        onPanResponderMove: (_, gesture) => {
+          const nextHeight = Math.min(
+            maxHeight,
+            Math.max(collapsedHeight, dragStartHeight.current - gesture.dy),
+          );
+          currentHeight.current = nextHeight;
+          sheetHeight.setValue(nextHeight);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const midpoint = collapsedHeight + (maxHeight - collapsedHeight) / 2;
+          const shouldExpand =
+            gesture.dy < -36 || gesture.vy < -0.2 || currentHeight.current > midpoint;
+          animateHeight(shouldExpand ? maxHeight : collapsedHeight);
+        },
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminate: () => {
+          animateHeight(
+            currentHeight.current > collapsedHeight + (maxHeight - collapsedHeight) / 2
+              ? maxHeight
+              : collapsedHeight,
+          );
+        },
+      }),
+    [animateHeight, canResize, collapsedHeight, maxHeight, sheetHeight],
   );
 
   return (
@@ -76,10 +149,11 @@ export function AppModal({
           pointerEvents="box-none"
           style={[styles.modalLayer, isBottomSheet ? styles.bottomAligned : styles.centered]}
         >
-          <View
+          <Animated.View
             style={[
               styles.surface,
               isBottomSheet ? styles.bottomSheet : styles.centerModal,
+              canResize ? { height: sheetHeight } : undefined,
               {
                 maxHeight,
                 paddingBottom: isBottomSheet
@@ -88,22 +162,43 @@ export function AppModal({
               },
             ]}
           >
-            {isBottomSheet ? <View style={styles.dragHandle} /> : null}
+            {isBottomSheet ? (
+              <View
+                accessibilityActions={
+                  canResize ? [{ name: 'increment' }, { name: 'decrement' }] : undefined
+                }
+                collapsable={false}
+                accessibilityLabel={canResize ? '모달 높이 조절' : undefined}
+                accessibilityRole={canResize ? 'adjustable' : undefined}
+                onAccessibilityAction={
+                  canResize
+                    ? (event) =>
+                        animateHeight(
+                          event.nativeEvent.actionName === 'increment'
+                            ? maxHeight
+                            : collapsedHeight,
+                        )
+                    : undefined
+                }
+                style={styles.dragArea}
+                {...(canResize ? panResponder.panHandlers : {})}
+              >
+                <View style={styles.dragHandle} />
+              </View>
+            ) : null}
 
             {showCloseButton ? (
               <View style={styles.header}>
                 {title ? <Text style={styles.title}>{title}</Text> : null}
-                {showCloseButton ? (
-                  <Pressable
-                    accessibilityLabel="모달 닫기"
-                    accessibilityRole="button"
-                    hitSlop={SPACING.md}
-                    onPress={onClose}
-                    style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-                  >
-                    <AppIcon color={COLORS.gray600} name="close" size={24} />
-                  </Pressable>
-                ) : null}
+                <Pressable
+                  accessibilityLabel="모달 닫기"
+                  accessibilityRole="button"
+                  hitSlop={SPACING.md}
+                  onPress={onClose}
+                  style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                >
+                  <AppIcon color={COLORS.gray600} name="close" size={24} />
+                </Pressable>
               </View>
             ) : null}
 
@@ -141,7 +236,7 @@ export function AppModal({
                 ) : null}
               </View>
             ) : null}
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -183,12 +278,19 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     width: '100%',
   },
+  dragArea: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+    marginTop: -SPACING.xl,
+    width: '100%',
+  },
   dragHandle: {
     alignSelf: 'center',
     backgroundColor: COLORS.gray300,
     borderRadius: RADIUS.round,
     height: 6,
-    marginBottom: SPACING.xxl,
     width: 66,
   },
   header: {

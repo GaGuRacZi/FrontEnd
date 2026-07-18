@@ -7,9 +7,11 @@ import { AppScreen } from '@/src/components/layout/AppScreen';
 import { COLORS, TYPOGRAPHY } from '@/src/constants';
 import { AuthActionPanel } from '@/src/features/auth/components/AuthActionPanel';
 import { AuthBrandHero } from '@/src/features/auth/components/AuthBrandHero';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 export function LoginStartScreen() {
   const router = useRouter();
+  const navigateOnce = useNavigationLock();
 
   return (
     <AppScreen
@@ -26,7 +28,7 @@ export function LoginStartScreen() {
 
         <AppButton
           accessibilityHint="로그인 화면으로 이동합니다"
-          onPress={() => router.push('/login')}
+          onPress={() => navigateOnce(() => router.replace('/login'))}
           size="medium"
           title="로그인/회원가입 하기"
           variant="secondary"

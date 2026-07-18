@@ -1,3 +1,3 @@
-import { SignupPetTypeScreen } from '@/src/features/auth/screens/AuthScreens';
+import { SignupPetTypeScreen } from '@/src/features/auth/signup/screens/SignupPetTypeScreen';
 
 export default SignupPetTypeScreen;

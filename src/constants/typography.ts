@@ -37,6 +37,11 @@ export const TYPOGRAPHY = {
     fontSize: 15,
     lineHeight: 24,
   },
+  bodyLarge: {
+    fontFamily: FONT_FAMILY.regular,
+    fontSize: 16,
+    lineHeight: 27,
+  },
   body2: {
     fontFamily: FONT_FAMILY.regular,
     fontSize: 14,

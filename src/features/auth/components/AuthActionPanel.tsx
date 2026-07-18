@@ -3,7 +3,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { COLORS, RADIUS, SPACING } from '@/src/constants';
+import { COLORS, LAYOUT, RADIUS, SPACING } from '@/src/constants';
 
 type AuthActionPanelProps = PropsWithChildren<{
   style?: StyleProp<ViewStyle>;
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: RADIUS.authPanel,
     elevation: 4,
     gap: SPACING.xxl,
-    paddingHorizontal: 30,
+    paddingHorizontal: LAYOUT.authContentPaddingHorizontal,
     paddingTop: 28,
     shadowColor: COLORS.black,
     shadowOffset: { width: 0, height: -8 },
