@@ -1,6 +1,7 @@
 export type PetSummary = {
     id: string;
     name: string;
+    breedLabel: string;
     ageLabel: string;       // "7살 7개월" , 생년월일 -> 나이 변환은 이미 거쳐서 넘겨주기
     weightLabel: string;    // "3.4kg"
     photoUrl?: string;
