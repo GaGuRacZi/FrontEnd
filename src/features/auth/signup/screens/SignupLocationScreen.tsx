@@ -23,6 +23,7 @@ import {
   MAX_LOCATION_ACCURACY_METERS,
 } from '../services/locationService';
 import { useSignup } from '../SignupContext';
+import { hasValidSignupLocation } from '../signupValidation';
 
 async function openLocationSettings() {
   if (Platform.OS === 'android') {
@@ -44,9 +45,9 @@ export function SignupLocationScreen() {
   const [searching, setSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string>();
-  const [currentLocationSelected, setCurrentLocationSelected] = useState(false);
   const locating = useRef(false);
   const locationRequestId = useRef(0);
+  const currentLocationSelected = data.regionSource === 'current';
 
   const invalidateLocationRequest = useCallback(() => {
     locationRequestId.current += 1;
@@ -97,7 +98,9 @@ export function SignupLocationScreen() {
         return;
       }
 
-      if (Platform.OS === 'android' && permission.android?.accuracy !== 'fine') {
+      const androidAccuracy = permission.android?.accuracy;
+
+      if (Platform.OS === 'android' && androidAccuracy && androidAccuracy !== 'fine') {
         setLocationError('정확한 위치 권한을 켠 뒤 다시 시도해주세요.');
         Alert.alert(
           '정확한 위치가 필요해요',
@@ -150,7 +153,7 @@ export function SignupLocationScreen() {
       }
 
       updateField('region', region);
-      setCurrentLocationSelected(true);
+      updateField('regionSource', 'current');
     } catch {
       if (isCurrentRequest()) {
         setLocationError('현재 위치를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
@@ -173,7 +176,7 @@ export function SignupLocationScreen() {
         onSelect={(address) => {
           cancelLocationRequest();
           updateField('region', address);
-          setCurrentLocationSelected(false);
+          updateField('regionSource', 'search');
           setLocationError(undefined);
           setSearching(false);
         }}
@@ -186,7 +189,7 @@ export function SignupLocationScreen() {
       bodyStyle={styles.body}
       buttonTitle="회원가입 완료하기"
       currentStep={5}
-      nextDisabled={!data.region}
+      nextDisabled={!hasValidSignupLocation(data)}
       onNext={() => {
         cancelLocationRequest();
         router.push('/signup/complete');

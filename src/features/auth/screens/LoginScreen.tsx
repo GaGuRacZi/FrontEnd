@@ -17,7 +17,7 @@ import { AppInput } from '@/src/components/form/AppInput';
 import { AppScreen } from '@/src/components/layout/AppScreen';
 import { KeyboardAwareScrollView } from '@/src/components/layout/KeyboardAwareScrollView';
 import { TopHeader } from '@/src/components/layout/TopHeader';
-import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { COLORS, LAYOUT, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { getEmailError } from '@/src/features/auth/authValidation';
 import { AuthActionPanel } from '@/src/features/auth/components/AuthActionPanel';
 import { AuthBrandHero } from '@/src/features/auth/components/AuthBrandHero';
@@ -215,10 +215,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   heroHeader: {
-    left: 18,
+    left: LAYOUT.screenPaddingHorizontal,
     position: 'absolute',
-    right: 18,
-    top: 24,
+    right: LAYOUT.screenPaddingHorizontal,
+    top: SPACING.xxxl,
   },
   formPanel: {
     flexGrow: 1,

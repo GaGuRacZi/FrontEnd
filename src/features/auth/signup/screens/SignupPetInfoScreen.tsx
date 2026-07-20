@@ -20,6 +20,7 @@ import {
   getBirthDateError,
   getRequiredError,
   getWeightError,
+  hasValidSignupPetInfo,
   parseBirthDate,
 } from '../signupValidation';
 
@@ -34,12 +35,7 @@ export function SignupPetInfoScreen() {
   );
   const [weightError, setWeightError] = useState<string>();
 
-  const canContinue =
-    !getRequiredError(data.petName, '이름을 입력해주세요.') &&
-    !getBirthDateError(data.birthDate) &&
-    !getWeightError(data.weight) &&
-    data.petGender !== null &&
-    data.neutered !== null;
+  const canContinue = hasValidSignupPetInfo(data);
 
   const selectBirthDate = (date: Date) => {
     updateField('birthDate', formatBirthDateValue(date));

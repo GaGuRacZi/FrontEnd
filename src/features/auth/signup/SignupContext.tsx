@@ -12,12 +12,24 @@ import {
 export type SignupMethod = 'kakao' | 'local';
 export type PetType = 'cat' | 'dog' | null;
 export type PetGender = 'female' | 'male' | null;
+type EmailVerificationStatus = 'confirming' | 'idle' | 'requesting';
+type EmailVerificationError = {
+  field: 'code' | 'email';
+  message: string;
+} | null;
+
+type EmailVerificationState = {
+  error: EmailVerificationError;
+  status: EmailVerificationStatus;
+};
 
 export type SignupData = {
   birthDate: string;
   breed: string;
   email: string;
-  emailChecked: boolean;
+  emailVerificationCode: string;
+  emailVerificationId: string | null;
+  emailVerificationToken: string | null;
   introduction: string;
   method: SignupMethod;
   name: string;
@@ -28,16 +40,18 @@ export type SignupData = {
   petGender: PetGender;
   petName: string;
   petType: PetType;
-  phone: string;
-  phoneVerified: boolean;
   profileImageUri: string | null;
   region: string;
+  regionSource: 'current' | 'search' | null;
   weight: string;
 };
 
 type SignupContextValue = {
   data: SignupData;
+  emailVerification: EmailVerificationState;
   updateField: <Key extends keyof SignupData>(key: Key, value: SignupData[Key]) => void;
+  updateEmailVerification: (state: Partial<EmailVerificationState>) => void;
+  updateFields: (fields: Partial<SignupData>) => void;
 };
 
 const SignupContext = createContext<SignupContextValue | null>(null);
@@ -47,7 +61,9 @@ function createInitialData(method: SignupMethod): SignupData {
     birthDate: '',
     breed: '',
     email: '',
-    emailChecked: false,
+    emailVerificationCode: '',
+    emailVerificationId: null,
+    emailVerificationToken: null,
     introduction: '',
     method,
     name: '',
@@ -58,10 +74,9 @@ function createInitialData(method: SignupMethod): SignupData {
     petGender: null,
     petName: '',
     petType: null,
-    phone: '',
-    phoneVerified: false,
     profileImageUri: null,
     region: '',
+    regionSource: null,
     weight: '',
   };
 }
@@ -73,6 +88,10 @@ type SignupProviderProps = PropsWithChildren<{
 export function SignupProvider({ children, initialMethod }: SignupProviderProps) {
   const methodInitialized = useRef(Boolean(initialMethod));
   const [data, setData] = useState<SignupData>(() => createInitialData(initialMethod ?? 'local'));
+  const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
+    error: null,
+    status: 'idle',
+  });
 
   useEffect(() => {
     if (!initialMethod || methodInitialized.current) return;
@@ -88,12 +107,23 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     [],
   );
 
+  const updateFields = useCallback((fields: Partial<SignupData>) => {
+    setData((current) => ({ ...current, ...fields }));
+  }, []);
+
+  const updateEmailVerification = useCallback((state: Partial<EmailVerificationState>) => {
+    setEmailVerification((current) => ({ ...current, ...state }));
+  }, []);
+
   const value = useMemo<SignupContextValue>(
     () => ({
       data,
+      emailVerification,
+      updateEmailVerification,
       updateField,
+      updateFields,
     }),
-    [data, updateField],
+    [data, emailVerification, updateEmailVerification, updateField, updateFields],
   );
 
   return <SignupContext.Provider value={value}>{children}</SignupContext.Provider>;

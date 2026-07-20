@@ -1,5 +1,15 @@
+import { getEmailError } from '../authValidation';
+import type { SignupData } from './SignupContext';
+
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 const BIRTH_DATE_PATTERN = /^(\d{4})\.(\d{2})\.(\d{2})$/;
+
+type SignupFlowRoute =
+  | '/signup/complete'
+  | '/signup/location'
+  | '/signup/pet-info'
+  | '/signup/pet-type'
+  | '/signup/user-info';
 
 export function getPasswordError(password: string) {
   if (!password) return '비밀번호를 입력해주세요.';
@@ -13,15 +23,6 @@ export function getPasswordError(password: string) {
 export function getPasswordConfirmError(password: string, passwordConfirm: string) {
   if (!passwordConfirm) return '비밀번호를 한 번 더 입력해주세요.';
   if (password !== passwordConfirm) return '비밀번호가 일치하지 않아요.';
-
-  return undefined;
-}
-
-export function getPhoneError(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-
-  if (digits.length !== 11) return '휴대폰 번호 11자리를 입력해주세요.';
-  if (!digits.startsWith('010')) return '010으로 시작하는 휴대폰 번호를 입력해주세요.';
 
   return undefined;
 }
@@ -53,15 +54,6 @@ export function getWeightError(value: string) {
   }
 
   return undefined;
-}
-
-export function formatPhone(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 11);
-
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
-
-  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 }
 
 export function formatBirthDate(value: string) {
@@ -100,4 +92,47 @@ export function parseBirthDate(value: string) {
   }
 
   return date;
+}
+
+export function hasValidSignupUserInfo(data: SignupData) {
+  const hasRequiredProfile =
+    !getRequiredError(data.name, '이름을 입력해주세요.') &&
+    !getRequiredError(data.nickname, '닉네임을 입력해주세요.');
+
+  if (data.method === 'kakao') return hasRequiredProfile;
+
+  return (
+    hasRequiredProfile &&
+    !getEmailError(data.email) &&
+    Boolean(data.emailVerificationToken) &&
+    !getPasswordError(data.password) &&
+    !getPasswordConfirmError(data.password, data.passwordConfirm)
+  );
+}
+
+export function hasValidSignupPetType(data: SignupData) {
+  return Boolean(data.petType && data.breed);
+}
+
+export function hasValidSignupPetInfo(data: SignupData) {
+  return (
+    !getRequiredError(data.petName, '이름을 입력해주세요.') &&
+    !getBirthDateError(data.birthDate) &&
+    !getWeightError(data.weight) &&
+    data.petGender !== null &&
+    data.neutered !== null
+  );
+}
+
+export function hasValidSignupLocation(data: SignupData) {
+  return Boolean(data.region.trim());
+}
+
+export function getNextSignupRoute(data: SignupData): SignupFlowRoute {
+  if (!hasValidSignupUserInfo(data)) return '/signup/user-info';
+  if (!hasValidSignupPetType(data)) return '/signup/pet-type';
+  if (!hasValidSignupPetInfo(data)) return '/signup/pet-info';
+  if (!hasValidSignupLocation(data)) return '/signup/location';
+
+  return '/signup/complete';
 }

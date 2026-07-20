@@ -9,6 +9,7 @@ import { BreedPickerModal } from '../components/BreedPickerModal';
 import { SignupScaffold } from '../components/SignupScaffold';
 import type { PetType } from '../SignupContext';
 import { useSignup } from '../SignupContext';
+import { hasValidSignupPetType } from '../signupValidation';
 
 const PET_IMAGES = {
   cat: require('@/assets/images/signup/pet-type-cat.png'),
@@ -57,7 +58,7 @@ export function SignupPetTypeScreen() {
       <SignupScaffold
         bodyStyle={styles.body}
         currentStep={3}
-        nextDisabled={!data.petType || !data.breed}
+        nextDisabled={!hasValidSignupPetType(data)}
         onNext={() => router.push('/signup/pet-info')}
         title={'반려동물의 정보를\n입력해주세요'}
       >

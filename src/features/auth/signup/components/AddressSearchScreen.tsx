@@ -1,23 +1,30 @@
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  BackHandler,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { BackHandler, StyleSheet, Text, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
+import { AppButton } from '@/src/components/common/AppButton';
 import { AppIcon } from '@/src/components/common/AppIcon';
+import { LoadingView } from '@/src/components/common/LoadingView';
 import { AppScreen } from '@/src/components/layout/AppScreen';
 import { TopHeader } from '@/src/components/layout/TopHeader';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 type AddressSearchScreenProps = {
   onBack: () => void;
   onSelect: (address: string) => void;
 };
+
+const KAKAO_POSTCODE_ORIGIN = 'https://postcode.map.kakao.com';
+
+function isAllowedNavigation(url: string) {
+  return (
+    url === 'about:blank' ||
+    url === KAKAO_POSTCODE_ORIGIN ||
+    url.startsWith(`${KAKAO_POSTCODE_ORIGIN}/`) ||
+    url.startsWith(`${KAKAO_POSTCODE_ORIGIN}?`) ||
+    url.startsWith(`${KAKAO_POSTCODE_ORIGIN}#`)
+  );
+}
 
 const KAKAO_POSTCODE_HTML = `<!doctype html>
 <html lang="ko">
@@ -150,10 +157,11 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
           onError={() => setLoadError(true)}
           onHttpError={() => setLoadError(true)}
           onMessage={handleMessage}
-          originWhitelist={['https://*']}
+          onShouldStartLoadWithRequest={({ url }) => isAllowedNavigation(url)}
+          originWhitelist={['*']}
           setSupportMultipleWindows={false}
           source={{
-            baseUrl: 'https://postcode.map.kakao.com',
+            baseUrl: KAKAO_POSTCODE_ORIGIN,
             html: KAKAO_POSTCODE_HTML,
           }}
           style={styles.webView}
@@ -162,8 +170,7 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
 
         {!ready && !loadError ? (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator color={COLORS.primary} size="large" />
-            <Text style={styles.loadingText}>주소 검색을 불러오고 있어요.</Text>
+            <LoadingView label="주소 검색을 불러오고 있어요." />
           </View>
         ) : null}
 
@@ -172,13 +179,13 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
             <AppIcon color={COLORS.gray500} name="cloud-offline-outline" size={44} />
             <Text style={styles.errorTitle}>주소 검색을 불러오지 못했어요.</Text>
             <Text style={styles.errorDescription}>인터넷 연결을 확인해주세요.</Text>
-            <Pressable
-              accessibilityRole="button"
+            <AppButton
+              fullWidth={false}
               onPress={retry}
-              style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.retryButtonText}>다시 시도</Text>
-            </Pressable>
+              size="medium"
+              style={styles.retryButton}
+              title="다시 시도"
+            />
           </View>
         ) : null}
       </View>
@@ -198,15 +205,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     flex: 1,
   },
-  loadingText: {
-    ...TYPOGRAPHY.body2,
-    color: COLORS.gray600,
-  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     backgroundColor: COLORS.background,
-    gap: SPACING.xxl,
     justifyContent: 'center',
   },
   error: {
@@ -227,19 +229,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   retryButton: {
-    alignItems: 'center',
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.md,
     height: 46,
-    justifyContent: 'center',
     marginTop: SPACING.xxxl,
-    paddingHorizontal: SPACING.xxxl,
-  },
-  retryButtonText: {
-    ...TYPOGRAPHY.button,
-    color: COLORS.background,
-  },
-  pressed: {
-    opacity: 0.65,
   },
 });

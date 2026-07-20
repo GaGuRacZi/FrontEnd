@@ -87,6 +87,7 @@ export function BreedPickerModal({
           return (
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ selected }}
               key={breed.name}
               onPress={() => handleSelect(breed.name)}
               style={({ pressed }) => [

@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-type AppButtonVariant = 'ghost' | 'kakao' | 'outline' | 'primary' | 'secondary';
+type AppButtonVariant = 'ghost' | 'kakao' | 'outline' | 'primary' | 'secondary' | 'success';
 type AppButtonSize = 'large' | 'medium';
 
 type AppButtonProps = Omit<PressableProps, 'children' | 'style'> & {
@@ -27,6 +27,9 @@ const variantStyles = StyleSheet.create({
     borderColor: COLORS.gray300,
     borderWidth: 1,
   },
+  success: {
+    backgroundColor: COLORS.success,
+  },
   outline: {
     backgroundColor: COLORS.background,
     borderColor: COLORS.gray300,
@@ -44,6 +47,9 @@ const textVariantStyles = StyleSheet.create({
   secondary: {
     color: COLORS.black,
   },
+  success: {
+    color: COLORS.background,
+  },
   outline: {
     color: COLORS.black,
   },
@@ -56,6 +62,8 @@ const textVariantStyles = StyleSheet.create({
 });
 
 export function AppButton({
+  accessibilityLabel,
+  accessibilityState,
   disabled = false,
   fullWidth = true,
   leftIcon,
@@ -71,7 +79,13 @@ export function AppButton({
 
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityRole="button"
+      accessibilityState={{
+        ...accessibilityState,
+        busy: loading,
+        disabled: isDisabled,
+      }}
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
@@ -86,7 +100,11 @@ export function AppButton({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'primary' ? COLORS.background : COLORS.black}
+          color={
+            variant === 'primary' || variant === 'success'
+              ? COLORS.background
+              : COLORS.black
+          }
           size="small"
         />
       ) : (

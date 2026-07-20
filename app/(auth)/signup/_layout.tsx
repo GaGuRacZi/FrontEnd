@@ -1,5 +1,6 @@
 import { Stack, useGlobalSearchParams } from 'expo-router';
 
+import { SignupFlowGuard } from '@/src/features/auth/signup/components/SignupFlowGuard';
 import { SignupProvider } from '@/src/features/auth/signup/SignupContext';
 
 export default function SignupLayout() {
@@ -8,9 +9,11 @@ export default function SignupLayout() {
 
   return (
     <SignupProvider initialMethod={signupMethod}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="complete" options={{ gestureEnabled: false }} />
-      </Stack>
+      <SignupFlowGuard>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="complete" options={{ gestureEnabled: false }} />
+        </Stack>
+      </SignupFlowGuard>
     </SignupProvider>
   );
 }
