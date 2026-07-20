@@ -1,11 +1,10 @@
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 import {
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,29 +15,18 @@ import { AppIcon } from '@/src/components/common/AppIcon';
 import { AppCheckbox } from '@/src/components/form/AppCheckbox';
 import { AppInput } from '@/src/components/form/AppInput';
 import { AppScreen } from '@/src/components/layout/AppScreen';
+import { KeyboardAwareScrollView } from '@/src/components/layout/KeyboardAwareScrollView';
 import { TopHeader } from '@/src/components/layout/TopHeader';
-import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { COLORS, LAYOUT, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { getEmailError } from '@/src/features/auth/authValidation';
 import { AuthActionPanel } from '@/src/features/auth/components/AuthActionPanel';
 import { AuthBrandHero } from '@/src/features/auth/components/AuthBrandHero';
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function getEmailError(email: string) {
-  const value = email.trim();
-
-  if (!value) {
-    return '이메일을 입력해주세요.';
-  }
-
-  if (!EMAIL_PATTERN.test(value)) {
-    return '이메일 형식을 확인해주세요.';
-  }
-
-  return undefined;
-}
+import { PasswordVisibilityButton } from '@/src/features/auth/components/PasswordVisibilityButton';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 export function LoginScreen() {
   const router = useRouter();
+  const navigateOnce = useNavigationLock();
   const passwordInputRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -70,16 +58,40 @@ export function LoginScreen() {
     setPasswordError(password ? undefined : '비밀번호를 입력해주세요.');
   };
 
+  const handleBack = useCallback(() => {
+    navigateOnce(() => {
+      if (router.canGoBack()) {
+        router.back();
+        return;
+      }
+
+      router.replace('/');
+    });
+  }, [navigateOnce, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') return undefined;
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [handleBack]),
+  );
+
   return (
     <AppScreen edges={['top', 'left', 'right']} padded={false}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           bounces={false}
           contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
+          extraScrollHeight={SPACING.jumbo}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.hero}>
@@ -87,7 +99,7 @@ export function LoginScreen() {
             <TopHeader
               leftAccessibilityLabel="뒤로가기"
               leftIcon="chevron-back"
-              onLeftPress={() => router.replace('/')}
+              onLeftPress={handleBack}
               style={styles.heroHeader}
             />
           </View>
@@ -147,22 +159,10 @@ export function LoginScreen() {
                     ref={passwordInputRef}
                     returnKeyType="done"
                     rightElement={
-                      <Pressable
-                        accessibilityLabel={
-                          isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 표시하기'
-                        }
-                        accessibilityRole="button"
-                        hitSlop={10}
+                      <PasswordVisibilityButton
                         onPress={() => setIsPasswordVisible((visible) => !visible)}
-                        style={styles.passwordToggle}
-                      >
-                        <AppIcon
-                          accessible={false}
-                          color={COLORS.gray500}
-                          name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
-                          size={24}
-                        />
-                      </Pressable>
+                        visible={isPasswordVisible}
+                      />
                     }
                     secureTextEntry={!isPasswordVisible}
                     textContentType="password"
@@ -188,11 +188,11 @@ export function LoginScreen() {
             />
             <AppButton
               accessibilityHint="회원가입 화면으로 이동합니다"
-              onPress={() => router.push('/signup')}
+              onPress={() => navigateOnce(() => router.push('/signup'))}
               title="회원가입"
             />
           </AuthActionPanel>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </AppScreen>
   );
@@ -215,10 +215,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   heroHeader: {
-    left: 18,
+    left: LAYOUT.screenPaddingHorizontal,
     position: 'absolute',
-    right: 18,
-    top: 24,
+    right: LAYOUT.screenPaddingHorizontal,
+    top: SPACING.xxxl,
   },
   formPanel: {
     flexGrow: 1,
@@ -241,11 +241,5 @@ const styles = StyleSheet.create({
   fields: {
     gap: SPACING.md,
     width: '100%',
-  },
-  passwordToggle: {
-    alignItems: 'center',
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
   },
 });

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { COLORS, RADIUS, SIZE } from '@/src/constants';
@@ -20,15 +21,13 @@ export function SignupProgress({ currentStep, totalSteps = 5 }: SignupProgressPr
     >
       {Array.from({ length: safeTotalSteps }, (_, index) => {
         const step = index + 1;
-        const isReached = step <= safeStep;
+        const isCurrent = step === safeStep;
 
         return (
-          <View key={step} style={styles.step}>
-            <View style={[styles.dot, isReached && styles.active]} />
-            {step < safeTotalSteps ? (
-              <View style={[styles.line, step < safeStep && styles.active]} />
-            ) : null}
-          </View>
+          <Fragment key={step}>
+            <View style={[styles.dot, isCurrent && styles.active]} />
+            {step < safeTotalSteps ? <View style={styles.line} /> : null}
+          </Fragment>
         );
       })}
     </View>
@@ -39,12 +38,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     flexDirection: 'row',
-    width: '100%',
-  },
-  step: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flex: 1,
+    marginHorizontal: 3,
   },
   dot: {
     backgroundColor: COLORS.gray300,

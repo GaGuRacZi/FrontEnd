@@ -57,6 +57,7 @@ export const LAYOUT = {
   screenPaddingHorizontal: 18,
   screenPaddingVertical: 16,
   contentGap: 16,
+  authContentPaddingHorizontal: 30,
 } as const;
 
 export const SHADOWS = {
