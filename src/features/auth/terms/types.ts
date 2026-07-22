@@ -64,7 +64,7 @@ export function isTermId(value: string): value is TermId {
 export function getTermLabel(term: TermDefinition) {
   if (term.scope === 'policy') return '안내 문서';
   if (term.id === TERM_IDS.age) return '필수 확인';
-  if (term.scope === 'location' || term.scope === 'recording') return '기능 이용 동의';
+  if (term.id === TERM_IDS.location || term.scope === 'recording') return '기능 이용 동의';
   return term.required ? '필수 약관' : '선택 동의';
 }
 

@@ -83,7 +83,6 @@ export function TermsProvider({
   const targetUserId =
     linkedIdentity?.sourceUserId === userId ? linkedIdentity.targetUserId : userId;
   const targetUserIdRef = useRef(targetUserId);
-  targetUserIdRef.current = targetUserId;
   const [terms, setTerms] = useState<TermDefinition[]>([]);
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[]>([]);
   const [signupSelections, setSignupSelections] = useState<
@@ -92,6 +91,10 @@ export function TermsProvider({
   const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
   const [status, setStatus] = useState<TermsStatus>('loading');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    targetUserIdRef.current = targetUserId;
+  }, [targetUserId]);
 
   const load = useCallback(async () => {
     const requestedUserId = targetUserId;

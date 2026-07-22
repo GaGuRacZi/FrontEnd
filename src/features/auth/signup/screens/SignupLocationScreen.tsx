@@ -20,6 +20,7 @@ import {
 } from '@/src/features/auth/session/AuthSessionStore';
 import { signupDataToPetEntity } from '@/src/features/pet/petMappers';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { TERM_IDS, useTerms } from '../../terms';
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
@@ -48,6 +49,7 @@ async function openLocationSettings() {
 
 export function SignupLocationScreen() {
   const router = useRouter();
+  const navigateOnce = useNavigationLock();
   const { data, markSignupCompleted, signupSessionId, updateField } = useSignup();
   const { activateSignupUser } = useAuthSession();
   const { registerSignupPet } = usePetStore();
@@ -95,9 +97,11 @@ export function SignupLocationScreen() {
     }
 
     if (!hasCurrentConsent(TERM_IDS.location)) {
-      router.push({
-        pathname: '/signup/terms/[termId]',
-        params: { action: 'consent', termId: TERM_IDS.location },
+      navigateOnce(() => {
+        router.push({
+          pathname: '/signup/terms/[termId]',
+          params: { action: 'consent', termId: TERM_IDS.location },
+        });
       });
       return;
     }
