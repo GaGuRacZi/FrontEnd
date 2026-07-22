@@ -5,10 +5,10 @@ import { Image, StyleSheet, View } from 'react-native';
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS } from '@/src/constants';
 
-import type { PetEntity } from '../types';
+import type { PetFormValues } from '../types';
 
 type PetAvatarProps = {
-  pet: Pick<PetEntity, 'name' | 'profileImageUri' | 'type'> | null;
+  pet: Pick<PetFormValues, 'name' | 'profileImageUri' | 'type'> | null;
   size?: number;
   style?: StyleProp<ViewStyle>;
 };
@@ -29,13 +29,16 @@ export function PetAvatar({ pet, size = 40, style }: PetAvatarProps) {
   const hasProfileImage = Boolean(profileImageUri && !imageFailed);
   const imageSource = profileImageUri && !imageFailed
     ? { uri: profileImageUri }
-    : pet
+    : pet?.type
       ? FALLBACK_IMAGES[pet.type]
       : null;
+  const accessibilityLabel = pet?.name.trim()
+    ? `${pet.name} 프로필 사진`
+    : '반려동물 프로필 사진';
 
   return (
     <View
-      accessibilityLabel={pet ? `${pet.name} 프로필 사진` : '반려동물 프로필 사진'}
+      accessibilityLabel={accessibilityLabel}
       style={[
         styles.container,
         { borderRadius: size / 2, height: size, width: size },

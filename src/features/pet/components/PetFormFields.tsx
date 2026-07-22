@@ -7,15 +7,14 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { PET_SELECTION_FIELDS } from '../petData';
 import type { PetFormErrors } from '../petValidation';
 import type { PetImageField } from '../services/petImageStorage';
-import type { PetFormValues, PetSelectionField } from '../types';
+import type { PetFormValues, PetSelectionField, PetType } from '../types';
+import { PetAvatar } from './PetAvatar';
 import {
   PetCareInfoRow,
   PetChoiceButton,
   PetInfoCard,
   PetInfoRow,
 } from './PetInfoLayout';
-
-const DEFAULT_PROFILE_IMAGE = require('@/assets/images/paw-logo.png');
 
 type PetFormFieldsProps = {
   disabled?: boolean;
@@ -81,13 +80,17 @@ function PickerField({
 
 function ProfilePhoto({
   disabled,
+  name,
   onPick,
   onRemove,
+  type,
   uri,
 }: {
   disabled: boolean;
+  name: string;
   onPick: () => void;
   onRemove: () => void;
+  type: PetType | null;
   uri: string | null;
 }) {
   return (
@@ -104,11 +107,7 @@ function ProfilePhoto({
           pressed && styles.pressed,
         ]}
       >
-        <Image
-          resizeMode={uri ? 'cover' : 'contain'}
-          source={uri ? { uri } : DEFAULT_PROFILE_IMAGE}
-          style={uri ? styles.profileImage : styles.profilePlaceholder}
-        />
+        <PetAvatar pet={{ name, profileImageUri: uri, type }} size={102} />
         <View style={styles.cameraBadge}>
           <AppIcon color={COLORS.primary} name="camera-outline" size={18} />
         </View>
@@ -204,8 +203,10 @@ export function PetFormFields({
     <View style={styles.form}>
       <ProfilePhoto
         disabled={disabled}
+        name={values.name}
         onPick={() => onPickImage('profileImageUri')}
         onRemove={() => onRemoveImage('profileImageUri')}
+        type={values.type}
         uri={values.profileImageUri}
       />
 
@@ -429,22 +430,10 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     alignItems: 'center',
-    backgroundColor: COLORS.cream,
-    borderColor: COLORS.borderSoft,
     borderRadius: RADIUS.round,
-    borderWidth: 1,
     height: 102,
     justifyContent: 'center',
     width: 102,
-  },
-  profilePlaceholder: {
-    height: 72,
-    width: 72,
-  },
-  profileImage: {
-    borderRadius: RADIUS.round,
-    height: '100%',
-    width: '100%',
   },
   cameraBadge: {
     alignItems: 'center',
