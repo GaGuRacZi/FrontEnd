@@ -1,12 +1,27 @@
 import type { PropsWithChildren } from 'react';
 
-import { AuthSessionProvider } from '@/src/features/auth/session/AuthSessionStore';
+import {
+  AuthSessionProvider,
+  useAuthSession,
+} from '@/src/features/auth/session/AuthSessionStore';
+import { TermsProvider } from '@/src/features/auth/terms';
 import { PetProvider } from '@/src/features/pet/PetStore';
+
+function SessionProviders({ children }: PropsWithChildren) {
+  const { currentUserId, isReady } = useAuthSession();
+  const termsUserId = isReady ? currentUserId : null;
+
+  return (
+    <TermsProvider scope="session" userId={termsUserId}>
+      <PetProvider>{children}</PetProvider>
+    </TermsProvider>
+  );
+}
 
 export function AppProviders({ children }: PropsWithChildren) {
   return (
     <AuthSessionProvider>
-      <PetProvider>{children}</PetProvider>
+      <SessionProviders>{children}</SessionProviders>
     </AuthSessionProvider>
   );
 }

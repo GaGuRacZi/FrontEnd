@@ -34,9 +34,15 @@ export function LoginStartScreen() {
           variant="secondary"
         />
         <AppButton
+          accessibilityHint="카카오 회원가입 약관 동의 화면으로 이동합니다"
           accessibilityLabel="카카오로 시작하기"
           leftIcon={
             <AppIcon accessible={false} color={COLORS.black} name="chatbubble" size={24} />
+          }
+          onPress={() =>
+            navigateOnce(() =>
+              router.push({ pathname: '/signup/terms', params: { method: 'kakao' } }),
+            )
           }
           title="카카오로 시작하기"
           variant="kakao"

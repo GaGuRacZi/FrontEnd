@@ -6,6 +6,7 @@ import { AppIcon } from '@/src/components/common/AppIcon';
 import { AppInput } from '@/src/components/form/AppInput';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { getEmailError } from '@/src/features/auth/authValidation';
+import { useTerms } from '@/src/features/auth/terms';
 
 import {
   confirmSignupEmailVerification,
@@ -17,6 +18,7 @@ import {
 import { useSignup } from '../SignupContext';
 
 export function EmailVerificationField() {
+  const { signupIdentityFinalized } = useTerms();
   const {
     data,
     emailVerification,
@@ -55,11 +57,15 @@ export function EmailVerificationField() {
   };
 
   const handleEmailChange = (value: string) => {
+    if (signupIdentityFinalized) return;
+
     updateField('email', value);
     resetVerification();
   };
 
   const handleRequest = async () => {
+    if (signupIdentityFinalized) return;
+
     const validationError = getEmailError(data.email);
 
     if (validationError) {
@@ -116,6 +122,8 @@ export function EmailVerificationField() {
   };
 
   const handleConfirm = async () => {
+    if (signupIdentityFinalized) return;
+
     if (!data.emailVerificationId) {
       updateEmailVerification({
         error: { field: 'code', message: '인증번호를 다시 요청해주세요.' },
@@ -189,7 +197,7 @@ export function EmailVerificationField() {
             autoComplete="email"
             autoCorrect={false}
             containerStyle={styles.flexField}
-            editable={emailVerification.status === 'idle'}
+            editable={!signupIdentityFinalized && emailVerification.status === 'idle'}
             error={emailError}
             helperText={helperText}
             keyboardType="email-address"
@@ -212,6 +220,7 @@ export function EmailVerificationField() {
             disabled={
               Boolean(getEmailError(data.email)) ||
               isVerified ||
+              signupIdentityFinalized ||
               emailVerification.status !== 'idle'
             }
             fullWidth={false}
@@ -232,7 +241,7 @@ export function EmailVerificationField() {
             <AppInput
               autoComplete="one-time-code"
               containerStyle={styles.flexField}
-              editable={emailVerification.status === 'idle'}
+              editable={!signupIdentityFinalized && emailVerification.status === 'idle'}
               error={verificationCodeError}
               importantForAutofill="yes"
               keyboardType="number-pad"
@@ -251,6 +260,7 @@ export function EmailVerificationField() {
             <AppButton
               disabled={
                 data.emailVerificationCode.length !== 6 ||
+                signupIdentityFinalized ||
                 emailVerification.status !== 'idle'
               }
               fullWidth={false}

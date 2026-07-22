@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import type { AuthMethod } from '@/src/features/auth/session/AuthSessionStore';
+import { getSignupConsentUserId, TermsProvider } from '@/src/features/auth/terms';
 import type { PetGender, PetType } from '@/src/features/pet/types';
 
 export type SignupMethod = AuthMethod;
@@ -51,6 +52,8 @@ export type SignupData = {
 type SignupContextValue = {
   data: SignupData;
   emailVerification: EmailVerificationState;
+  markSignupCompleted: () => void;
+  signupCompleted: boolean;
   signupSessionId: string;
   updateField: <Key extends keyof SignupData>(key: Key, value: SignupData[Key]) => void;
   updateEmailVerification: (state: Partial<EmailVerificationState>) => void;
@@ -98,6 +101,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     error: null,
     status: 'idle',
   });
+  const [signupCompleted, setSignupCompleted] = useState(false);
 
   useEffect(() => {
     if (!initialMethod || methodInitialized.current) return;
@@ -121,19 +125,40 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     setEmailVerification((current) => ({ ...current, ...state }));
   }, []);
 
+  const markSignupCompleted = useCallback(() => {
+    setSignupCompleted(true);
+  }, []);
+
   const value = useMemo<SignupContextValue>(
     () => ({
       data,
       emailVerification,
+      markSignupCompleted,
+      signupCompleted,
       signupSessionId,
       updateEmailVerification,
       updateField,
       updateFields,
     }),
-    [data, emailVerification, signupSessionId, updateEmailVerification, updateField, updateFields],
+    [
+      data,
+      emailVerification,
+      markSignupCompleted,
+      signupCompleted,
+      signupSessionId,
+      updateEmailVerification,
+      updateField,
+      updateFields,
+    ],
   );
 
-  return <SignupContext.Provider value={value}>{children}</SignupContext.Provider>;
+  return (
+    <SignupContext.Provider value={value}>
+      <TermsProvider scope="signup" userId={getSignupConsentUserId(signupSessionId)}>
+        {children}
+      </TermsProvider>
+    </SignupContext.Provider>
+  );
 }
 
 export function useSignup() {

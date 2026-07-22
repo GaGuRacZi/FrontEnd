@@ -188,7 +188,11 @@ export function LoginScreen() {
             />
             <AppButton
               accessibilityHint="회원가입 화면으로 이동합니다"
-              onPress={() => navigateOnce(() => router.push('/signup'))}
+              onPress={() =>
+                navigateOnce(() =>
+                  router.push({ pathname: '/signup/terms', params: { method: 'local' } }),
+                )
+              }
               title="회원가입"
             />
           </AuthActionPanel>

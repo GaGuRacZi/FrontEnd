@@ -1,5 +1,5 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useEffect } from 'react';
 import type { PropsWithChildren } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
@@ -31,10 +31,13 @@ export function SignupScaffold({
   onNext,
   title,
 }: SignupScaffoldProps) {
+  const navigation = useNavigation();
   const router = useRouter();
   const navigateOnce = useNavigationLock();
 
   const handleBack = useCallback(() => {
+    if (nextLoading) return;
+
     navigateOnce(() => {
       if (router.canGoBack()) {
         router.back();
@@ -43,7 +46,7 @@ export function SignupScaffold({
 
       router.replace('/login');
     });
-  }, [navigateOnce, router]);
+  }, [navigateOnce, nextLoading, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,6 +60,12 @@ export function SignupScaffold({
       return () => subscription.remove();
     }, [handleBack]),
   );
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !nextLoading });
+
+    return () => navigation.setOptions({ gestureEnabled: true });
+  }, [navigation, nextLoading]);
 
   return (
     <FormScreen
@@ -74,6 +83,7 @@ export function SignupScaffold({
       header={
         <TopHeader
           leftAccessibilityLabel="이전 단계로 이동"
+          leftDisabled={nextLoading}
           leftIcon="chevron-back"
           onLeftPress={handleBack}
           style={styles.header}
@@ -84,7 +94,14 @@ export function SignupScaffold({
         <Text style={styles.title}>{title}</Text>
         <SignupProgress currentStep={currentStep} />
       </View>
-      <View style={[styles.body, bodyStyle]}>{children}</View>
+      <View
+        accessibilityElementsHidden={nextLoading}
+        importantForAccessibility={nextLoading ? 'no-hide-descendants' : 'auto'}
+        pointerEvents={nextLoading ? 'none' : 'auto'}
+        style={[styles.body, bodyStyle]}
+      >
+        {children}
+      </View>
     </FormScreen>
   );
 }
