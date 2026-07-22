@@ -5,15 +5,27 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "env": {
-        "EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK": "true"
+        "EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK": "false"
       },
       "android": {
         "buildType": "apk"
       }
     },
+    "mock": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "",
+        "EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK": "true"
+      }
+    },
     "production": {
       "autoIncrement": true,
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK": "false"
+      },
       "android": {
         "buildType": "app-bundle"
       }
