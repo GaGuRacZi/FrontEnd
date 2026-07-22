@@ -14,6 +14,12 @@ import {
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import {
+  getSignupUserId,
+  useAuthSession,
+} from '@/src/features/auth/session/AuthSessionStore';
+import { signupDataToPetEntity } from '@/src/features/pet/petMappers';
+import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
 import { SignupScaffold } from '../components/SignupScaffold';
@@ -41,10 +47,13 @@ async function openLocationSettings() {
 
 export function SignupLocationScreen() {
   const router = useRouter();
-  const { data, updateField } = useSignup();
+  const { data, signupSessionId, updateField } = useSignup();
+  const { activateSignupUser } = useAuthSession();
+  const { registerSignupPet } = usePetStore();
   const [searching, setSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string>();
+  const [submitting, setSubmitting] = useState(false);
   const locating = useRef(false);
   const locationRequestId = useRef(0);
   const currentLocationSelected = data.regionSource === 'current';
@@ -84,17 +93,14 @@ export function SignupLocationScreen() {
 
       if (!permission.granted) {
         setLocationError('현재 위치를 사용하려면 위치 권한을 허용해주세요.');
-
-        if (!permission.canAskAgain) {
-          Alert.alert(
-            '위치 권한이 필요해요',
-            '설정에서 위치 권한을 허용한 뒤 다시 시도해주세요.',
-            [
-              { text: '취소', style: 'cancel' },
-              { text: '설정 열기', onPress: () => void Linking.openSettings() },
-            ],
-          );
-        }
+        Alert.alert(
+          '위치 권한이 필요해요',
+          '현재 위치로 설정하려면 앱 설정에서 위치 권한을 허용해주세요.',
+          [
+            { text: '취소', style: 'cancel' },
+            { text: '설정 열기', onPress: () => void Linking.openSettings() },
+          ],
+        );
         return;
       }
 
@@ -166,6 +172,25 @@ export function SignupLocationScreen() {
     }
   };
 
+  const handleSubmit = async () => {
+    if (submitting) return;
+
+    setSubmitting(true);
+
+    try {
+      const userId = getSignupUserId(data.method, data.email, signupSessionId);
+      const initialPet = signupDataToPetEntity(data, userId);
+      await registerSignupPet(userId, initialPet);
+      await activateSignupUser(data.method, data.email, signupSessionId);
+      cancelLocationRequest();
+      router.push('/signup/complete');
+    } catch {
+      Alert.alert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
+      setSubmitting(false);
+      throw new Error('signup-submit-failed');
+    }
+  };
+
   if (searching) {
     return (
       <AddressSearchScreen
@@ -190,10 +215,8 @@ export function SignupLocationScreen() {
       buttonTitle="회원가입 완료하기"
       currentStep={5}
       nextDisabled={!hasValidSignupLocation(data)}
-      onNext={() => {
-        cancelLocationRequest();
-        router.push('/signup/complete');
-      }}
+      nextLoading={submitting}
+      onNext={handleSubmit}
       title="위치 정보를 설정해주세요"
     >
       <Text style={styles.description}>

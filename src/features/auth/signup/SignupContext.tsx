@@ -9,9 +9,11 @@ import {
   useState,
 } from 'react';
 
-export type SignupMethod = 'kakao' | 'local';
-export type PetType = 'cat' | 'dog' | null;
-export type PetGender = 'female' | 'male' | null;
+import type { AuthMethod } from '@/src/features/auth/session/AuthSessionStore';
+import type { PetGender, PetType } from '@/src/features/pet/types';
+
+export type SignupMethod = AuthMethod;
+export type { PetGender, PetType } from '@/src/features/pet/types';
 type EmailVerificationStatus = 'confirming' | 'idle' | 'requesting';
 type EmailVerificationError = {
   field: 'code' | 'email';
@@ -37,9 +39,9 @@ export type SignupData = {
   nickname: string;
   password: string;
   passwordConfirm: string;
-  petGender: PetGender;
+  petGender: PetGender | null;
   petName: string;
-  petType: PetType;
+  petType: PetType | null;
   profileImageUri: string | null;
   region: string;
   regionSource: 'current' | 'search' | null;
@@ -49,6 +51,7 @@ export type SignupData = {
 type SignupContextValue = {
   data: SignupData;
   emailVerification: EmailVerificationState;
+  signupSessionId: string;
   updateField: <Key extends keyof SignupData>(key: Key, value: SignupData[Key]) => void;
   updateEmailVerification: (state: Partial<EmailVerificationState>) => void;
   updateFields: (fields: Partial<SignupData>) => void;
@@ -87,6 +90,9 @@ type SignupProviderProps = PropsWithChildren<{
 
 export function SignupProvider({ children, initialMethod }: SignupProviderProps) {
   const methodInitialized = useRef(Boolean(initialMethod));
+  const [signupSessionId] = useState(
+    () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`,
+  );
   const [data, setData] = useState<SignupData>(() => createInitialData(initialMethod ?? 'local'));
   const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
     error: null,
@@ -119,11 +125,12 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     () => ({
       data,
       emailVerification,
+      signupSessionId,
       updateEmailVerification,
       updateField,
       updateFields,
     }),
-    [data, emailVerification, updateEmailVerification, updateField, updateFields],
+    [data, emailVerification, signupSessionId, updateEmailVerification, updateField, updateFields],
   );
 
   return <SignupContext.Provider value={value}>{children}</SignupContext.Provider>;

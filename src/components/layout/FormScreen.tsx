@@ -11,6 +11,7 @@ import { KeyboardAwareScrollView } from './KeyboardAwareScrollView';
 type FormScreenProps = PropsWithChildren<{
   contentContainerStyle?: StyleProp<ViewStyle>;
   footer?: ReactNode;
+  footerContainerStyle?: StyleProp<ViewStyle>;
   header?: ReactNode;
   keyboardVerticalOffset?: number;
 }>;
@@ -19,6 +20,7 @@ export function FormScreen({
   children,
   contentContainerStyle,
   footer,
+  footerContainerStyle,
   header,
   keyboardVerticalOffset = 0,
 }: FormScreenProps) {
@@ -27,7 +29,8 @@ export function FormScreen({
   return (
     <AppScreen edges={footer ? ['top', 'left', 'right'] : undefined} padded={false}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
         keyboardVerticalOffset={keyboardVerticalOffset}
         style={styles.keyboardView}
       >
@@ -40,7 +43,13 @@ export function FormScreen({
           {children}
         </KeyboardAwareScrollView>
         {footer ? (
-          <View style={[styles.footer, { paddingBottom: Math.max(SPACING.xxl, insets.bottom) }]}>
+          <View
+            style={[
+              styles.footer,
+              { paddingBottom: Math.max(SPACING.xxl, insets.bottom) },
+              footerContainerStyle,
+            ]}
+          >
             {footer}
           </View>
         ) : null}

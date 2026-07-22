@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from '@/src/services/apiClient';
+import { API_BASE_URL, ApiError, apiRequest } from '@/src/services/apiClient';
 
 type RequestEmailVerificationResponse = {
   expiresInSeconds: number;
@@ -16,6 +16,8 @@ type EmailVerificationError = {
 };
 
 const EMAIL_VERIFICATION_TIMEOUT_MS = 15000;
+const TEMPORARY_EMAIL_VERIFICATION_ENABLED =
+  __DEV__ || process.env.EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK === 'true';
 
 function getErrorCode(error: ApiError) {
   if (typeof error.data !== 'object' || error.data === null) return undefined;
@@ -43,6 +45,20 @@ async function emailVerificationRequest<ResponseData>(path: string, json: unknow
 
 export function normalizeSignupEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+export function getTemporarySignupEmailVerification(email: string) {
+  if (API_BASE_URL) return null;
+  if (!TEMPORARY_EMAIL_VERIFICATION_ENABLED) {
+    throw new Error('EXPO_PUBLIC_API_BASE_URL이 설정되지 않았습니다.');
+  }
+
+  const normalizedEmail = normalizeSignupEmail(email);
+
+  return {
+    email: normalizedEmail,
+    verificationToken: `temporary:${normalizedEmail}`,
+  };
 }
 
 export async function requestSignupEmailVerification(email: string) {

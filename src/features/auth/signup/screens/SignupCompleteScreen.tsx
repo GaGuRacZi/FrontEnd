@@ -71,7 +71,9 @@ const styles = StyleSheet.create({
     width: '66%',
   },
   logo: {
-    aspectRatio: 1,
+    height: '88%',
+    maxHeight: 175,
+    maxWidth: 175,
     resizeMode: 'contain',
     width: '88%',
   },

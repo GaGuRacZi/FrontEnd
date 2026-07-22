@@ -1,61 +1,58 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppIcon } from '@/src/components/common/AppIcon';
-import { AppModal } from '@/src/components/modal/AppModal';
+import { AppIcon } from '@/src/components/common';
+import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-import type { PetType } from '../SignupContext';
-import { MOCK_BREEDS } from '../signupData';
+import { MOCK_BREEDS } from '../petData';
+import type { PetType } from '../types';
 
-type BreedPickerModalProps = {
+type PetBreedPickerModalProps = {
   onClose: () => void;
   onSelect: (breed: string) => void;
-  petType: Exclude<PetType, null>;
+  petType: PetType;
   selectedBreed: string;
   visible: boolean;
 };
 
-export function BreedPickerModal({
+export function PetBreedPickerModal({
   onClose,
   onSelect,
   petType,
   selectedBreed,
   visible,
-}: BreedPickerModalProps) {
+}: PetBreedPickerModalProps) {
   const [query, setQuery] = useState('');
   const breeds = MOCK_BREEDS[petType];
   const popularBreeds = breeds.filter((breed) => breed.popular);
   const filteredBreeds = useMemo(() => {
     const normalizedQuery = query.trim().replace(/\s/g, '').toLowerCase();
-
     if (!normalizedQuery) return breeds;
-
     return breeds.filter((breed) =>
       breed.name.replace(/\s/g, '').toLowerCase().includes(normalizedQuery),
     );
   }, [breeds, query]);
 
-  const handleClose = () => {
+  const close = () => {
     setQuery('');
     onClose();
   };
 
-  const handleSelect = (breed: string) => {
+  const select = (breed: string) => {
     onSelect(breed);
-    handleClose();
+    close();
   };
 
   return (
     <AppModal
       initialHeight={570}
-      onClose={handleClose}
+      onClose={close}
       resizable
       title={petType === 'dog' ? '견종 검색' : '묘종 검색'}
       visible={visible}
     >
       <Text style={styles.subtitle}>{petType === 'dog' ? '강아지 품종' : '고양이 품종'}</Text>
-
       <View style={styles.searchField}>
         <AppIcon accessible={false} color={COLORS.gray500} name="search" size={22} />
         <TextInput
@@ -71,7 +68,7 @@ export function BreedPickerModal({
           <Pressable
             accessibilityLabel="검색어 지우기"
             accessibilityRole="button"
-            hitSlop={8}
+            hitSlop={SPACING.md}
             onPress={() => setQuery('')}
           >
             <AppIcon color={COLORS.gray500} name="close-circle-outline" size={24} />
@@ -83,13 +80,12 @@ export function BreedPickerModal({
       <View style={styles.chips}>
         {popularBreeds.map((breed) => {
           const selected = breed.name === selectedBreed;
-
           return (
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ selected }}
               key={breed.name}
-              onPress={() => handleSelect(breed.name)}
+              onPress={() => select(breed.name)}
               style={({ pressed }) => [
                 styles.chip,
                 selected && styles.selectedChip,
@@ -109,13 +105,12 @@ export function BreedPickerModal({
       <View style={styles.results}>
         {filteredBreeds.map((breed) => {
           const selected = breed.name === selectedBreed;
-
           return (
             <Pressable
               accessibilityRole="radio"
               accessibilityState={{ checked: selected }}
               key={breed.name}
-              onPress={() => handleSelect(breed.name)}
+              onPress={() => select(breed.name)}
               style={({ pressed }) => [
                 styles.result,
                 selected && styles.selectedResult,
@@ -130,13 +125,9 @@ export function BreedPickerModal({
           );
         })}
         {filteredBreeds.length === 0 ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => handleSelect('기타')}
-            style={({ pressed }) => [styles.emptyResult, pressed && styles.pressed]}
-          >
-            <Text style={styles.emptyText}>찾는 품종이 없어요</Text>
-          </Pressable>
+          <View style={styles.emptyResult}>
+            <Text style={styles.emptyText}>검색 결과가 없어요</Text>
+          </View>
         ) : null}
       </View>
     </AppModal>
