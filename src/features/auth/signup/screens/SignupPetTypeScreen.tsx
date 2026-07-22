@@ -4,8 +4,8 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { PetBreedPickerModal } from '@/src/features/pet/components/PetBreedPickerModal';
 
-import { BreedPickerModal } from '../components/BreedPickerModal';
 import { SignupScaffold } from '../components/SignupScaffold';
 import type { PetType } from '../SignupContext';
 import { useSignup } from '../SignupContext';
@@ -99,7 +99,7 @@ export function SignupPetTypeScreen() {
       </SignupScaffold>
 
       {data.petType ? (
-        <BreedPickerModal
+        <PetBreedPickerModal
           onClose={() => setModalVisible(false)}
           onSelect={(breed) => updateField('breed', breed)}
           petType={data.petType}

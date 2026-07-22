@@ -18,6 +18,7 @@ type RightHeaderActionProps =
 
 type ScreenLayoutProps = PropsWithChildren<
   {
+    centerContent?: ReactNode;
     headerFullWidth?: boolean;
     headerVariant?: 'auth' | 'tab';
     leftContent?: ReactNode;
@@ -30,6 +31,7 @@ type ScreenLayoutProps = PropsWithChildren<
 >;
 
 export function ScreenLayout({
+  centerContent,
   children,
   headerFullWidth = false,
   headerVariant = 'tab',
@@ -72,6 +74,7 @@ export function ScreenLayout({
       <TopHeader
         {...leftActionProps}
         {...rightActionProps}
+        centerContent={centerContent}
         leftContent={leftContent}
         leftIcon={resolvedLeftIcon}
         rightContent={rightContent}

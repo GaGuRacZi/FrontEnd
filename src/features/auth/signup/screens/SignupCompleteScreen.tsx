@@ -71,9 +71,9 @@ const styles = StyleSheet.create({
     width: '66%',
   },
   logo: {
-    aspectRatio: 1,
+    height: 175,
     resizeMode: 'contain',
-    width: '88%',
+    width: 175,
   },
   confetti: {
     borderRadius: 2,

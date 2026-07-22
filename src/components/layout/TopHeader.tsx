@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, type AppIconName } from '@/src/components/common/AppIcon';
@@ -14,12 +14,14 @@ type RightHeaderActionProps =
   | { onRightPress?: undefined; rightAccessibilityLabel?: string };
 
 type TopHeaderProps = {
+  centerContent?: ReactNode;
   leftContent?: ReactNode;
   leftIcon?: AppIconName;
   rightContent?: ReactNode;
   rightIcon?: AppIconName;
   style?: StyleProp<ViewStyle>;
   title?: string;
+  titleStyle?: StyleProp<TextStyle>;
 } & LeftHeaderActionProps &
   RightHeaderActionProps;
 
@@ -54,6 +56,7 @@ function HeaderAction({ accessibilityLabel, icon, onPress }: HeaderActionProps) 
 }
 
 export function TopHeader({
+  centerContent,
   leftAccessibilityLabel,
   leftContent,
   leftIcon,
@@ -64,6 +67,7 @@ export function TopHeader({
   rightIcon,
   style,
   title,
+  titleStyle,
 }: TopHeaderProps) {
   return (
     <View style={[styles.container, style]}>
@@ -80,12 +84,13 @@ export function TopHeader({
           ))}
       </View>
 
-      <View pointerEvents="none" style={styles.titleContainer}>
-        {title ? (
-          <Text numberOfLines={1} style={styles.title}>
-            {title}
-          </Text>
-        ) : null}
+      <View pointerEvents={centerContent ? 'box-none' : 'none'} style={styles.titleContainer}>
+        {centerContent ??
+          (title ? (
+            <Text numberOfLines={1} style={[styles.title, titleStyle]}>
+              {title}
+            </Text>
+          ) : null)}
       </View>
 
       <View style={styles.sideContent}>

@@ -9,6 +9,7 @@ import { getEmailError } from '@/src/features/auth/authValidation';
 
 import {
   confirmSignupEmailVerification,
+  getTemporarySignupEmailVerification,
   normalizeSignupEmail,
   requestSignupEmailVerification,
   resolveEmailVerificationError,
@@ -76,6 +77,19 @@ export function EmailVerificationField() {
 
     try {
       const normalizedEmail = normalizeSignupEmail(data.email);
+      const temporaryVerification = getTemporarySignupEmailVerification(normalizedEmail);
+
+      if (temporaryVerification) {
+        updateFields({
+          email: temporaryVerification.email,
+          emailVerificationCode: '',
+          emailVerificationId: null,
+          emailVerificationToken: temporaryVerification.verificationToken,
+        });
+        updateEmailVerification({ error: null, status: 'idle' });
+        return;
+      }
+
       const response = await requestSignupEmailVerification(normalizedEmail);
 
       updateFields({

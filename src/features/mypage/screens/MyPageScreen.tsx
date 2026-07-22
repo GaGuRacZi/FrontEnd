@@ -1,5 +1,11 @@
 import { ScreenLayout } from '@/src/components/layout';
+import { PetProfileSelector } from '@/src/features/pet/components';
 
 export function MyPageScreen() {
-  return <ScreenLayout title="마이페이지" />;
+  return (
+    <ScreenLayout
+      centerContent={<PetProfileSelector />}
+      leftIcon="chatbubble-ellipses-outline"
+    />
+  );
 }

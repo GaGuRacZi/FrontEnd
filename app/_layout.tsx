@@ -14,6 +14,7 @@ import 'react-native-reanimated';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { COLORS } from '@/src/constants';
+import { AppProviders } from '@/src/providers/AppProviders';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -67,17 +68,20 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ThemeProvider value={PAW_THEME}>
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            contentStyle: { backgroundColor: COLORS.background },
-            headerShown: false,
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
+        <AppProviders>
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              contentStyle: { backgroundColor: COLORS.background },
+              headerShown: false,
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="pet" />
+          </Stack>
+        </AppProviders>
       </ThemeProvider>
     </SafeAreaProvider>
   );

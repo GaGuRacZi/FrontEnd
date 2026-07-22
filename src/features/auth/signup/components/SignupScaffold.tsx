@@ -16,7 +16,8 @@ type SignupScaffoldProps = PropsWithChildren<{
   buttonTitle?: string;
   currentStep: number;
   nextDisabled?: boolean;
-  onNext: () => void;
+  nextLoading?: boolean;
+  onNext: () => void | Promise<void>;
   title: string;
 }>;
 
@@ -26,6 +27,7 @@ export function SignupScaffold({
   children,
   currentStep,
   nextDisabled = false,
+  nextLoading = false,
   onNext,
   title,
 }: SignupScaffoldProps) {
@@ -63,6 +65,7 @@ export function SignupScaffold({
         <View style={styles.buttonContainer}>
           <AppButton
             disabled={nextDisabled}
+            loading={nextLoading}
             onPress={() => navigateOnce(onNext)}
             title={buttonTitle}
           />

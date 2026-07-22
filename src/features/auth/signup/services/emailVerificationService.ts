@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from '@/src/services/apiClient';
+import { API_BASE_URL, ApiError, apiRequest } from '@/src/services/apiClient';
 
 type RequestEmailVerificationResponse = {
   expiresInSeconds: number;
@@ -43,6 +43,17 @@ async function emailVerificationRequest<ResponseData>(path: string, json: unknow
 
 export function normalizeSignupEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+export function getTemporarySignupEmailVerification(email: string) {
+  if (API_BASE_URL) return null;
+
+  const normalizedEmail = normalizeSignupEmail(email);
+
+  return {
+    email: normalizedEmail,
+    verificationToken: `temporary:${normalizedEmail}`,
+  };
 }
 
 export async function requestSignupEmailVerification(email: string) {

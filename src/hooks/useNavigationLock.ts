@@ -14,10 +14,16 @@ export function useNavigationLock() {
     }, []),
   );
 
-  return useCallback((action: () => void) => {
+  return useCallback((action: () => void | Promise<void>) => {
     if (locked.current) return;
 
     locked.current = true;
-    action();
+    const result = action();
+
+    if (result instanceof Promise) {
+      result.catch(() => {
+        locked.current = false;
+      });
+    }
   }, []);
 }
