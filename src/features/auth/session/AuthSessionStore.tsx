@@ -28,12 +28,7 @@ export function getSignupUserId(
   const normalizedEmail = email.trim().toLowerCase();
 
   if (normalizedEmail) {
-    let hash = 2166136261;
-    for (const character of normalizedEmail) {
-      hash ^= character.charCodeAt(0);
-      hash = Math.imul(hash, 16777619);
-    }
-    return `user:u${(hash >>> 0).toString(36)}`;
+    return `user:email:${encodeURIComponent(normalizedEmail)}`;
   }
   return `${method}:u${signupSessionId}`;
 }

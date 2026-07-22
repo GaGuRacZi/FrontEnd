@@ -5,6 +5,9 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK": "true"
+      },
       "android": {
         "buildType": "apk"
       }

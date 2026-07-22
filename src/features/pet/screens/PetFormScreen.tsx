@@ -528,31 +528,30 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         setTouched((current) => new Set(current).add('gender').add('neutered'));
       }
 
-      setDraft((current) => {
-        if (!current) return current;
+      const current = draftRef.current;
+      if (!current) return;
 
-        let nextDraft: PetDraft;
+      let nextDraft: PetDraft;
 
-        if (field === 'type' && value !== current.type) {
-          nextDraft = {
-            ...current,
-            bloodType: null,
-            breed: '',
-            type: value as PetFormValues['type'],
-          };
-        } else if (field === 'birthDate') {
-          nextDraft = { ...current, birthDate: formatBirthDate(String(value)) };
-        } else if (field === 'weight') {
-          const normalized = String(value).replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
-          nextDraft = { ...current, weight: normalized };
-        } else {
-          nextDraft = { ...current, [field]: value };
-        }
+      if (field === 'type' && value !== current.type) {
+        nextDraft = {
+          ...current,
+          bloodType: null,
+          breed: '',
+          type: value as PetFormValues['type'],
+        };
+      } else if (field === 'birthDate') {
+        nextDraft = { ...current, birthDate: formatBirthDate(String(value)) };
+      } else if (field === 'weight') {
+        const normalized = String(value).replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
+        nextDraft = { ...current, weight: normalized };
+      } else {
+        nextDraft = { ...current, [field]: value };
+      }
 
-        draftRef.current = nextDraft;
-        isDirtyRef.current = !isSameDraft(nextDraft, baseDraftRef.current);
-        return nextDraft;
-      });
+      draftRef.current = nextDraft;
+      isDirtyRef.current = !isSameDraft(nextDraft, baseDraftRef.current);
+      setDraft(nextDraft);
     },
     [],
   );
