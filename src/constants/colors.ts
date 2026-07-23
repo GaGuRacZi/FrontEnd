@@ -7,6 +7,11 @@ export const COLORS = {
   yellow: '#FFF2C6',
   kakao: '#FEE500',
 
+  pink: '#FFDFF9',
+  green: '#4CAF7D',
+  greenSoft: 'rgba(76, 175, 125, 0.14)',
+  redSoft: '#FF6868',
+
   background: '#FFFFFF',
   overlay: 'rgba(26, 26, 26, 0.42)',
   toastBackground: 'rgba(245, 245, 245, 0.96)',
