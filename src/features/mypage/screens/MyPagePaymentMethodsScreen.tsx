@@ -8,6 +8,9 @@ import { MyPageHeader } from '../components';
 import { useMyPageStore } from '../MyPageStore';
 import type { PaymentMethod } from '../types';
 
+const SAVE_ERROR_TITLE = '결제 수단을 저장하지 못했어요';
+const SAVE_ERROR_MESSAGE = '잠시 후 다시 시도해주세요.';
+
 function createEasyPayMethod(): PaymentMethod {
   return {
     brand: '간편페이',
@@ -31,7 +34,9 @@ export function MyPagePaymentMethodsScreen() {
         isDefault: index === 0,
       }));
       const result = await updatePaymentMethods(nextMethods);
-      if (!result.ok) Alert.alert('결제 수단을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+      if (!result.ok) Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+    } catch {
+      Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
     } finally {
       setUpdating(false);
     }
@@ -45,7 +50,9 @@ export function MyPagePaymentMethodsScreen() {
         .filter((method) => method.id !== methodId)
         .map((method, index) => ({ ...method, isDefault: index === 0 }));
       const result = await updatePaymentMethods(nextMethods);
-      if (!result.ok) Alert.alert('결제 수단을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+      if (!result.ok) Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+    } catch {
+      Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
     } finally {
       setUpdating(false);
     }

@@ -9,6 +9,9 @@ import { MyPageCard, MyPageDivider, MyPageHeader, MyPageRow } from '../component
 import { getPlan } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
 
+const CANCEL_ERROR_TITLE = '해지 예약을 저장하지 못했어요';
+const CANCEL_ERROR_MESSAGE = '잠시 후 다시 시도해주세요.';
+
 export function MyPagePlanScreen() {
   const router = useRouter();
   const { scheduleCancelSubscription, subscription } = useMyPageStore();
@@ -23,7 +26,9 @@ export function MyPagePlanScreen() {
     try {
       const result = await scheduleCancelSubscription();
       if (result.ok) setCancelModalVisible(false);
-      else Alert.alert('해지 예약을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+      else Alert.alert(CANCEL_ERROR_TITLE, CANCEL_ERROR_MESSAGE);
+    } catch {
+      Alert.alert(CANCEL_ERROR_TITLE, CANCEL_ERROR_MESSAGE);
     } finally {
       setCanceling(false);
     }
