@@ -6,7 +6,8 @@ import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { PetDetailProfileCard } from '../components/PetDetailProfileCard';
 import { PetMedicalInfoCard } from '../components/PetMedicalInfoCard';
 import { PetRegistrationCard } from '../components/PetRegistrationCard';
-import { MOCK_PET_DETAIL } from '../mock';
+import { PetCareInfoCard } from '../components/PetCareInfoCard';
+import { MOCK_PET_DETAIL, MOCK_PET_CARE_INFO } from '../mock';
 
 export function PetDetailScreen() {
   const pet = MOCK_PET_DETAIL;
@@ -41,6 +42,7 @@ export function PetDetailScreen() {
           onPressRegistrationNumber={() => {}}
           pet={pet}
         />
+        <PetCareInfoCard care={MOCK_PET_CARE_INFO} />
       </ScrollView>
     </ScreenLayout>
   );
@@ -48,7 +50,7 @@ export function PetDetailScreen() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { gap: SPACING.xxl, paddingBottom: SPACING.xxxl },
+  content: { gap: SPACING.xxl, paddingBottom: SPACING.xxxl, paddingTop: SPACING.xl },
   editButton: {
     alignItems: 'center',
     backgroundColor: COLORS.primarySoft,
