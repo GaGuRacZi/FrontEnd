@@ -61,3 +61,25 @@ export type PetDetail = {
   speciesLabel: string;
   weightLabel: string;
 };
+
+export type PetCareInfo = {
+  managementAreaLabel: string;   // "피부 · 관절 · 심장 등"
+  managementAreaStatus: string;  // "피부"
+  surgeryHistoryLabel: string;   // "과거 수술 및 진료 이력"
+  surgeryHistoryStatus: string;  // "중성화"
+};
+
+export type NotificationCategory = 'ai' | 'blood-donation' | 'community' | 'schedule';
+export type NotificationFilterValue = 'all' | NotificationCategory;
+
+export type NotificationItem = {
+  actionLabel: string;
+  category: NotificationCategory;
+  categoryLabel: string;
+  dateGroupLabel: string;
+  description: string;
+  id: string;
+  isRead: boolean;
+  timeLabel: string;
+  title: string;
+};

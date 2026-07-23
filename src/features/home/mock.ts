@@ -4,7 +4,9 @@ import type {
   RecentDiagnosis,
   TodoSummaryItem,
   MonthlyHealthMetric,
-  PetDetail
+  PetDetail,
+  PetCareInfo,
+  NotificationItem,
 } from './types';
 
 export const MOCK_PETS: PetSummary[] = [
@@ -56,3 +58,68 @@ export const MOCK_PET_DETAIL: PetDetail = {
   bloodDonationStatus: '미등록',
   hasRegistrationPhoto: false,
 };
+
+export const MOCK_PET_CARE_INFO: PetCareInfo = {
+  surgeryHistoryLabel: '과거 수술 및 진료 이력',
+  surgeryHistoryStatus: '중성화',
+  managementAreaLabel: '피부 · 관절 · 심장 등',
+  managementAreaStatus: '피부',
+};
+
+export const MOCK_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: 'noti-1',
+    category: 'schedule',
+    categoryLabel: '할 일',
+    title: '심장약 복용 체크가 필요해요',
+    description: '오늘 20:00 · 미완료 상태예요',
+    timeLabel: '3분 전',
+    actionLabel: '일정 확인',
+    isRead: false,
+    dateGroupLabel: '오늘',
+  },
+  {
+    id: 'noti-2',
+    category: 'ai',
+    categoryLabel: 'AI 요약',
+    title: 'AI 진료 요약이 완료됐어요',
+    description: '진료 녹음 분석 결과 확인해보세요',
+    timeLabel: '12분 전',
+    actionLabel: '결과 확인',
+    isRead: false,
+    dateGroupLabel: '오늘',
+  },
+  {
+    id: 'noti-3',
+    category: 'community',
+    categoryLabel: '커뮤니티',
+    title: '내 게시글에 댓글이 달렸어요',
+    description: '"오메가3는 식후 급여가 좋아요"',
+    timeLabel: '23분 전',
+    actionLabel: '답글 보기',
+    isRead: false,
+    dateGroupLabel: '오늘',
+  },
+  {
+    id: 'noti-4',
+    category: 'blood-donation',
+    categoryLabel: '긴급 헌혈',
+    title: '근처에서 B형 헌혈 요청이 있어요',
+    description: '체중·건강 조건이 맞는지 확인해보세요',
+    timeLabel: '2시간 전',
+    actionLabel: '지도 보기',
+    isRead: true,
+    dateGroupLabel: '어제',
+  },
+  {
+    id: 'noti-5',
+    category: 'community',
+    categoryLabel: '커뮤니티',
+    title: '나눔 장터 문의에 답글이 왔어요',
+    description: '나눔 가능 시간 확인해보세요',
+    timeLabel: '9시간 전',
+    actionLabel: '답글 보기',
+    isRead: true,
+    dateGroupLabel: '어제',
+  },
+];
