@@ -41,3 +41,23 @@ export type MonthlyHealthMetric = {
   label: string;       // "체중"
   valueLabel: string;  // "3.4kg"
 };
+
+export type PetGender = '남아' | '여아';
+export type NeuterStatus = '완료' | '미완료';
+export type BloodDonationStatus = '등록' | '미등록';
+
+export type PetDetail = {
+  ageLabel: string;
+  bloodDonationStatus: BloodDonationStatus;
+  breedLabel: string;
+  gender: PetGender;
+  guardianName?: string;
+  hasRegistrationPhoto: boolean;
+  id: string;
+  name: string;
+  neuterStatus: NeuterStatus;
+  photoUrl?: string;
+  registrationNumber?: string;
+  speciesLabel: string;
+  weightLabel: string;
+};
