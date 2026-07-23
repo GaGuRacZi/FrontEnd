@@ -4,7 +4,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-type AppButtonVariant = 'ghost' | 'kakao' | 'outline' | 'primary' | 'secondary' | 'success';
+type AppButtonVariant =
+  | 'danger'
+  | 'ghost'
+  | 'kakao'
+  | 'outline'
+  | 'primary'
+  | 'secondary'
+  | 'success';
 type AppButtonSize = 'large' | 'medium';
 
 type AppButtonProps = Omit<PressableProps, 'children' | 'style'> & {
@@ -30,6 +37,9 @@ const variantStyles = StyleSheet.create({
   success: {
     backgroundColor: COLORS.success,
   },
+  danger: {
+    backgroundColor: COLORS.danger,
+  },
   outline: {
     backgroundColor: COLORS.background,
     borderColor: COLORS.gray300,
@@ -48,6 +58,9 @@ const textVariantStyles = StyleSheet.create({
     color: COLORS.black,
   },
   success: {
+    color: COLORS.background,
+  },
+  danger: {
     color: COLORS.background,
   },
   outline: {
@@ -76,6 +89,10 @@ export function AppButton({
   ...pressableProps
 }: AppButtonProps) {
   const isDisabled = disabled || loading;
+  const indicatorColor =
+    variant === 'primary' || variant === 'success' || variant === 'danger'
+      ? COLORS.background
+      : COLORS.black;
 
   return (
     <Pressable
@@ -99,14 +116,7 @@ export function AppButton({
       {...pressableProps}
     >
       {loading ? (
-        <ActivityIndicator
-          color={
-            variant === 'primary' || variant === 'success'
-              ? COLORS.background
-              : COLORS.black
-          }
-          size="small"
-        />
+        <ActivityIndicator color={indicatorColor} size="small" />
       ) : (
         <View style={styles.content}>
           {leftIcon}

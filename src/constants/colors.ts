@@ -11,6 +11,7 @@ export const COLORS = {
   overlay: 'rgba(26, 26, 26, 0.42)',
   toastBackground: 'rgba(245, 245, 245, 0.96)',
   success: '#3EAC7A',
+  danger: '#FF6B5A',
   error: '#B23A3A',
   errorBackground: '#FDEAEA',
   borderSoft: '#EDEFF5',
