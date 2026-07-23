@@ -8,9 +8,12 @@ export const COLORS = {
   kakao: '#FEE500',
 
   pink: '#FFDFF9',
+  bloodbackground: '#FFEFEF',
   green: '#4CAF7D',
   greenSoft: 'rgba(76, 175, 125, 0.14)',
   redSoft: '#FF6868',
+  communityback: '#FFF1FA',
+  community: '#EE78d8',
 
   background: '#FFFFFF',
   overlay: 'rgba(26, 26, 26, 0.42)',
