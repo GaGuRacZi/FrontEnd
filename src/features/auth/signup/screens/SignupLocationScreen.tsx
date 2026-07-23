@@ -20,7 +20,9 @@ import {
 } from '@/src/features/auth/session/AuthSessionStore';
 import { signupDataToPetEntity } from '@/src/features/pet/petMappers';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
+import { TERM_IDS, useTerms } from '../../terms';
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
 import { SignupScaffold } from '../components/SignupScaffold';
 import {
@@ -47,7 +49,8 @@ async function openLocationSettings() {
 
 export function SignupLocationScreen() {
   const router = useRouter();
-  const { data, signupSessionId, updateField } = useSignup();
+  const navigateOnce = useNavigationLock();
+  const { data, markSignupCompleted, signupSessionId, updateField } = useSignup();
   const { activateSignupUser } = useAuthSession();
   const { registerSignupPet } = usePetStore();
   const [searching, setSearching] = useState(false);
@@ -57,6 +60,12 @@ export function SignupLocationScreen() {
   const locating = useRef(false);
   const locationRequestId = useRef(0);
   const currentLocationSelected = data.regionSource === 'current';
+  const {
+    finalizeSignupConsents,
+    getTerm,
+    hasCurrentConsent,
+    status: termsStatus,
+  } = useTerms();
 
   const invalidateLocationRequest = useCallback(() => {
     locationRequestId.current += 1;
@@ -77,6 +86,26 @@ export function SignupLocationScreen() {
   );
 
   const handleCurrentLocation = async () => {
+    if (termsStatus !== 'ready') {
+      setLocationError('위치 약관을 불러온 뒤 다시 시도해주세요.');
+      return;
+    }
+
+    if (!getTerm(TERM_IDS.location)) {
+      setLocationError('위치 약관을 찾을 수 없어요. 지역을 직접 검색해주세요.');
+      return;
+    }
+
+    if (!hasCurrentConsent(TERM_IDS.location)) {
+      navigateOnce(() => {
+        router.push({
+          pathname: '/signup/terms/[termId]',
+          params: { action: 'consent', termId: TERM_IDS.location },
+        });
+      });
+      return;
+    }
+
     if (locating.current) return;
 
     locating.current = true;
@@ -181,13 +210,15 @@ export function SignupLocationScreen() {
       const userId = getSignupUserId(data.method, data.email, signupSessionId);
       const initialPet = signupDataToPetEntity(data, userId);
       await registerSignupPet(userId, initialPet);
+      await finalizeSignupConsents(userId);
       await activateSignupUser(data.method, data.email, signupSessionId);
+      markSignupCompleted();
       cancelLocationRequest();
       router.push('/signup/complete');
-    } catch {
+    } catch (error) {
       Alert.alert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
       setSubmitting(false);
-      throw new Error('signup-submit-failed');
+      throw error;
     }
   };
 
@@ -246,7 +277,7 @@ export function SignupLocationScreen() {
       </View>
 
       <Pressable
-        accessibilityHint="현재 위치 권한을 요청하고 지역을 자동으로 설정합니다"
+        accessibilityHint="위치 약관 동의 후 현재 지역을 자동으로 설정합니다"
         accessibilityRole="button"
         accessibilityState={{ busy: isLocating, disabled: isLocating }}
         disabled={isLocating}

@@ -16,6 +16,7 @@ type RightHeaderActionProps =
 type TopHeaderProps = {
   centerContent?: ReactNode;
   leftContent?: ReactNode;
+  leftDisabled?: boolean;
   leftIcon?: AppIconName;
   rightContent?: ReactNode;
   rightIcon?: AppIconName;
@@ -29,7 +30,12 @@ type HeaderActionProps =
   | { accessibilityLabel: string; icon?: AppIconName; onPress: () => void }
   | { accessibilityLabel?: undefined; icon?: AppIconName; onPress?: undefined };
 
-function HeaderAction({ accessibilityLabel, icon, onPress }: HeaderActionProps) {
+function HeaderAction({
+  accessibilityLabel,
+  disabled = false,
+  icon,
+  onPress,
+}: HeaderActionProps & { disabled?: boolean }) {
   if (!icon) {
     return <View style={styles.action} />;
   }
@@ -46,6 +52,8 @@ function HeaderAction({ accessibilityLabel, icon, onPress }: HeaderActionProps) 
     <Pressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       hitSlop={SPACING.md}
       onPress={onPress}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
@@ -59,6 +67,7 @@ export function TopHeader({
   centerContent,
   leftAccessibilityLabel,
   leftContent,
+  leftDisabled = false,
   leftIcon,
   onLeftPress,
   onRightPress,
@@ -76,6 +85,7 @@ export function TopHeader({
           (onLeftPress ? (
             <HeaderAction
               accessibilityLabel={leftAccessibilityLabel}
+              disabled={leftDisabled}
               icon={leftIcon}
               onPress={onLeftPress}
             />

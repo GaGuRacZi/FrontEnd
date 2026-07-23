@@ -42,7 +42,7 @@ export function AppScreen({
           {children}
         </ScrollView>
       ) : (
-        <View style={contentStyles}>{children}</View>
+        <View style={[styles.fixedContent, ...contentStyles]}>{children}</View>
       )}
     </SafeAreaView>
   );
@@ -57,6 +57,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
+  },
+  fixedContent: {
+    flex: 1,
   },
   padded: {
     paddingHorizontal: LAYOUT.screenPaddingHorizontal,
