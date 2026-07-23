@@ -12,17 +12,17 @@ type PetProfuleCardProps = {
 };
 
 const styles = StyleSheet.create({
-    container: { alignItems: 'flex-start', flexDirection: 'row', gap: SPACING.xl },
-    photo: { borderRadius: RADIUS.round, height: 64, width: 64 },
+    container: { alignItems: 'center', flexDirection: 'row', gap: 16 },
+    photo: { borderRadius: RADIUS.round, height: 86, width: 86 },
     photoPlaceholder: {
         alignItems: 'center',
         backgroundColor: COLORS.cream,
         borderRadius: RADIUS.round,
-        height: 64,
+        height: 86,
         justifyContent: 'center',
-        width: 64,
+        width: 86,
     },
-    info: { flex: 1, gap: SPACING.xs },
+    info: { flex: 1, gap: 0 },
     name: { ...TYPOGRAPHY.title2, color: COLORS.black },
     meta: { ...TYPOGRAPHY.body2, color: COLORS.gray600 },
     actionRow: {flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm },
@@ -32,7 +32,9 @@ const styles = StyleSheet.create({
         borderRadius: RADIUS.round,
         borderWidth: 1,
         flexDirection: 'row',
-        gap: SPACING.lg,
+        gap: SPACING.sm,
+        height: 32,
+        paddingHorizontal: SPACING.lg
     },
     pressed: { opacity: 0.7},
     pillText: { ...TYPOGRAPHY.small, color: COLORS.black },
@@ -45,9 +47,9 @@ export function PetProfileCard( { onPressAddDiagnosis, onPressDetail, pet } : Pe
             {pet.photoUrl ? (
                 <Image source={ {uri: pet.photoUrl} } style={styles.photo} />
             ) : (
-                <view style={styles.photoPlaceholder}>
+                <View style={styles.photoPlaceholder}>
                     <AppIcon color={COLORS.primary} name='paw' size={24} />
-                </view>
+                </View>
             )}
 
             <View style={styles.info}>
