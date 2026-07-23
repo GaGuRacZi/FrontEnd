@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, AppIcon } from '@/src/components/common';
+import { AppButton, AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { AppCheckbox } from '@/src/components/form';
 import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -16,21 +16,35 @@ export function MyPageWithdrawScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const { withdrawAccount } = useAccountLifecycle();
-  const { profile, subscription } = useMyPageStore();
+  const { isReady, profile, subscription } = useMyPageStore();
   const [checked, setChecked] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
-  const requiresSubscriptionAction = Boolean(
-    subscription &&
-      subscription.currentPlanId !== 'baby-jelly' &&
-      subscription.pendingType !== 'cancel',
-  );
-  const canWithdraw = checked && !requiresSubscriptionAction;
-  const loginMethodLabel = profile?.loginConnections.some((connection) => connection.method === 'kakao')
+  if (!isReady) {
+    return (
+      <MyPageHeader title="탈퇴 확인">
+        <LoadingView label="계정 정보를 확인하고 있어요." />
+      </MyPageHeader>
+    );
+  }
+
+  if (!profile || !subscription) {
+    return (
+      <MyPageHeader title="탈퇴 확인">
+        <EmptyState title="계정 정보를 찾지 못했어요." />
+      </MyPageHeader>
+    );
+  }
+
+  const requiresSubscriptionAction =
+    subscription.currentPlanId !== 'baby-jelly' && subscription.pendingType !== 'cancel';
+  const canWithdraw = isReady && checked && !requiresSubscriptionAction && !withdrawing;
+  const loginMethodLabel = profile.loginConnections.some((connection) => connection.method === 'kakao')
     ? '카카오 재인증'
     : '비밀번호 확인';
 
   const submit = () => {
+    if (!isReady) return;
     if (requiresSubscriptionAction) {
       Alert.alert('구독 해지가 먼저 필요해요', '내 요금제에서 구독 해지를 예약한 뒤 탈퇴할 수 있어요.');
       return;
@@ -40,9 +54,13 @@ export function MyPageWithdrawScreen() {
 
   const confirmWithdraw = () => {
     navigateOnce(async () => {
+      if (withdrawing) return;
       setWithdrawing(true);
       try {
         await withdrawAccount();
+        router.replace('/');
+      } catch {
+        Alert.alert('탈퇴 처리를 다시 확인해주세요', '로그인 화면으로 이동한 뒤 필요하면 다시 시도해주세요.');
         router.replace('/');
       } finally {
         setWithdrawing(false);

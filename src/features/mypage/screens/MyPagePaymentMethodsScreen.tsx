@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, AppIcon, EmptyState } from '@/src/components/common';
@@ -19,20 +20,35 @@ function createEasyPayMethod(): PaymentMethod {
 
 export function MyPagePaymentMethodsScreen() {
   const { paymentMethods, updatePaymentMethods } = useMyPageStore();
+  const [updating, setUpdating] = useState(false);
 
   const addMethod = async () => {
-    const nextMethods = [...paymentMethods, createEasyPayMethod()].map((method, index) => ({
-      ...method,
-      isDefault: index === 0,
-    }));
-    await updatePaymentMethods(nextMethods);
+    if (updating) return;
+    setUpdating(true);
+    try {
+      const nextMethods = [...paymentMethods, createEasyPayMethod()].map((method, index) => ({
+        ...method,
+        isDefault: index === 0,
+      }));
+      const result = await updatePaymentMethods(nextMethods);
+      if (!result.ok) Alert.alert('결제 수단을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const removeMethod = async (methodId: string) => {
-    const nextMethods = paymentMethods
-      .filter((method) => method.id !== methodId)
-      .map((method, index) => ({ ...method, isDefault: index === 0 }));
-    await updatePaymentMethods(nextMethods);
+    if (updating) return;
+    setUpdating(true);
+    try {
+      const nextMethods = paymentMethods
+        .filter((method) => method.id !== methodId)
+        .map((method, index) => ({ ...method, isDefault: index === 0 }));
+      const result = await updatePaymentMethods(nextMethods);
+      if (!result.ok) Alert.alert('결제 수단을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   return (
@@ -59,6 +75,7 @@ export function MyPagePaymentMethodsScreen() {
                 </View>
               ) : (
                 <AppButton
+                  disabled={updating}
                   fullWidth={false}
                   onPress={() => void removeMethod(method.id)}
                   size="medium"
@@ -71,6 +88,8 @@ export function MyPagePaymentMethodsScreen() {
           ))
         )}
         <AppButton
+          disabled={updating}
+          loading={updating}
           onPress={() =>
             paymentMethods.length >= 3
               ? Alert.alert('최대 3개까지 등록할 수 있어요')

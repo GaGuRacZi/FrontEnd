@@ -17,7 +17,7 @@ import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageHeader, ProfileAvatar } from '../components';
 import { useMyPageStore } from '../MyPageStore';
-import { persistProfileImage } from '../services/profileImageStorage';
+import { persistProfileImage, removeProfileImage } from '../services/profileImageStorage';
 import type { UserProfile } from '../types';
 
 const MAX_NICKNAME_LENGTH = 12;
@@ -61,6 +61,11 @@ export function MyPageProfileScreen() {
     };
   }, [draft]);
   const canSave = Boolean(draft && !errors.name && !errors.nickname && !saving);
+
+  const removeDraftOnlyImage = async (uri: string | null) => {
+    if (!profile || !uri || uri === profile.profileImageUri) return;
+    await removeProfileImage(profile.id, uri).catch(() => undefined);
+  };
 
   if (addressSearchVisible && draft) {
     return (
@@ -117,7 +122,9 @@ export function MyPageProfileScreen() {
       const asset = result.canceled ? undefined : result.assets[0];
       if (!asset) return;
 
+      const previousDraftUri = draft.profileImageUri;
       const persistedUri = await persistProfileImage(profile.id, asset.uri);
+      await removeDraftOnlyImage(previousDraftUri);
       setDraft((current) =>
         current ? { ...current, profileImageUri: persistedUri } : current,
       );
@@ -218,11 +225,12 @@ export function MyPageProfileScreen() {
               <Pressable
                 accessibilityRole="button"
                 disabled={!draft.profileImageUri}
-                onPress={() =>
+                onPress={() => {
+                  void removeDraftOnlyImage(draft.profileImageUri);
                   setDraft((current) =>
                     current ? { ...current, profileImageUri: null } : current,
-                  )
-                }
+                  );
+                }}
                 style={({ pressed }) => [
                   styles.imageActionButton,
                   !draft.profileImageUri && styles.disabled,

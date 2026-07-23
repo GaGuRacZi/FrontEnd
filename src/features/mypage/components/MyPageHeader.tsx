@@ -22,6 +22,8 @@ export function MyPageHeader({ children, title, variant = 'sub' }: MyPageHeaderP
     if (isReady && !currentUserId) router.replace('/');
   }, [currentUserId, isReady, router]);
 
+  if (!isReady || !currentUserId) return null;
+
   if (variant === 'root') {
     return (
       <ScreenLayout

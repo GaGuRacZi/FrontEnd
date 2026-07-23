@@ -1,4 +1,4 @@
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
@@ -21,8 +21,9 @@ export function MyPagePlanScreen() {
   const confirmCancel = async () => {
     setCanceling(true);
     try {
-      await scheduleCancelSubscription();
-      setCancelModalVisible(false);
+      const result = await scheduleCancelSubscription();
+      if (result.ok) setCancelModalVisible(false);
+      else Alert.alert('해지 예약을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       setCanceling(false);
     }

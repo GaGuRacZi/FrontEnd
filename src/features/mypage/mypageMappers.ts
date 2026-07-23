@@ -22,7 +22,6 @@ export function createDefaultNotificationSettings(): NotificationSettings {
     doNotDisturbEnd: '07:00',
     doNotDisturbStart: '22:00',
     healthAlert: true,
-    marketing: false,
     schedule: true,
   };
 }

@@ -5,6 +5,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { EmptyState, LoadingView } from '@/src/components/common';
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { getPlan } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
@@ -19,6 +20,7 @@ import {
 
 export function MyPageScreen() {
   const router = useRouter();
+  const navigateOnce = useNavigationLock();
   const { hasLoadError, isReady, profile, subscription } = useMyPageStore();
   const [comingSoonTitle, setComingSoonTitle] = useState<string | null>(null);
   const plan = subscription ? getPlan(subscription.currentPlanId) : null;
@@ -52,7 +54,7 @@ export function MyPageScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.push('/mypage/settings')}
+          onPress={() => navigateOnce(() => router.push('/mypage/settings'))}
           style={({ pressed }) => [styles.ownerCard, pressed && styles.pressed]}
         >
           <ProfileAvatar size={72} uri={profile.profileImageUri} />
@@ -80,7 +82,8 @@ export function MyPageScreen() {
           </Text>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/mypage/subscription')}
+            hitSlop={SPACING.sm}
+            onPress={() => navigateOnce(() => router.push('/mypage/subscription'))}
             style={({ pressed }) => [styles.bannerButton, pressed && styles.pressed]}
           >
             <Text style={styles.bannerButtonText}>구독 살펴보기</Text>
@@ -114,7 +117,7 @@ export function MyPageScreen() {
           <MyPageRow
             description="할 일, 커뮤니티, AI 분석 알림 관리"
             iconName="notifications-outline"
-            onPress={() => router.push('/mypage/notifications')}
+            onPress={() => navigateOnce(() => router.push('/mypage/notifications'))}
             title="알림 설정"
           />
         </MyPageCard>

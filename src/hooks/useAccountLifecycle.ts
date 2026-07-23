@@ -21,10 +21,21 @@ export function useAccountLifecycle() {
   }, [clearDrafts, clearScreenSession, clearSession, currentUserId]);
 
   const withdrawAccount = useCallback(async () => {
-    if (currentUserId) await deleteUserProfileData(currentUserId);
-    if (currentUserId) await deleteUserPetData(currentUserId);
-    await deleteConsentHistory();
-    await clearSession();
+    try {
+      const tasks = currentUserId
+        ? [
+            deleteUserProfileData(currentUserId),
+            deleteUserPetData(currentUserId),
+            deleteConsentHistory(),
+          ]
+        : [deleteConsentHistory()];
+      const results = await Promise.allSettled(tasks);
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new Error('withdraw-cleanup-failed');
+      }
+    } finally {
+      await clearSession();
+    }
   }, [
     clearSession,
     currentUserId,

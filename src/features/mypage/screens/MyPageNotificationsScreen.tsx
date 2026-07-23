@@ -1,4 +1,4 @@
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, AppSwitch, EmptyState, LoadingView } from '@/src/components/common';
 import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -53,12 +53,22 @@ export function MyPageNotificationsScreen() {
     );
   }
 
+  const showSaveError = () => {
+    Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+  };
+
   const updateSetting = async (key: NotificationKey, value: boolean) => {
     const nextSettings = { ...notificationSettings, [key]: value };
-    await updateNotificationSettings(nextSettings);
+    const result = await updateNotificationSettings(nextSettings);
 
-    if (key === 'marketing') {
-      await updateMarketingConsent(value).catch(() => undefined);
+    if (!result.ok) showSaveError();
+  };
+
+  const updateMarketingSetting = async (value: boolean) => {
+    try {
+      await updateMarketingConsent(value);
+    } catch {
+      showSaveError();
     }
   };
 
@@ -100,7 +110,7 @@ export function MyPageNotificationsScreen() {
           '혜택·이벤트 알림',
           'PAW 혜택과 이벤트 소식을 받아요',
           marketingConsent,
-          (value) => void updateSetting('marketing', value),
+          (value) => void updateMarketingSetting(value),
           'marketing',
         )}
 

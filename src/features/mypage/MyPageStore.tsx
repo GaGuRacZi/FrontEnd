@@ -169,37 +169,38 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   );
 
   const registerSignupProfile = useCallback(
-    async (data: Parameters<typeof signupDataToProfile>[0], userId: string) => {
-      const previous = await mypageRepository.loadState(userId).catch(() =>
-        createDefaultMyPageState(userId),
-      );
-      const profile = signupDataToProfile(data, userId);
-      const profileImageUri = profile.profileImageUri
-        ? await persistProfileImage(userId, profile.profileImageUri).catch(
-            () => null,
-          )
-        : null;
-      const nextState = { ...previous, profile };
-      nextState.profile = { ...profile, profileImageUri };
-      await mypageRepository.saveState(userId, nextState);
-
-      if (
-        previous.profile.profileImageUri &&
-        previous.profile.profileImageUri !== profileImageUri
-      ) {
-        await removeProfileImage(userId, previous.profile.profileImageUri).catch(
-          () => undefined,
+    (data: Parameters<typeof signupDataToProfile>[0], userId: string) =>
+      enqueueMutation(async () => {
+        const previous = await mypageRepository.loadState(userId).catch(() =>
+          createDefaultMyPageState(userId),
         );
-      }
+        const profile = signupDataToProfile(data, userId);
+        const profileImageUri = profile.profileImageUri
+          ? await persistProfileImage(userId, profile.profileImageUri).catch(
+              () => null,
+            )
+          : null;
+        const nextState = { ...previous, profile };
+        nextState.profile = { ...profile, profileImageUri };
+        await mypageRepository.saveState(userId, nextState);
 
-      if (activeUserRef.current === userId) {
-        readyUserRef.current = userId;
-        applyState(nextState);
-        setHasLoadError(false);
-        setIsReady(true);
-      }
-    },
-    [applyState],
+        if (
+          previous.profile.profileImageUri &&
+          previous.profile.profileImageUri !== profileImageUri
+        ) {
+          await removeProfileImage(userId, previous.profile.profileImageUri).catch(
+            () => undefined,
+          );
+        }
+
+        if (activeUserRef.current === userId) {
+          readyUserRef.current = userId;
+          applyState(nextState);
+          setHasLoadError(false);
+          setIsReady(true);
+        }
+      }),
+    [applyState, enqueueMutation],
   );
 
   const updateProfile = useCallback(
@@ -284,20 +285,21 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   );
 
   const deleteUserProfileData = useCallback(
-    async (userId = currentUserId ?? undefined) => {
-      if (!userId) return;
+    (userId = currentUserId ?? undefined) =>
+      enqueueMutation(async () => {
+        if (!userId) return;
 
-      if (activeUserRef.current === userId) {
-        readyUserRef.current = null;
-        stateRef.current = null;
-        setState(null);
-        setIsReady(false);
-      }
+        if (activeUserRef.current === userId) {
+          readyUserRef.current = null;
+          stateRef.current = null;
+          setState(null);
+          setIsReady(false);
+        }
 
-      await mypageRepository.deleteUser(userId);
-      await removeUserProfileImages(userId).catch(() => undefined);
-    },
-    [currentUserId],
+        await mypageRepository.deleteUser(userId);
+        await removeUserProfileImages(userId).catch(() => undefined);
+      }),
+    [currentUserId, enqueueMutation],
   );
 
   const clearScreenSession = useCallback(() => undefined, []);

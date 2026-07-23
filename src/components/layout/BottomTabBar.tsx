@@ -42,7 +42,7 @@ export function BottomTabBar({ descriptors, insets, navigation, state }: BottomT
           });
 
           if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name, route.name === 'mypage' ? { screen: 'index' } : undefined);
+            navigation.navigate(route.name);
           }
         };
 

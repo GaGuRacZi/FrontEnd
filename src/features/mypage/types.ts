@@ -28,7 +28,6 @@ export type NotificationSettings = {
   doNotDisturbStart: string;
   doNotDisturbEnabled: boolean;
   healthAlert: boolean;
-  marketing: boolean;
   schedule: boolean;
 };
 
