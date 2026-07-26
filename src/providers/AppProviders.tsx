@@ -5,6 +5,7 @@ import {
   useAuthSession,
 } from '@/src/features/auth/session/AuthSessionStore';
 import { TermsProvider } from '@/src/features/auth/terms';
+import { MyPageProvider } from '@/src/features/mypage/MyPageStore';
 import { PetProvider } from '@/src/features/pet/PetStore';
 
 function SessionProviders({ children }: PropsWithChildren) {
@@ -13,7 +14,9 @@ function SessionProviders({ children }: PropsWithChildren) {
 
   return (
     <TermsProvider scope="session" userId={termsUserId}>
-      <PetProvider>{children}</PetProvider>
+      <PetProvider>
+        <MyPageProvider>{children}</MyPageProvider>
+      </PetProvider>
     </TermsProvider>
   );
 }

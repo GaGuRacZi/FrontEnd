@@ -26,14 +26,14 @@ export function BrandLogoButton() {
 const styles = StyleSheet.create({
   button: {
     height: SIZE.topHeaderHeight,
-    width: 80,
+    width: 70,
   },
   logo: {
-    height: 80,
+    height: 70,
     left: 0,
     position: 'absolute',
-    top: -14,
-    width: 80,
+    top: -9,
+    width: 70,
   },
   pressed: {
     opacity: 0.6,

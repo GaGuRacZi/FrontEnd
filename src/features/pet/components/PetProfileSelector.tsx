@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     height: 42,
     paddingHorizontal: SPACING.sm,
-    width: 118,
+    width: 176,
   },
   name: {
     ...TYPOGRAPHY.title2,

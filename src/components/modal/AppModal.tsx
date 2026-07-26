@@ -26,6 +26,7 @@ type ModalAction = {
   label: string;
   loading?: boolean;
   onPress: () => void;
+  variant?: 'danger' | 'primary';
 };
 
 type AppModalProps = PropsWithChildren<{
@@ -333,6 +334,7 @@ export function AppModal({
                     onPress={primaryAction.onPress}
                     style={styles.actionButton}
                     title={primaryAction.label}
+                    variant={primaryAction.variant ?? 'primary'}
                   />
                 ) : null}
               </View>
