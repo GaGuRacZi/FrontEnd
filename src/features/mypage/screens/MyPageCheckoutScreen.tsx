@@ -7,13 +7,17 @@ import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
-import { MyPageCard, MyPageDivider, MyPageHeader, MyPageRow } from '../components';
-import { PLAN_DEFINITIONS, getPlan, getPlanRank } from '../mypageData';
+import { MyPageCard, MyPageHeader, MyPageRow } from '../components';
+import { PLAN_DEFINITIONS, getPlan, getPlanRank, getUpgradePaymentAmount } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
 import type { PlanId } from '../types';
 
 function isPlanId(value: string | string[] | undefined): value is PlanId {
   return typeof value === 'string' && PLAN_DEFINITIONS.some((plan) => plan.id === value);
+}
+
+function formatWon(amount: number) {
+  return `${amount.toLocaleString('ko-KR')}원`;
 }
 
 export function MyPageCheckoutScreen() {
@@ -35,9 +39,19 @@ export function MyPageCheckoutScreen() {
   const selectedPlan = getPlan(planId);
   const currentPlan = getPlan(subscription?.currentPlanId ?? 'baby-jelly');
   const defaultMethod = paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0];
-  const isUpgrade = getPlanRank(selectedPlan.id) > getPlanRank(currentPlan.id);
-  const isCancel = !isUpgrade && selectedPlan.id === 'baby-jelly';
-  const buttonTitle = isUpgrade ? '결제하기' : isCancel ? '해지 예약하기' : '변경 예약하기';
+  const selectedRank = getPlanRank(selectedPlan.id);
+  const currentRank = getPlanRank(currentPlan.id);
+  const isSamePlan = selectedPlan.id === currentPlan.id;
+  const isUpgrade = selectedRank > currentRank;
+  const isCancel = !isSamePlan && selectedRank < currentRank && selectedPlan.id === 'baby-jelly';
+  const paymentAmount = isUpgrade ? getUpgradePaymentAmount(currentPlan.id, selectedPlan.id) : 0;
+  const buttonTitle = isSamePlan
+    ? '현재 이용 중'
+    : isUpgrade
+      ? '결제하기'
+      : isCancel
+        ? '해지 예약하기'
+        : '변경 예약하기';
   const paymentLabel = defaultMethod?.label ?? '간편페이';
   const paymentMeta =
     defaultMethod?.last4 && defaultMethod.last4 !== '등록 대기'
@@ -53,6 +67,13 @@ export function MyPageCheckoutScreen() {
     : isCancel
       ? '다음 결제일부터 아기 젤리로 변경돼요.'
       : '다음 결제일부터 선택한 요금제가 적용돼요.';
+  const checkoutNotice = isUpgrade
+    ? `${formatWon(paymentAmount)} 결제 후 선택한 요금제로 바로 변경돼요.`
+    : isSamePlan
+      ? '이미 이용 중인 요금제예요.'
+      : isCancel
+        ? '다음 결제일에 무료 요금제로 변경돼요.'
+        : '다음 결제일부터 낮은 요금제가 적용돼요.';
 
   const submit = () => {
     navigateOnce(async () => {
@@ -83,18 +104,6 @@ export function MyPageCheckoutScreen() {
 
         <MyPageCard title="결제 정보">
           <MyPageRow
-            description={
-              isUpgrade
-                ? '선택한 요금제로 바로 변경돼요'
-                : isCancel
-                  ? '다음 결제일에 무료 요금제로 변경돼요'
-                  : '다음 결제일부터 낮은 요금제가 적용돼요'
-            }
-            iconName={isUpgrade ? 'card-outline' : 'calendar-outline'}
-            title={isUpgrade ? '즉시 결제' : isCancel ? '해지 예약' : '변경 예약'}
-          />
-          <MyPageDivider />
-          <MyPageRow
             description={paymentMeta}
             iconName="wallet-outline"
             onPress={() => router.push('/mypage/payment-methods')}
@@ -114,7 +123,7 @@ export function MyPageCheckoutScreen() {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>결제 금액</Text>
             <Text style={styles.priceValue}>
-              {isUpgrade ? selectedPlan.priceLabel : '이번 달 결제 없음'}
+              {isUpgrade ? formatWon(paymentAmount) : isSamePlan ? '변경 없음' : '이번 달 결제 없음'}
             </Text>
           </View>
         </MyPageCard>
@@ -122,11 +131,13 @@ export function MyPageCheckoutScreen() {
         <View style={styles.noticeBox}>
           <AppIcon color={COLORS.primary} name="information-circle-outline" size={20} />
           <Text style={styles.noticeText}>
+            {checkoutNotice}
+            {'\n'}
             결제하기 전 요금제와 결제 수단을 다시 확인해주세요.
           </Text>
         </View>
 
-        <AppButton loading={submitting} onPress={submit} title={buttonTitle} />
+        <AppButton disabled={isSamePlan} loading={submitting} onPress={submit} title={buttonTitle} />
       </ScrollView>
 
       <AppModal

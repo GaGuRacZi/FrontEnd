@@ -6,6 +6,8 @@ export const COLORS = {
   logoBackground: '#FFFBEC',
   yellow: '#FFF2C6',
   kakao: '#FEE500',
+  star: '#F6C343',
+  starWarm: '#FF8A5C',
 
   background: '#FFFFFF',
   overlay: 'rgba(26, 26, 26, 0.42)',

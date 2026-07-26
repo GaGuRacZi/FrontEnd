@@ -12,7 +12,6 @@ import {
 
 import { AppButton } from '@/src/components/common/AppButton';
 import { AppIcon } from '@/src/components/common/AppIcon';
-import { AppCheckbox } from '@/src/components/form/AppCheckbox';
 import { AppInput } from '@/src/components/form/AppInput';
 import { AppScreen } from '@/src/components/layout/AppScreen';
 import { KeyboardAwareScrollView } from '@/src/components/layout/KeyboardAwareScrollView';
@@ -22,18 +21,23 @@ import { getEmailError } from '@/src/features/auth/authValidation';
 import { AuthActionPanel } from '@/src/features/auth/components/AuthActionPanel';
 import { AuthBrandHero } from '@/src/features/auth/components/AuthBrandHero';
 import { PasswordVisibilityButton } from '@/src/features/auth/components/PasswordVisibilityButton';
+import {
+  getSignupUserId,
+  useAuthSession,
+} from '@/src/features/auth/session/AuthSessionStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 export function LoginScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
+  const { setCurrentUserId } = useAuthSession();
   const passwordInputRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string>();
   const [passwordError, setPasswordError] = useState<string>();
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const [keepLoggedIn, setKeepLoggedIn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = email.trim().length > 0 && password.length > 0;
 
@@ -53,9 +57,25 @@ export function LoginScreen() {
     }
   };
 
-  const handleLoginPress = () => {
-    setEmailError(getEmailError(email));
-    setPasswordError(password ? undefined : '비밀번호를 입력해주세요.');
+  const handleLoginPress = async () => {
+    if (submitting) return;
+
+    const nextEmailError = getEmailError(email);
+    const nextPasswordError = password ? undefined : '비밀번호를 입력해주세요.';
+    setEmailError(nextEmailError);
+    setPasswordError(nextPasswordError);
+
+    if (nextEmailError || nextPasswordError) return;
+
+    setSubmitting(true);
+
+    try {
+      const userId = getSignupUserId('local', email, 'local-login');
+      await setCurrentUserId(userId);
+      router.replace('/home');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleBack = useCallback(() => {
@@ -154,7 +174,7 @@ export function LoginScreen() {
                       }
                     }}
                     onChangeText={handlePasswordChange}
-                    onSubmitEditing={canSubmit ? handleLoginPress : undefined}
+                    onSubmitEditing={canSubmit ? () => void handleLoginPress() : undefined}
                     placeholder="비밀번호를 입력해주세요"
                     ref={passwordInputRef}
                     returnKeyType="done"
@@ -170,18 +190,13 @@ export function LoginScreen() {
                   />
                 </View>
 
-                <AppCheckbox
-                  checked={keepLoggedIn}
-                  label="로그인 유지"
-                  onChange={setKeepLoggedIn}
-                  size="small"
-                />
               </View>
             </View>
 
             <AppButton
-              disabled={!canSubmit}
-              onPress={handleLoginPress}
+              disabled={!canSubmit || submitting}
+              loading={submitting}
+              onPress={() => void handleLoginPress()}
               size="medium"
               title="로그인"
               variant="secondary"

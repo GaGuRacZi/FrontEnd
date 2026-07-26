@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     color: COLORS.gray600,
   },
   currentBadge: {
-    backgroundColor: '#EEF3FF',
+    backgroundColor: COLORS.primarySoft,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.sm,
