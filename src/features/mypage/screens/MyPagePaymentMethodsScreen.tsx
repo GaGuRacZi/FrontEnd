@@ -152,7 +152,10 @@ export function MyPagePaymentMethodsScreen() {
         </ScrollView>
       </MyPageHeader>
       <AppModal
-        onClose={() => setMethodToDelete(null)}
+        closeOnBackdropPress={!updating}
+        onClose={() => {
+          if (!updating) setMethodToDelete(null);
+        }}
         primaryAction={{
           label: '삭제',
           loading: updating,
@@ -160,6 +163,7 @@ export function MyPagePaymentMethodsScreen() {
           variant: 'danger',
         }}
         secondaryAction={{
+          disabled: updating,
           label: '취소',
           onPress: () => setMethodToDelete(null),
         }}

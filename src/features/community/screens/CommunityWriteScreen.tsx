@@ -598,7 +598,10 @@ export function CommunityWriteScreen() {
           imageCount: marketPhotos.length,
           location: tradeLocation.trim() || profile?.location || '지역 미설정',
           photoUris: marketPhotos,
-          priceLabel: priceOffer && resolvedPrice ? `${resolvedPrice} · 가격 제안 가능` : resolvedPrice,
+          priceLabel:
+            tradeType === '판매' && priceOffer && resolvedPrice
+              ? `${resolvedPrice} · 가격 제안 가능`
+              : resolvedPrice,
           status: '진행 중',
           tags: [marketCategory, tradeType, ...tradeMethods],
           title: productName,
@@ -795,7 +798,14 @@ export function CommunityWriteScreen() {
           {initialTab === 'market' ? (
             <>
               <FieldCard title="거래 방식" subtitle="나눔, 판매, 구해요 중 목적에 맞게 골라주세요">
-                <ChipGroup onChange={setTradeType} value={tradeType} values={MARKET_TRADE_TYPES} />
+                <ChipGroup
+                  onChange={(value) => {
+                    setTradeType(value);
+                    setPriceOffer(false);
+                  }}
+                  value={tradeType}
+                  values={MARKET_TRADE_TYPES}
+                />
                 <Text style={styles.sectionLabel}>품목 카테고리</Text>
                 <ChipGroup onChange={setMarketCategory} value={marketCategory} values={MARKET_WRITE_CATEGORIES} />
               </FieldCard>
@@ -880,7 +890,7 @@ export function CommunityWriteScreen() {
                   maxLength={MAX_BODY_LENGTH}
                   multiline
                   onChangeText={setMarketBody}
-                  placeholder="거래할 품목의 구매 시기, 보관 상태를 적어주세요.\n예) 2주 전 구매, 실온 보관, 알러지 때문에 나눔해요."
+                  placeholder={'거래할 품목의 구매 시기, 보관 상태를 적어주세요.\n예) 2주 전 구매, 실온 보관, 알러지 때문에 나눔해요.'}
                   value={marketBody}
                 />
                 <Text style={styles.counter}>{marketBody.length} / {MAX_BODY_LENGTH}</Text>

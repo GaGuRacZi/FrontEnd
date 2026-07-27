@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppSwitch, EmptyState, LoadingView } from '@/src/components/common';
@@ -14,6 +14,7 @@ type NotificationKey = Exclude<
   keyof NotificationSettings,
   'doNotDisturbEnd' | 'doNotDisturbStart'
 >;
+type PermissionCheckKey = NotificationKey | 'marketing';
 
 const NOTIFICATION_ROWS: {
   description: string;
@@ -40,9 +41,8 @@ const isExpoGo = Constants.appOwnership === 'expo';
 export function MyPageNotificationsScreen() {
   const { isReady, notificationSettings, updateNotificationSettings } = useMyPageStore();
   const { marketingConsent, updateMarketingConsent } = useTerms();
-  const [checkingPermissionKey, setCheckingPermissionKey] = useState<NotificationKey | 'marketing' | null>(
-    null,
-  );
+  const permissionRequestRef = useRef(false);
+  const [checkingPermissionKey, setCheckingPermissionKey] = useState<PermissionCheckKey | null>(null);
 
   if (!isReady) {
     return (
@@ -87,15 +87,24 @@ export function MyPageNotificationsScreen() {
     }
   };
 
+  const requestNotificationPermission = async (key: PermissionCheckKey) => {
+    if (permissionRequestRef.current) return false;
+
+    permissionRequestRef.current = true;
+    setCheckingPermissionKey(key);
+
+    try {
+      return await ensureNotificationPermission();
+    } finally {
+      permissionRequestRef.current = false;
+      setCheckingPermissionKey(null);
+    }
+  };
+
   const updateSetting = async (key: NotificationKey, value: boolean) => {
     if (value && key !== 'doNotDisturbEnabled') {
-      setCheckingPermissionKey(key);
-      try {
-        const hasPermission = await ensureNotificationPermission();
-        if (!hasPermission) return;
-      } finally {
-        setCheckingPermissionKey(null);
-      }
+      const hasPermission = await requestNotificationPermission(key);
+      if (!hasPermission) return;
     }
 
     const nextSettings = { ...notificationSettings, [key]: value };
@@ -107,13 +116,8 @@ export function MyPageNotificationsScreen() {
   const updateMarketingSetting = async (value: boolean) => {
     try {
       if (value) {
-        setCheckingPermissionKey('marketing');
-        try {
-          const hasPermission = await ensureNotificationPermission();
-          if (!hasPermission) return;
-        } finally {
-          setCheckingPermissionKey(null);
-        }
+        const hasPermission = await requestNotificationPermission('marketing');
+        if (!hasPermission) return;
       }
 
       await updateMarketingConsent(value);
@@ -154,7 +158,7 @@ export function MyPageNotificationsScreen() {
             notificationSettings[row.key],
             (value) => void updateSetting(row.key, value),
             row.key,
-            checkingPermissionKey === row.key,
+            Boolean(checkingPermissionKey),
           ),
         )}
 
@@ -164,7 +168,7 @@ export function MyPageNotificationsScreen() {
           marketingConsent,
           (value) => void updateMarketingSetting(value),
           'marketing',
-          checkingPermissionKey === 'marketing',
+          Boolean(checkingPermissionKey),
         )}
 
         <View style={styles.doNotDisturbCard}>

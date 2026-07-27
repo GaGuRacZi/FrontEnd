@@ -215,10 +215,9 @@ export function SignupLocationScreen() {
       markSignupCompleted();
       cancelLocationRequest();
       router.push('/signup/complete');
-    } catch (error) {
+    } catch {
       Alert.alert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
       setSubmitting(false);
-      throw error;
     }
   };
 

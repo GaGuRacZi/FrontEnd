@@ -31,7 +31,7 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'invalid' | 'not-ready' };
+  | { ok: false; reason: 'error' | 'invalid' | 'not-ready' };
 
 type MyPageStoreContextValue = {
   clearScreenSession: () => void;
@@ -161,9 +161,13 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'not-ready' };
         }
 
-        const nextState = await updater(stateRef.current);
-        await persist(userId, nextState);
-        return { ok: true };
+        try {
+          const nextState = await updater(stateRef.current);
+          await persist(userId, nextState);
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
       });
     },
     [currentUserId, enqueueMutation, persist],

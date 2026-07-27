@@ -19,7 +19,7 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'empty' | 'not-found' | 'not-ready' | 'not-yours' };
+  | { ok: false; reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-yours' };
 
 type CommunityStoreContextValue = {
   addComment: (
@@ -54,6 +54,7 @@ type CommunityStoreContextValue = {
   isReady: boolean;
   isReacted: (postId: string, kind: ReactionKind) => boolean;
   posts: CommunityPost[];
+  reloadCommunity: () => Promise<void>;
   reviewPosts: ReviewPost[];
   toggleBookmark: (postId: string) => Promise<MutationResult>;
   toggleReaction: (postId: string, kind: ReactionKind) => Promise<MutationResult>;
@@ -70,15 +71,17 @@ const EMPTY_STATE: StoredCommunityState = {
   viewerStates: {},
 };
 
+const DEFAULT_FILTER_SESSION: CommunityViewerState['filterSession'] = {
+  marketCategory: '전체',
+  marketStatuses: [],
+  marketTradeTypes: [],
+  talkCategory: '전체',
+};
+
 function createViewerState(): CommunityViewerState {
   return {
     bookmarkedPostIds: [],
-    filterSession: {
-      marketCategory: '전체',
-      marketStatuses: [],
-      marketTradeTypes: [],
-      talkCategory: '전체',
-    },
+    filterSession: { ...DEFAULT_FILTER_SESSION },
     reactionPostIds: {},
   };
 }
@@ -118,6 +121,23 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     stateRef.current = nextState;
     setState(nextState);
   }, []);
+
+  const reloadCommunity = useCallback(async () => {
+    setIsReady(false);
+    setHasLoadError(false);
+    readyRef.current = false;
+
+    try {
+      const loadedState = await communityRepository.loadState();
+      readyRef.current = true;
+      applyState(loadedState);
+    } catch {
+      readyRef.current = false;
+      setHasLoadError(true);
+    } finally {
+      setIsReady(true);
+    }
+  }, [applyState]);
 
   useEffect(() => {
     let active = true;
@@ -162,6 +182,18 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     [applyState],
   );
 
+  const persistMutation = useCallback(
+    async (nextState: StoredCommunityState): Promise<MutationResult> => {
+      try {
+        await persist(nextState);
+        return { ok: true };
+      } catch {
+        return { ok: false, reason: 'error' };
+      }
+    },
+    [persist],
+  );
+
   const mutateState = useCallback(
     (updater: (current: StoredCommunityState) => StoredCommunityState | MutationResult) =>
       enqueueMutation(async (): Promise<MutationResult> => {
@@ -170,10 +202,9 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const result = updater(stateRef.current);
         if ('ok' in result) return result;
 
-        await persist(result);
-        return { ok: true };
+        return persistMutation(result);
       }),
-    [enqueueMutation, persist, sessionReady],
+    [enqueueMutation, persistMutation, sessionReady],
   );
 
   const getPostById = useCallback(
@@ -323,7 +354,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
         const now = new Date().toISOString();
         const postId = createId('talk');
-        await persist({
+        const saveResult = await persistMutation({
           ...stateRef.current,
           posts: [
             {
@@ -339,9 +370,10 @@ export function CommunityProvider({ children }: PropsWithChildren) {
             ...stateRef.current.posts,
           ],
         });
+        if (!saveResult.ok) return saveResult;
         return { ok: true, postId };
       }),
-    [enqueueMutation, persist, sessionReady],
+    [enqueueMutation, persistMutation, sessionReady],
   );
 
   const addMarketPost = useCallback(
@@ -355,7 +387,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
         const now = new Date().toISOString();
         const postId = createId('market');
-        await persist({
+        const saveResult = await persistMutation({
           ...stateRef.current,
           posts: [
             {
@@ -371,9 +403,10 @@ export function CommunityProvider({ children }: PropsWithChildren) {
             ...stateRef.current.posts,
           ],
         });
+        if (!saveResult.ok) return saveResult;
         return { ok: true, postId };
       }),
-    [enqueueMutation, persist, sessionReady],
+    [enqueueMutation, persistMutation, sessionReady],
   );
 
   const addReviewPost = useCallback(
@@ -387,7 +420,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
         const now = new Date().toISOString();
         const postId = createId('review');
-        await persist({
+        const saveResult = await persistMutation({
           ...stateRef.current,
           reviewPosts: [
             {
@@ -402,9 +435,10 @@ export function CommunityProvider({ children }: PropsWithChildren) {
             ...stateRef.current.reviewPosts,
           ],
         });
+        if (!saveResult.ok) return saveResult;
         return { ok: true, postId };
       }),
-    [enqueueMutation, persist, sessionReady],
+    [enqueueMutation, persistMutation, sessionReady],
   );
 
   const updateComment = useCallback(
@@ -534,17 +568,33 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     [viewerId],
   );
 
-  const clearScreenSession = useCallback(() => undefined, []);
+  const clearScreenSession = useCallback(() => {
+    void mutateState((current) => {
+      const previous = getViewerState(current, viewerId);
+
+      return {
+        ...current,
+        viewerStates: {
+          ...current.viewerStates,
+          [viewerId]: {
+            ...previous,
+            filterSession: { ...DEFAULT_FILTER_SESSION },
+          },
+        },
+      };
+    });
+  }, [mutateState, viewerId]);
 
   const deleteUserCommunityData = useCallback(
-    async (userId?: string) => {
-      const resolvedUserId = userId ?? currentUserId;
-      if (!resolvedUserId) return;
-      await communityRepository.deleteUserState(resolvedUserId);
-      const nextState = await communityRepository.loadState();
-      applyState(nextState);
-    },
-    [applyState, currentUserId],
+    (userId?: string) =>
+      enqueueMutation(async () => {
+        const resolvedUserId = userId ?? currentUserId;
+        if (!resolvedUserId) return;
+        await communityRepository.deleteUserState(resolvedUserId);
+        const nextState = await communityRepository.loadState();
+        applyState(nextState);
+      }),
+    [applyState, currentUserId, enqueueMutation],
   );
 
   const value = useMemo<CommunityStoreContextValue>(
@@ -570,6 +620,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       isReady,
       isReacted,
       posts: state.posts,
+      reloadCommunity,
       reviewPosts: state.reviewPosts,
       toggleBookmark,
       toggleReaction,
@@ -596,6 +647,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       isBookmarked,
       isReady,
       isReacted,
+      reloadCommunity,
       state.comments,
       state.posts,
       state.reviewPosts,

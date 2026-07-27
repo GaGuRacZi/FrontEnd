@@ -32,10 +32,12 @@ export function LoginScreen() {
   const navigateOnce = useNavigationLock();
   const { setCurrentUserId } = useAuthSession();
   const passwordInputRef = useRef<TextInput>(null);
+  const screenActiveRef = useRef(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string>();
   const [passwordError, setPasswordError] = useState<string>();
+  const [formError, setFormError] = useState<string>();
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,6 +49,9 @@ export function LoginScreen() {
     if (emailError) {
       setEmailError(undefined);
     }
+    if (formError) {
+      setFormError(undefined);
+    }
   };
 
   const handlePasswordChange = (value: string) => {
@@ -54,6 +59,9 @@ export function LoginScreen() {
 
     if (passwordError) {
       setPasswordError(undefined);
+    }
+    if (formError) {
+      setFormError(undefined);
     }
   };
 
@@ -64,6 +72,7 @@ export function LoginScreen() {
     const nextPasswordError = password ? undefined : '비밀번호를 입력해주세요.';
     setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
+    setFormError(undefined);
 
     if (nextEmailError || nextPasswordError) return;
 
@@ -72,13 +81,23 @@ export function LoginScreen() {
     try {
       const userId = getSignupUserId('local', email, 'local-login');
       await setCurrentUserId(userId);
-      router.replace('/home');
+      if (screenActiveRef.current) {
+        router.replace('/home');
+      }
+    } catch {
+      if (screenActiveRef.current) {
+        setFormError('로그인 정보를 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+      }
     } finally {
-      setSubmitting(false);
+      if (screenActiveRef.current) {
+        setSubmitting(false);
+      }
     }
   };
 
   const handleBack = useCallback(() => {
+    if (submitting) return;
+
     navigateOnce(() => {
       if (router.canGoBack()) {
         router.back();
@@ -87,18 +106,27 @@ export function LoginScreen() {
 
       router.replace('/');
     });
-  }, [navigateOnce, router]);
+  }, [navigateOnce, router, submitting]);
 
   useFocusEffect(
     useCallback(() => {
-      if (Platform.OS !== 'android') return undefined;
+      screenActiveRef.current = true;
+
+      const cleanup = () => {
+        screenActiveRef.current = false;
+      };
+
+      if (Platform.OS !== 'android') return cleanup;
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
         handleBack();
         return true;
       });
 
-      return () => subscription.remove();
+      return () => {
+        cleanup();
+        subscription.remove();
+      };
     }, [handleBack]),
   );
 
@@ -189,6 +217,7 @@ export function LoginScreen() {
                     value={password}
                   />
                 </View>
+                {formError ? <Text style={styles.formError}>{formError}</Text> : null}
 
               </View>
             </View>
@@ -203,6 +232,7 @@ export function LoginScreen() {
             />
             <AppButton
               accessibilityHint="회원가입 화면으로 이동합니다"
+              disabled={submitting}
               onPress={() =>
                 navigateOnce(() =>
                   router.push({ pathname: '/signup/terms', params: { method: 'local' } }),
@@ -260,5 +290,10 @@ const styles = StyleSheet.create({
   fields: {
     gap: SPACING.md,
     width: '100%',
+  },
+  formError: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.danger,
+    textAlign: 'center',
   },
 });

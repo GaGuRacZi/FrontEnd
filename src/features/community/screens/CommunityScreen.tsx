@@ -651,7 +651,7 @@ function PhotoViewer({
   uri: string | null;
 }) {
   return (
-    <Modal animationType="fade" transparent visible={Boolean(uri)}>
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(uri)}>
       <View style={styles.photoViewerOverlay}>
         <Pressable
           accessibilityLabel="사진 보기 닫기"
@@ -692,6 +692,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   const [editingComment, setEditingComment] = useState<CommunityComment | null>(null);
   const [replyingTo, setReplyingTo] = useState<CommunityComment | null>(null);
   const [commentToDelete, setCommentToDelete] = useState<CommunityComment | null>(null);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>(null);
   const [selectedPhotoUri, setSelectedPhotoUri] = useState<string | null>(null);
@@ -709,23 +710,30 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
 
   const handleSubmitComment = async () => {
     if (!selectedPost || selectedPost.kind !== 'talk') return;
+    if (commentSubmitting) return;
 
-    const author = getCommentAuthor(profile, selectedPet, viewerId);
-    const result = editingComment
-      ? await updateComment(editingComment.id, commentText)
-      : await addComment(selectedPost.id, commentText, author, replyingTo?.id);
+    setCommentSubmitting(true);
 
-    if (result.ok) {
-      setCommentText('');
-      setEditingComment(null);
-      setReplyingTo(null);
-      return;
+    try {
+      const author = getCommentAuthor(profile, selectedPet, viewerId);
+      const result = editingComment
+        ? await updateComment(editingComment.id, commentText)
+        : await addComment(selectedPost.id, commentText, author, replyingTo?.id);
+
+      if (result.ok) {
+        setCommentText('');
+        setEditingComment(null);
+        setReplyingTo(null);
+        return;
+      }
+
+      setModal({
+        description: result.reason === 'empty' ? '댓글 내용을 입력해주세요.' : '댓글을 다시 확인해주세요.',
+        title: '댓글을 저장하지 못했어요',
+      });
+    } finally {
+      setCommentSubmitting(false);
     }
-
-    setModal({
-      description: result.reason === 'empty' ? '댓글 내용을 입력해주세요.' : '댓글을 다시 확인해주세요.',
-      title: '댓글을 저장하지 못했어요',
-    });
   };
 
   const handleDeleteComment = async () => {
@@ -1093,11 +1101,11 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
               <Pressable
                 accessibilityLabel={replyingTo ? '답글 등록' : '댓글 등록'}
                 accessibilityRole="button"
-                disabled={!commentText.trim()}
+                disabled={!commentText.trim() || commentSubmitting}
                 onPress={() => void handleSubmitComment()}
                 style={({ pressed }) => [
                   styles.commentSendButton,
-                  !commentText.trim() && styles.disabledSendButton,
+                  (!commentText.trim() || commentSubmitting) && styles.disabledSendButton,
                   pressed && styles.pressed,
                 ]}
               >
@@ -1328,6 +1336,7 @@ export function CommunityScreen() {
     isReady,
     isBookmarked,
     posts,
+    reloadCommunity,
     reviewPosts,
     toggleBookmark,
     viewerId,
@@ -1469,8 +1478,10 @@ export function CommunityScreen() {
         rightContent={<View style={styles.headerIconButton} />}
       >
         <EmptyState
+          actionLabel="다시 시도"
           description="잠시 후 다시 커뮤니티를 열어주세요."
           icon={<AppIcon color={COLORS.primary} name="chatbubbles-outline" size={32} />}
+          onActionPress={() => void reloadCommunity()}
           title="커뮤니티를 불러오지 못했어요."
         />
       </ScreenLayout>
