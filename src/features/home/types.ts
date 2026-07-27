@@ -42,33 +42,6 @@ export type MonthlyHealthMetric = {
   valueLabel: string;  // "3.4kg"
 };
 
-export type PetGender = '남아' | '여아';
-export type NeuterStatus = '완료' | '미완료';
-export type BloodDonationStatus = '등록' | '미등록';
-
-export type PetDetail = {
-  ageLabel: string;
-  bloodDonationStatus: BloodDonationStatus;
-  breedLabel: string;
-  gender: PetGender;
-  guardianName?: string;
-  hasRegistrationPhoto: boolean;
-  id: string;
-  name: string;
-  neuterStatus: NeuterStatus;
-  photoUrl?: string;
-  registrationNumber?: string;
-  speciesLabel: string;
-  weightLabel: string;
-};
-
-export type PetCareInfo = {
-  managementAreaLabel: string;   // "피부 · 관절 · 심장 등"
-  managementAreaStatus: string;  // "피부"
-  surgeryHistoryLabel: string;   // "과거 수술 및 진료 이력"
-  surgeryHistoryStatus: string;  // "중성화"
-};
-
 export type NotificationCategory = 'ai' | 'blood-donation' | 'community' | 'schedule';
 export type NotificationFilterValue = 'all' | NotificationCategory;
 
@@ -81,5 +54,10 @@ export type NotificationItem = {
   id: string;
   isRead: boolean;
   timeLabel: string;
+  title: string;
+};
+
+export type HealthTip = {
+  description: string;
   title: string;
 };

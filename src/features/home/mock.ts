@@ -4,8 +4,7 @@ import type {
   RecentDiagnosis,
   TodoSummaryItem,
   MonthlyHealthMetric,
-  PetDetail,
-  PetCareInfo,
+  HealthTip,
   NotificationItem,
 } from './types';
 
@@ -46,25 +45,6 @@ export const MOCK_MONTHLY_HEALTH: MonthlyHealthMetric[] = [
   { id: 'medical', label: '의료비', valueLabel: '274,000원', changeLabel: '-20,000원', changeSentiment: 'negative' },
 ];
 
-export const MOCK_PET_DETAIL: PetDetail = {
-  id: 'pet-1',
-  name: '아리',
-  speciesLabel: '강아지',
-  breedLabel: '말티즈',
-  ageLabel: '11살 7개월',
-  weightLabel: '3.4kg',
-  gender: '여아',
-  neuterStatus: '완료',
-  bloodDonationStatus: '미등록',
-  hasRegistrationPhoto: false,
-};
-
-export const MOCK_PET_CARE_INFO: PetCareInfo = {
-  surgeryHistoryLabel: '과거 수술 및 진료 이력',
-  surgeryHistoryStatus: '중성화',
-  managementAreaLabel: '피부 · 관절 · 심장 등',
-  managementAreaStatus: '피부',
-};
 
 export const MOCK_NOTIFICATIONS: NotificationItem[] = [
   {
@@ -123,3 +103,8 @@ export const MOCK_NOTIFICATIONS: NotificationItem[] = [
     dateGroupLabel: '어제',
   },
 ];
+
+export const MOCK_HEALTH_TIP: HealthTip = {
+  title: '아리 맞춤 건강 관리 팁',
+  description: '오메가3와 음수량을 함께 체크해보세요',
+};
