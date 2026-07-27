@@ -1,6 +1,8 @@
+import Constants from 'expo-constants';
+import { useRef, useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, AppSwitch, EmptyState, LoadingView } from '@/src/components/common';
+import { AppSwitch, EmptyState, LoadingView } from '@/src/components/common';
 import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useTerms } from '@/src/features/auth/terms';
 
@@ -12,6 +14,7 @@ type NotificationKey = Exclude<
   keyof NotificationSettings,
   'doNotDisturbEnd' | 'doNotDisturbStart'
 >;
+type PermissionCheckKey = NotificationKey | 'marketing';
 
 const NOTIFICATION_ROWS: {
   description: string;
@@ -33,9 +36,13 @@ const NOTIFICATION_ROWS: {
   { description: '새 메시지와 거래 대화를 알려줘요', key: 'chat', title: '채팅 알림' },
 ];
 
+const isExpoGo = Constants.appOwnership === 'expo';
+
 export function MyPageNotificationsScreen() {
   const { isReady, notificationSettings, updateNotificationSettings } = useMyPageStore();
   const { marketingConsent, updateMarketingConsent } = useTerms();
+  const permissionRequestRef = useRef(false);
+  const [checkingPermissionKey, setCheckingPermissionKey] = useState<PermissionCheckKey | null>(null);
 
   if (!isReady) {
     return (
@@ -57,7 +64,49 @@ export function MyPageNotificationsScreen() {
     Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
   };
 
+  const ensureNotificationPermission = async () => {
+    if (isExpoGo) return true;
+
+    try {
+      const Notifications = await import('expo-notifications');
+      const permission = await Notifications.getPermissionsAsync();
+      if (permission.granted) return true;
+
+      if (permission.canAskAgain) {
+        const requested = await Notifications.requestPermissionsAsync();
+        if (requested.granted) return true;
+        if (!requested.canAskAgain) await Linking.openSettings();
+        return false;
+      }
+
+      await Linking.openSettings();
+      return false;
+    } catch {
+      await Linking.openSettings().catch(() => undefined);
+      return false;
+    }
+  };
+
+  const requestNotificationPermission = async (key: PermissionCheckKey) => {
+    if (permissionRequestRef.current) return false;
+
+    permissionRequestRef.current = true;
+    setCheckingPermissionKey(key);
+
+    try {
+      return await ensureNotificationPermission();
+    } finally {
+      permissionRequestRef.current = false;
+      setCheckingPermissionKey(null);
+    }
+  };
+
   const updateSetting = async (key: NotificationKey, value: boolean) => {
+    if (value && key !== 'doNotDisturbEnabled') {
+      const hasPermission = await requestNotificationPermission(key);
+      if (!hasPermission) return;
+    }
+
     const nextSettings = { ...notificationSettings, [key]: value };
     const result = await updateNotificationSettings(nextSettings);
 
@@ -66,6 +115,11 @@ export function MyPageNotificationsScreen() {
 
   const updateMarketingSetting = async (value: boolean) => {
     try {
+      if (value) {
+        const hasPermission = await requestNotificationPermission('marketing');
+        if (!hasPermission) return;
+      }
+
       await updateMarketingConsent(value);
     } catch {
       showSaveError();
@@ -78,13 +132,14 @@ export function MyPageNotificationsScreen() {
     value: boolean,
     onChange: (value: boolean) => void,
     key?: string,
+    disabled = false,
   ) => (
     <View key={key} style={styles.notificationCard}>
       <View style={styles.cardText}>
         <Text style={styles.cardTitle}>{title}</Text>
         <Text style={styles.cardDescription}>{description}</Text>
       </View>
-      <AppSwitch accessibilityLabel={title} onChange={onChange} value={value} />
+      <AppSwitch accessibilityLabel={title} disabled={disabled} onChange={onChange} value={value} />
     </View>
   );
 
@@ -103,6 +158,7 @@ export function MyPageNotificationsScreen() {
             notificationSettings[row.key],
             (value) => void updateSetting(row.key, value),
             row.key,
+            Boolean(checkingPermissionKey),
           ),
         )}
 
@@ -112,6 +168,7 @@ export function MyPageNotificationsScreen() {
           marketingConsent,
           (value) => void updateMarketingSetting(value),
           'marketing',
+          Boolean(checkingPermissionKey),
         )}
 
         <View style={styles.doNotDisturbCard}>
@@ -133,20 +190,6 @@ export function MyPageNotificationsScreen() {
           />
         </View>
 
-        <View style={styles.permissionBox}>
-          <Text style={styles.permissionTitle}>휴대폰 알림 권한</Text>
-          <Text style={styles.permissionDescription}>
-            시스템 알림 권한이 꺼져 있으면 PAW 알림을 받을 수 없어요.
-          </Text>
-          <AppButton
-            fullWidth={false}
-            onPress={() => void Linking.openSettings()}
-            size="medium"
-            style={styles.permissionButton}
-            title="시스템 설정 열기"
-            variant="outline"
-          />
-        </View>
       </ScrollView>
     </MyPageHeader>
   );
@@ -215,25 +258,5 @@ const styles = StyleSheet.create({
   timeText: {
     ...TYPOGRAPHY.smallButton,
     color: COLORS.primary,
-  },
-  permissionBox: {
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.borderSoft,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: SPACING.md,
-    marginTop: SPACING.xl,
-    padding: SPACING.xxl,
-  },
-  permissionTitle: {
-    ...TYPOGRAPHY.title3,
-    color: COLORS.black,
-  },
-  permissionDescription: {
-    ...TYPOGRAPHY.body2,
-    color: COLORS.gray600,
-  },
-  permissionButton: {
-    paddingHorizontal: SPACING.xxxl,
   },
 });

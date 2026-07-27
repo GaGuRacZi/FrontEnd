@@ -2,12 +2,15 @@ import { useCallback } from 'react';
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { useTerms } from '@/src/features/auth/terms';
+import { useCommunityStore } from '@/src/features/community/CommunityStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 export function useAccountLifecycle() {
   const { clearSession, currentUserId } = useAuthSession();
   const { deleteConsentHistory } = useTerms();
+  const { clearScreenSession: clearCommunitySession, deleteUserCommunityData } =
+    useCommunityStore();
   const { clearScreenSession, deleteUserProfileData } = useMyPageStore();
   const { clearDrafts, deleteUserPetData } = usePetStore();
 
@@ -15,10 +18,17 @@ export function useAccountLifecycle() {
     try {
       if (currentUserId) await clearDrafts(currentUserId);
       clearScreenSession();
+      clearCommunitySession();
     } finally {
       await clearSession();
     }
-  }, [clearDrafts, clearScreenSession, clearSession, currentUserId]);
+  }, [
+    clearCommunitySession,
+    clearDrafts,
+    clearScreenSession,
+    clearSession,
+    currentUserId,
+  ]);
 
   const withdrawAccount = useCallback(async () => {
     try {
@@ -26,6 +36,7 @@ export function useAccountLifecycle() {
         ? [
             deleteUserProfileData(currentUserId),
             deleteUserPetData(currentUserId),
+            deleteUserCommunityData(currentUserId),
             deleteConsentHistory(),
           ]
         : [deleteConsentHistory()];
@@ -40,6 +51,7 @@ export function useAccountLifecycle() {
     clearSession,
     currentUserId,
     deleteConsentHistory,
+    deleteUserCommunityData,
     deleteUserPetData,
     deleteUserProfileData,
   ]);

@@ -8,13 +8,11 @@ import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageCard, MyPageDivider, MyPageHeader, MyPageRow } from '../components';
-import { useMyPageStore } from '../MyPageStore';
 
 export function MyPageSettingsScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const { logOut } = useAccountLifecycle();
-  const { subscription } = useMyPageStore();
   const [logoutVisible, setLogoutVisible] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -44,7 +42,7 @@ export function MyPageSettingsScreen() {
 
         <MyPageCard title="구독">
           <MyPageRow
-            description={subscription?.currentPlanId === 'baby-jelly' ? '아기 젤리' : '구독 이용 중'}
+            description="내 요금제 확인"
             iconName="cash-outline"
             onPress={() => router.push('/mypage/plan')}
             title="내 요금제"

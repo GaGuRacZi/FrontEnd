@@ -13,6 +13,21 @@ const STATUS_LABELS: Record<PaymentStatus, string> = {
   paid: '결제완료',
 };
 
+const STATUS_BADGES: Record<PaymentStatus, { backgroundColor: string; color: string }> = {
+  canceled: {
+    backgroundColor: COLORS.gray200,
+    color: COLORS.gray600,
+  },
+  failed: {
+    backgroundColor: COLORS.errorBackground,
+    color: COLORS.danger,
+  },
+  paid: {
+    backgroundColor: COLORS.primarySoft,
+    color: COLORS.primary,
+  },
+};
+
 export function MyPagePaymentHistoryScreen() {
   const { paymentHistory } = useMyPageStore();
 
@@ -35,8 +50,15 @@ export function MyPagePaymentHistoryScreen() {
                 </Text>
               </View>
               <View style={styles.amountBox}>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{STATUS_LABELS[item.status]}</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    { backgroundColor: STATUS_BADGES[item.status].backgroundColor },
+                  ]}
+                >
+                  <Text style={[styles.statusText, { color: STATUS_BADGES[item.status].color }]}>
+                    {STATUS_LABELS[item.status]}
+                  </Text>
                 </View>
                 <Text style={styles.amount}>{item.amount.toLocaleString('ko-KR')}원</Text>
               </View>
@@ -85,14 +107,12 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   statusBadge: {
-    backgroundColor: '#EEF3FF',
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.sm,
   },
   statusText: {
     ...TYPOGRAPHY.smallButton,
-    color: COLORS.primary,
   },
   amount: {
     ...TYPOGRAPHY.body2,

@@ -25,7 +25,7 @@ type PetMutationResult =
   | { ok: true }
   | {
       ok: false;
-      reason: 'conflict' | 'invalid' | 'last-pet' | 'limit' | 'not-found' | 'not-ready';
+      reason: 'conflict' | 'error' | 'invalid' | 'last-pet' | 'limit' | 'not-found' | 'not-ready';
     };
 
 type PetStoreContextValue = {
@@ -172,6 +172,22 @@ export function PetProvider({ children }: PropsWithChildren) {
     [],
   );
 
+  const persistMutation = useCallback(
+    async (
+      userId: string,
+      nextPets: PetEntity[],
+      nextSelectedPetId: string | null,
+    ): Promise<PetMutationResult> => {
+      try {
+        await persist(userId, nextPets, nextSelectedPetId);
+        return { ok: true };
+      } catch {
+        return { ok: false, reason: 'error' };
+      }
+    },
+    [persist],
+  );
+
   const enqueueMutation = useCallback(<T,>(mutation: () => Promise<T>) => {
     const result = mutationQueueRef.current.then(mutation, mutation);
     mutationQueueRef.current = result.then(
@@ -195,11 +211,10 @@ export function PetProvider({ children }: PropsWithChildren) {
         }
         if (selectedPetIdRef.current === petId) return { ok: true };
 
-        await persist(userId, currentPets, petId);
-        return { ok: true };
+        return persistMutation(userId, currentPets, petId);
       });
     },
-    [currentUserId, enqueueMutation, persist],
+    [currentUserId, enqueueMutation, persistMutation],
   );
 
   const addPet = useCallback(
@@ -220,11 +235,10 @@ export function PetProvider({ children }: PropsWithChildren) {
         }
 
         const nextPets = [...currentPets, pet];
-        await persist(userId, nextPets, pet.id);
-        return { ok: true };
+        return persistMutation(userId, nextPets, pet.id);
       });
     },
-    [currentUserId, enqueueMutation, persist],
+    [currentUserId, enqueueMutation, persistMutation],
   );
 
   const updatePet = useCallback(
@@ -244,11 +258,12 @@ export function PetProvider({ children }: PropsWithChildren) {
         }
 
         const nextPets = currentPets.map((current) => (current.id === pet.id ? pet : current));
-        await persist(
+        const saveResult = await persistMutation(
           userId,
           nextPets,
           resolveSelection(nextPets, selectedPetIdRef.current),
         );
+        if (!saveResult.ok) return saveResult;
 
         const referencedImages = collectImageUris(nextPets);
         if (
@@ -268,7 +283,7 @@ export function PetProvider({ children }: PropsWithChildren) {
         return { ok: true };
       });
     },
-    [currentUserId, enqueueMutation, persist],
+    [currentUserId, enqueueMutation, persistMutation],
   );
 
   const deletePet = useCallback(
@@ -294,7 +309,8 @@ export function PetProvider({ children }: PropsWithChildren) {
           currentSelectedPetId === petId
             ? nextPets[0].id
             : resolveSelection(nextPets, currentSelectedPetId);
-        await persist(userId, nextPets, nextSelectedPetId);
+        const saveResult = await persistMutation(userId, nextPets, nextSelectedPetId);
+        if (!saveResult.ok) return saveResult;
         const referencedImages = collectImageUris(nextPets);
         const imagesToRemove = Array.from(
           new Set(
@@ -316,7 +332,7 @@ export function PetProvider({ children }: PropsWithChildren) {
         return { ok: true };
       });
     },
-    [currentUserId, enqueueMutation, persist],
+    [currentUserId, enqueueMutation, persistMutation],
   );
 
   const registerSignupPet = useCallback(

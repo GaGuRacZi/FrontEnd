@@ -2,10 +2,10 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { useNavigation, usePreventRemove } from '@react-navigation/native';
+import { type NavigationAction, useNavigation, usePreventRemove } from '@react-navigation/native';
 import { type Href, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, StyleSheet } from 'react-native';
+import { Alert, Platform, StyleSheet, Text } from 'react-native';
 
 import { AppButton, EmptyState, LoadingView } from '@/src/components/common';
 import { FormScreen, TopHeader } from '@/src/components/layout';
@@ -112,6 +112,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [isImageMutating, setIsImageMutating] = useState(false);
   const [pendingBirthDate, setPendingBirthDate] = useState(new Date());
+  const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
   const allowNavigation = useRef(false);
   const submitLocked = useRef(false);
   const draftCompleted = useRef(false);
@@ -374,6 +375,48 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     );
   }, [currentUserId, removeUnreferencedImages]);
 
+  const discardDraftAndLeave = useCallback(() => {
+    const exitAction = pendingExitAction;
+    if (!exitAction) return;
+
+    setPendingExitAction(null);
+    void (async () => {
+      draftCompleted.current = true;
+      let discarded = !currentUserId;
+
+      if (currentUserId) {
+        try {
+          await petRepository.deleteDraft(currentUserId, draftId);
+          discarded = true;
+        } catch {
+          const fallbackDraft =
+            mode === 'add'
+              ? createPetDraft(currentUserId)
+              : baseDraftRef.current;
+          if (fallbackDraft) {
+            discarded = await petRepository
+              .saveDraft(fallbackDraft)
+              .then(() => true)
+              .catch(() => false);
+          }
+        }
+      }
+
+      if (!discarded) {
+        draftCompleted.current = false;
+        Alert.alert(
+          '작성 내용을 정리하지 못했어요',
+          '잠시 후 다시 시도해주세요.',
+        );
+        return;
+      }
+
+      await cleanUnusedDraftImages().catch(() => undefined);
+      allowNavigation.current = true;
+      navigation.dispatch(exitAction);
+    })();
+  }, [cleanUnusedDraftImages, currentUserId, draftId, mode, navigation, pendingExitAction]);
+
   usePreventRemove(isDirty || isImageMutating || isSubmitting, ({ data }) => {
     if (allowNavigation.current) {
       navigation.dispatch(data.action);
@@ -390,54 +433,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       return;
     }
 
-    Alert.alert(
-      mode === 'add' ? '반려동물 등록을 그만할까요?' : '수정을 그만할까요?',
-      '작성 중인 내용이 삭제돼요.',
-      [
-        { text: '계속 작성', style: 'cancel' },
-        {
-          text: '나가기',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              draftCompleted.current = true;
-              let discarded = !currentUserId;
-
-              if (currentUserId) {
-                try {
-                  await petRepository.deleteDraft(currentUserId, draftId);
-                  discarded = true;
-                } catch {
-                  const fallbackDraft =
-                    mode === 'add'
-                      ? createPetDraft(currentUserId)
-                      : baseDraftRef.current;
-                  if (fallbackDraft) {
-                    discarded = await petRepository
-                      .saveDraft(fallbackDraft)
-                      .then(() => true)
-                      .catch(() => false);
-                  }
-                }
-              }
-
-              if (!discarded) {
-                draftCompleted.current = false;
-                Alert.alert(
-                  '작성 내용을 정리하지 못했어요',
-                  '잠시 후 다시 시도해주세요.',
-                );
-                return;
-              }
-
-              await cleanUnusedDraftImages().catch(() => undefined);
-              allowNavigation.current = true;
-              navigation.dispatch(data.action);
-            })();
-          },
-        },
-      ],
-    );
+    setPendingExitAction(data.action);
   });
 
   const replaceImage = useCallback(
@@ -837,6 +833,24 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
           />
         </AppModal>
       ) : null}
+
+      <AppModal
+        onClose={() => setPendingExitAction(null)}
+        primaryAction={{
+          label: '나가기',
+          onPress: discardDraftAndLeave,
+          variant: 'danger',
+        }}
+        secondaryAction={{
+          label: '계속 작성',
+          onPress: () => setPendingExitAction(null),
+        }}
+        title={mode === 'add' ? '반려동물 등록을 그만할까요?' : '수정을 그만할까요?'}
+        variant="center"
+        visible={Boolean(pendingExitAction)}
+      >
+        <Text style={styles.exitModalDescription}>작성 중인 내용이 삭제돼요.</Text>
+      </AppModal>
     </>
   );
 }
@@ -862,5 +876,10 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     height: 54,
+  },
+  exitModalDescription: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.gray600,
+    textAlign: 'center',
   },
 });

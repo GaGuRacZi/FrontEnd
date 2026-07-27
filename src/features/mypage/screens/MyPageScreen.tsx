@@ -187,8 +187,9 @@ const styles = StyleSheet.create({
   subscriptionBanner: {
     backgroundColor: COLORS.cream,
     borderRadius: 24,
-    gap: SPACING.lg,
-    padding: SPACING.xxxl,
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.xxxl,
+    paddingVertical: SPACING.xxl,
   },
   planStatus: {
     alignItems: 'center',
@@ -226,7 +227,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.lg,
-    height: 38,
+    height: 34,
     justifyContent: 'center',
     width: 124,
   },

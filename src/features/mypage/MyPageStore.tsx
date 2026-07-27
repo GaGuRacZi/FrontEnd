@@ -11,7 +11,7 @@ import {
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
-import { getPlanRank } from './mypageData';
+import { getPlan, getPlanRank, getUpgradePaymentAmount } from './mypageData';
 import { createDefaultMyPageState, signupDataToProfile } from './mypageMappers';
 import { mypageRepository } from './services/mypageRepository';
 import {
@@ -31,7 +31,7 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'invalid' | 'not-ready' };
+  | { ok: false; reason: 'error' | 'invalid' | 'not-ready' };
 
 type MyPageStoreContextValue = {
   clearScreenSession: () => void;
@@ -59,10 +59,11 @@ const MyPageStoreContext = createContext<MyPageStoreContextValue | null>(null);
 const EMPTY_PAYMENT_METHODS: PaymentMethod[] = [];
 const EMPTY_PAYMENT_HISTORY: PaymentHistoryItem[] = [];
 
-function createPaymentHistoryItem(planId: PlanId): PaymentHistoryItem {
-  const paidPlan = planId === 'adult-jelly' ? '어른 젤리' : '꼬마 젤리';
-  const amount = planId === 'adult-jelly' ? 9900 : 4900;
+function createPaymentHistoryItem(currentPlanId: PlanId, nextPlanId: PlanId): PaymentHistoryItem {
+  const paidPlan = getPlan(nextPlanId);
+  const amount = getUpgradePaymentAmount(currentPlanId, nextPlanId);
   const date = new Date().toISOString().slice(0, 10);
+  const isDifferencePayment = currentPlanId !== 'baby-jelly';
 
   return {
     amount,
@@ -70,7 +71,7 @@ function createPaymentHistoryItem(planId: PlanId): PaymentHistoryItem {
     id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     methodLabel: '간편페이',
     status: 'paid',
-    title: `${paidPlan} 결제`,
+    title: isDifferencePayment ? `${paidPlan.name} 차액 결제` : `${paidPlan.name} 결제`,
   };
 }
 
@@ -160,9 +161,13 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'not-ready' };
         }
 
-        const nextState = await updater(stateRef.current);
-        await persist(userId, nextState);
-        return { ok: true };
+        try {
+          const nextState = await updater(stateRef.current);
+          await persist(userId, nextState);
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
       });
     },
     [currentUserId, enqueueMutation, persist],
@@ -242,6 +247,8 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       mutateState((current) => {
         const currentRank = getPlanRank(current.subscription.currentPlanId);
         const nextRank = getPlanRank(planId);
+        if (nextRank === currentRank) return current;
+
         const isUpgrade = nextRank > currentRank;
         const nextBillingDate = current.subscription.nextBillingDate ?? getNextBillingDate();
         const nextSubscription: SubscriptionState = isUpgrade
@@ -262,7 +269,10 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           ...current,
           paymentHistory:
             isUpgrade && planId !== 'baby-jelly'
-              ? [createPaymentHistoryItem(planId), ...current.paymentHistory]
+              ? [
+                  createPaymentHistoryItem(current.subscription.currentPlanId, planId),
+                  ...current.paymentHistory,
+                ]
               : current.paymentHistory,
           subscription: nextSubscription,
         };
