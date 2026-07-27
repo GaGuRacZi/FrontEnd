@@ -22,6 +22,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         width: 86,
     },
+    placeholderLogo: { height: 36, width: 36, resizeMode: 'contain' },
     info: { flex: 1, gap: 0 },
     name: { ...TYPOGRAPHY.title2, color: COLORS.black },
     meta: { ...TYPOGRAPHY.body2, color: COLORS.gray600 },
@@ -48,7 +49,11 @@ export function PetProfileCard( { onPressAddDiagnosis, onPressDetail, pet } : Pe
                 <Image source={ {uri: pet.photoUrl} } style={styles.photo} />
             ) : (
                 <View style={styles.photoPlaceholder}>
-                    <AppIcon color={COLORS.primary} name='paw' size={24} />
+                    <Image
+                        accessibilityIgnoresInvertColors
+                        source={require('../../../../assets/images/paw-logo.png')}
+                        style={styles.placeholderLogo}
+                    />
                 </View>
             )}
 

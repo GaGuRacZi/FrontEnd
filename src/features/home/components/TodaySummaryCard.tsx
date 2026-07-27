@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   },
   textGroup: { flex: 1, gap: 2 },
   title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
-  titleDone: { color: COLORS.gray500, textDecorationLine: 'line-through' },
+  titleDone: { color: COLORS.gray500 },
   description: { ...TYPOGRAPHY.small, color: COLORS.gray600 },
   time: { ...TYPOGRAPHY.body2, color: COLORS.primary, fontFamily: TYPOGRAPHY.button.fontFamily },
   checkBox: {
