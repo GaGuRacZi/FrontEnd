@@ -1,7 +1,12 @@
 import type { PropsWithChildren } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
 import {
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -21,24 +26,35 @@ type ModalAction = {
   label: string;
   loading?: boolean;
   onPress: () => void;
+  variant?: 'danger' | 'primary';
 };
 
 type AppModalProps = PropsWithChildren<{
+  animateSheetOnly?: boolean;
   closeOnBackdropPress?: boolean;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  initialHeight?: number;
   onClose: () => void;
   primaryAction?: ModalAction;
+  resizable?: boolean;
   secondaryAction?: ModalAction;
+  surfaceStyle?: StyleProp<ViewStyle>;
   title?: string;
   variant?: 'bottomSheet' | 'center';
   visible: boolean;
 }>;
 
 export function AppModal({
+  animateSheetOnly = false,
   children,
   closeOnBackdropPress = true,
+  contentContainerStyle,
+  initialHeight,
   onClose,
   primaryAction,
+  resizable = false,
   secondaryAction,
+  surfaceStyle,
   title,
   variant = 'bottomSheet',
   visible,
@@ -51,15 +67,161 @@ export function AppModal({
     0,
     windowHeight - insets.top - insets.bottom - SPACING.xxxl * 2,
   );
+  const bottomInsetAdjustment = isBottomSheet
+    ? Math.max(0, insets.bottom - SPACING.xxxl)
+    : 0;
+  const collapsedHeight = Math.min(
+    initialHeight === undefined ? maxHeight : initialHeight + bottomInsetAdjustment,
+    maxHeight,
+  );
+  const sheetHeight = useRef(new Animated.Value(collapsedHeight)).current;
+  const sheetOffset = useRef(new Animated.Value(windowHeight)).current;
+  const sheetTravelDistance = useRef(windowHeight);
+  const sheetAnimation = useRef<Animated.CompositeAnimation | null>(null);
+  const sheetMounted = useRef(visible);
+  const [sheetModalVisible, setSheetModalVisible] = useState(visible);
+  const currentHeight = useRef(collapsedHeight);
+  const dragStartHeight = useRef(collapsedHeight);
+  const canDrag = isBottomSheet && resizable;
+  const canResize = canDrag && maxHeight > collapsedHeight;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const usesIndependentSheetAnimation = isBottomSheet && animateSheetOnly;
+
+  useEffect(() => {
+    sheetTravelDistance.current = windowHeight;
+  }, [windowHeight]);
+
+  useEffect(() => {
+    if (!usesIndependentSheetAnimation) return;
+
+    let animationFrame: number | undefined;
+    sheetAnimation.current?.stop();
+
+    if (visible) {
+      const alreadyMounted = sheetMounted.current;
+      sheetMounted.current = true;
+      setSheetModalVisible(true);
+
+      if (!alreadyMounted) {
+        sheetOffset.setValue(sheetTravelDistance.current);
+      }
+
+      animationFrame = requestAnimationFrame(() => {
+        const animation = Animated.timing(sheetOffset, {
+          duration: 280,
+          easing: Easing.out(Easing.cubic),
+          toValue: 0,
+          useNativeDriver: false,
+        });
+        sheetAnimation.current = animation;
+        animation.start();
+      });
+    } else if (sheetMounted.current) {
+      const animation = Animated.timing(sheetOffset, {
+        duration: 220,
+        easing: Easing.in(Easing.cubic),
+        toValue: sheetTravelDistance.current,
+        useNativeDriver: false,
+      });
+      sheetAnimation.current = animation;
+      animation.start(({ finished }) => {
+        if (!finished) return;
+        sheetMounted.current = false;
+        setSheetModalVisible(false);
+      });
+    }
+
+    return () => {
+      if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
+      sheetAnimation.current?.stop();
+    };
+  }, [sheetOffset, usesIndependentSheetAnimation, visible]);
+
+  const animateHeight = useCallback(
+    (height: number, expanded: boolean) => {
+      currentHeight.current = height;
+      Animated.spring(sheetHeight, {
+        bounciness: 0,
+        speed: 18,
+        toValue: height,
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (finished) {
+          setIsExpanded(expanded);
+        }
+      });
+    },
+    [sheetHeight],
+  );
+
+  useEffect(() => {
+    sheetHeight.stopAnimation();
+    currentHeight.current = collapsedHeight;
+    dragStartHeight.current = collapsedHeight;
+    sheetHeight.setValue(collapsedHeight);
+    setIsExpanded(false);
+
+    return () => sheetHeight.stopAnimation();
+  }, [collapsedHeight, sheetHeight, visible]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => canDrag,
+        onStartShouldSetPanResponderCapture: () => canDrag,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          canDrag && Math.abs(gesture.dy) > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          canDrag && Math.abs(gesture.dy) > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderGrant: () => {
+          dragStartHeight.current = currentHeight.current;
+          sheetHeight.stopAnimation((height) => {
+            currentHeight.current = height;
+            dragStartHeight.current = height;
+          });
+        },
+        onPanResponderMove: (_, gesture) => {
+          const nextHeight = Math.min(
+            maxHeight,
+            Math.max(collapsedHeight, dragStartHeight.current - gesture.dy),
+          );
+          currentHeight.current = nextHeight;
+          sheetHeight.setValue(nextHeight);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (
+            dragStartHeight.current <= collapsedHeight + 1 &&
+            (gesture.dy > 64 || gesture.vy > 0.75)
+          ) {
+            onClose();
+            return;
+          }
+
+          const midpoint = collapsedHeight + (maxHeight - collapsedHeight) / 2;
+          const shouldExpand =
+            gesture.dy < -36 || gesture.vy < -0.2 || currentHeight.current > midpoint;
+          animateHeight(shouldExpand ? maxHeight : collapsedHeight, shouldExpand);
+        },
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminate: () => {
+          const shouldExpand =
+            currentHeight.current > collapsedHeight + (maxHeight - collapsedHeight) / 2;
+          animateHeight(shouldExpand ? maxHeight : collapsedHeight, shouldExpand);
+        },
+      }),
+    [animateHeight, canDrag, collapsedHeight, maxHeight, onClose, sheetHeight],
+  );
 
   return (
     <Modal
-      animationType={isBottomSheet ? 'slide' : 'fade'}
+      animationType={usesIndependentSheetAnimation ? 'none' : isBottomSheet ? 'slide' : 'fade'}
       navigationBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (closeOnBackdropPress) onClose();
+      }}
       statusBarTranslucent
       transparent
-      visible={visible}
+      visible={usesIndependentSheetAnimation ? sheetModalVisible : visible}
     >
       <View style={styles.root}>
         <Pressable
@@ -74,41 +236,76 @@ export function AppModal({
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           pointerEvents="box-none"
-          style={[styles.modalLayer, isBottomSheet ? styles.bottomAligned : styles.centered]}
+          style={[
+            styles.modalLayer,
+            isBottomSheet ? styles.bottomAligned : styles.centered,
+          ]}
         >
-          <View
+          <Animated.View
             style={[
               styles.surface,
               isBottomSheet ? styles.bottomSheet : styles.centerModal,
+              canResize ? { height: sheetHeight } : undefined,
+              usesIndependentSheetAnimation
+                ? { transform: [{ translateY: sheetOffset }] }
+                : undefined,
               {
                 maxHeight,
                 paddingBottom: isBottomSheet
                   ? Math.max(SPACING.xxxl, insets.bottom)
                   : SPACING.xxxl,
               },
+              surfaceStyle,
             ]}
           >
-            {isBottomSheet ? <View style={styles.dragHandle} /> : null}
+            {isBottomSheet ? (
+              <View
+                accessibilityActions={
+                  canResize ? [{ name: 'increment' }, { name: 'decrement' }] : undefined
+                }
+                collapsable={false}
+                accessibilityLabel={canResize ? '모달 높이 조절' : undefined}
+                accessibilityRole={canResize ? 'adjustable' : undefined}
+                accessibilityValue={
+                  canResize ? { text: isExpanded ? '펼쳐짐' : '접힘' } : undefined
+                }
+                onAccessibilityAction={
+                  canResize
+                    ? (event) => {
+                        if (event.nativeEvent.actionName === 'increment') {
+                          animateHeight(maxHeight, true);
+                        }
+
+                        if (event.nativeEvent.actionName === 'decrement') {
+                          animateHeight(collapsedHeight, false);
+                        }
+                      }
+                    : undefined
+                }
+                style={styles.dragArea}
+                {...(canDrag ? panResponder.panHandlers : {})}
+              >
+                <View style={styles.dragHandle} />
+              </View>
+            ) : null}
 
             {showCloseButton ? (
               <View style={styles.header}>
                 {title ? <Text style={styles.title}>{title}</Text> : null}
-                {showCloseButton ? (
-                  <Pressable
-                    accessibilityLabel="모달 닫기"
-                    accessibilityRole="button"
-                    hitSlop={SPACING.md}
-                    onPress={onClose}
-                    style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-                  >
-                    <AppIcon color={COLORS.gray600} name="close" size={24} />
-                  </Pressable>
-                ) : null}
+                <Pressable
+                  accessibilityLabel="모달 닫기"
+                  accessibilityRole="button"
+                  hitSlop={SPACING.md}
+                  onPress={onClose}
+                  style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                >
+                  <AppIcon color={COLORS.gray600} name="close" size={24} />
+                </Pressable>
               </View>
             ) : null}
 
             <ScrollView
-              contentContainerStyle={styles.content}
+              contentContainerStyle={[styles.content, contentContainerStyle]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               style={styles.contentScroll}
@@ -137,11 +334,12 @@ export function AppModal({
                     onPress={primaryAction.onPress}
                     style={styles.actionButton}
                     title={primaryAction.label}
+                    variant={primaryAction.variant ?? 'primary'}
                   />
                 ) : null}
               </View>
             ) : null}
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -183,12 +381,19 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     width: '100%',
   },
+  dragArea: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+    marginTop: -SPACING.xl,
+    width: '100%',
+  },
   dragHandle: {
     alignSelf: 'center',
     backgroundColor: COLORS.gray300,
     borderRadius: RADIUS.round,
     height: 6,
-    marginBottom: SPACING.xxl,
     width: 66,
   },
   header: {

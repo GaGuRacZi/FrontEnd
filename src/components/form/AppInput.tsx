@@ -13,6 +13,7 @@ type AppInputProps = Omit<TextInputProps, 'style'> & {
   label?: string;
   leftElement?: ReactNode;
   rightElement?: ReactNode;
+  size?: 'compact' | 'default';
 };
 
 export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
@@ -28,6 +29,7 @@ export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
     onBlur,
     onFocus,
     rightElement,
+    size = 'default',
     ...textInputProps
   },
   ref,
@@ -42,6 +44,7 @@ export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
       <View
         style={[
           styles.inputContainer,
+          size === 'compact' && styles.compactContainer,
           multiline && styles.multilineContainer,
           isFocused && styles.focused,
           error && styles.error,
@@ -65,6 +68,7 @@ export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
           ref={ref}
           style={[
             styles.input,
+            size === 'compact' && styles.compactInput,
             leftElement ? styles.inputWithLeftElement : undefined,
             multiline && styles.multilineInput,
             inputStyle,
@@ -112,15 +116,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xxl,
     paddingVertical: 0,
   },
+  compactContainer: {
+    minHeight: SIZE.touchTarget,
+  },
+  compactInput: {
+    minHeight: SIZE.touchTarget,
+  },
   inputWithLeftElement: {
     paddingLeft: SPACING.xl,
   },
   multilineContainer: {
     alignItems: 'flex-start',
-    minHeight: 112,
+    minHeight: 132,
   },
   multilineInput: {
-    minHeight: 112,
+    minHeight: 132,
     paddingVertical: SPACING.xl,
     textAlignVertical: 'top',
   },

@@ -22,11 +22,13 @@ export function EmptyState({
   title,
 }: EmptyStateProps) {
   return (
-    <View style={styles.container}>
+    <View accessibilityLiveRegion="polite" style={styles.container}>
       <View style={styles.iconContainer}>
         {icon ?? <AppIcon color={COLORS.primary} name="paw-outline" size={30} />}
       </View>
-      <Text style={styles.title}>{title}</Text>
+      <Text accessibilityRole="header" style={styles.title}>
+        {title}
+      </Text>
       {description ? <Text style={styles.description}>{description}</Text> : null}
       {actionLabel && onActionPress ? (
         <AppButton

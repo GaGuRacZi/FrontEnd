@@ -1,3 +1,3 @@
-import { SignupProfileScreen } from '@/src/features/auth/screens/AuthScreens';
+import { SignupProfileScreen } from '@/src/features/auth/signup/screens/SignupProfileScreen';
 
 export default SignupProfileScreen;

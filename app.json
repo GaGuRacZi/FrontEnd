@@ -29,6 +29,10 @@
     "android": {
       "allowBackup": false,
       "backgroundColor": "#FFFFFF",
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "package": "com.gaguraczi.paw",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
@@ -54,6 +58,22 @@
             "./node_modules/@expo-google-fonts/noto-sans-kr/500Medium/NotoSansKR_500Medium.ttf",
             "./node_modules/@expo-google-fonts/noto-sans-kr/700Bold/NotoSansKR_700Bold.ttf"
           ]
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "프로필, 반려동물, 문서 또는 게시물에 사진을 첨부하려면 사진 접근 권한이 필요합니다.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "현재 위치를 기반으로 지역을 설정하려면 위치 권한이 필요합니다.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
         }
       ],
       [

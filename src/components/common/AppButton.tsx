@@ -4,7 +4,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-type AppButtonVariant = 'ghost' | 'kakao' | 'outline' | 'primary' | 'secondary';
+type AppButtonVariant =
+  | 'danger'
+  | 'ghost'
+  | 'kakao'
+  | 'outline'
+  | 'primary'
+  | 'secondary'
+  | 'success';
 type AppButtonSize = 'large' | 'medium';
 
 type AppButtonProps = Omit<PressableProps, 'children' | 'style'> & {
@@ -27,6 +34,12 @@ const variantStyles = StyleSheet.create({
     borderColor: COLORS.gray300,
     borderWidth: 1,
   },
+  success: {
+    backgroundColor: COLORS.success,
+  },
+  danger: {
+    backgroundColor: COLORS.danger,
+  },
   outline: {
     backgroundColor: COLORS.background,
     borderColor: COLORS.gray300,
@@ -44,6 +57,12 @@ const textVariantStyles = StyleSheet.create({
   secondary: {
     color: COLORS.black,
   },
+  success: {
+    color: COLORS.background,
+  },
+  danger: {
+    color: COLORS.background,
+  },
   outline: {
     color: COLORS.black,
   },
@@ -56,6 +75,8 @@ const textVariantStyles = StyleSheet.create({
 });
 
 export function AppButton({
+  accessibilityLabel,
+  accessibilityState,
   disabled = false,
   fullWidth = true,
   leftIcon,
@@ -68,10 +89,20 @@ export function AppButton({
   ...pressableProps
 }: AppButtonProps) {
   const isDisabled = disabled || loading;
+  const indicatorColor =
+    variant === 'primary' || variant === 'success' || variant === 'danger'
+      ? COLORS.background
+      : COLORS.black;
 
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityRole="button"
+      accessibilityState={{
+        ...accessibilityState,
+        busy: loading,
+        disabled: isDisabled,
+      }}
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
@@ -85,10 +116,7 @@ export function AppButton({
       {...pressableProps}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === 'primary' ? COLORS.background : COLORS.black}
-          size="small"
-        />
+        <ActivityIndicator color={indicatorColor} size="small" />
       ) : (
         <View style={styles.content}>
           {leftIcon}
