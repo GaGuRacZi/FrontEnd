@@ -210,7 +210,14 @@ export function MyPageProvider({ children }: PropsWithChildren) {
 
   const updateProfile = useCallback(
     (profile: UserProfile) =>
-      mutateState(async (current) => {
+      enqueueMutation(async (): Promise<MutationResult> => {
+        const userId = currentUserId;
+
+        if (!userId || readyUserRef.current !== userId || !stateRef.current) {
+          return { ok: false, reason: 'not-ready' };
+        }
+
+        const current = stateRef.current;
         const previousUri = current.profile.profileImageUri;
         const nextProfile = {
           ...profile,
@@ -220,14 +227,21 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           name: profile.name.trim(),
           updatedAt: new Date().toISOString(),
         };
+        const nextState = { ...current, profile: nextProfile };
 
-        if (previousUri && previousUri !== nextProfile.profileImageUri) {
-          await removeProfileImage(current.profile.id, previousUri).catch(() => undefined);
+        try {
+          await persist(userId, nextState);
+
+          if (previousUri && previousUri !== nextProfile.profileImageUri) {
+            await removeProfileImage(userId, previousUri).catch(() => undefined);
+          }
+
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
         }
-
-        return { ...current, profile: nextProfile };
       }),
-    [mutateState],
+    [currentUserId, enqueueMutation, persist],
   );
 
   const updateNotificationSettings = useCallback(

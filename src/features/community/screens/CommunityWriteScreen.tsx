@@ -2,15 +2,17 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import { type NavigationAction, useNavigation, usePreventRemove } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
   KeyboardAvoidingView,
   Linking,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -19,7 +21,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppButton, AppIcon } from '@/src/components/common';
+import { AppButton, AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { KeyboardAwareScrollView, ScreenLayout } from '@/src/components/layout';
 import { AppModal } from '@/src/components/modal';
@@ -33,12 +35,24 @@ import {
   TALK_CATEGORIES,
 } from '../communityData';
 import { useCommunityStore } from '../CommunityStore';
+import {
+  getCommunityImageUri,
+  persistCommunityImage,
+  removeCommunityImage,
+  removeCommunityImages,
+} from '../services/communityImageStorage';
+import { communityRepository } from '../services/communityRepository';
 import type {
   CommunityAuthorSnapshot,
+  CommunityImageAsset,
+  CommunityPost,
+  CommunityWriteDraft,
   MarketCategory,
+  MarketPost,
   MarketTradeType,
   ReviewCategory,
   TalkCategory,
+  TalkPost,
 } from '../types';
 
 const TALK_WRITE_CATEGORIES = TALK_CATEGORIES.filter(
@@ -55,12 +69,17 @@ const REVIEW_WRITE_CATEGORIES = REVIEW_CATEGORIES.filter(
 );
 const TRADE_METHODS = ['직거래', '택배', '비대면 나눔'] as const;
 const TALK_TAG_SUGGESTIONS = ['피하수액', '응급', '동네병원', '산책', '고양이'];
+const DEFAULT_TALK_TAGS = ['피하수액', '응급'];
 const MAX_PHOTOS = 5;
 const MAX_TITLE_LENGTH = 40;
 const MAX_BODY_LENGTH = 500;
+const MAX_REVIEW_BODY_LENGTH = 700;
+const MAX_REVIEW_TARGET_LENGTH = 50;
+const MIN_REVIEW_BODY_LENGTH = 10;
 const MAX_TAG_COUNT = 5;
 const MAX_TAG_LENGTH = 10;
 const REVIEW_STAR_COLOR = COLORS.starWarm;
+const PHOTO_SLOT_SIZE = 62;
 
 type TradeMethod = (typeof TRADE_METHODS)[number];
 type WriteTab = 'market' | 'review' | 'talk';
@@ -88,10 +107,8 @@ function resolveWriteTab(value?: string): WriteTab {
 }
 
 function isFutureDateValue(value: string) {
-  if (!value.trim()) return false;
-  const normalized = value.replaceAll('.', '-');
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return false;
+  const date = parseDateValue(value);
+  if (!date) return false;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -100,9 +117,23 @@ function isFutureDateValue(value: string) {
 }
 
 function parseDateValue(value: string) {
-  const normalized = value.trim().replaceAll('.', '-');
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? null : date;
+  const match = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
 }
 
 function formatDateValue(date: Date) {
@@ -110,6 +141,27 @@ function formatDateValue(date: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}.${month}.${day}`;
+}
+
+function getDefaultReviewDate() {
+  return formatDateValue(new Date());
+}
+
+function formatDateInput(value: string) {
+  const digits = value.replace(/[^0-9]/g, '').slice(0, 8);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 4)}.${digits.slice(4)}`;
+  return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
+}
+
+function isPastOrTodayDateValue(value: string) {
+  const date = parseDateValue(value);
+  if (!date) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime() <= today.getTime();
 }
 
 function getTomorrow() {
@@ -146,8 +198,77 @@ function formatPrice(value: string) {
   return `${number.toLocaleString('ko-KR')}원`;
 }
 
+function parsePriceValue(value: string) {
+  return value.replace(/[^0-9]/g, '');
+}
+
+function hasPriceOffer(value: string) {
+  return value.includes('가격 제안 가능');
+}
+
 function normalizeTag(value: string) {
   return value.trim().replace(/^#+/, '').replace(/\s+/g, '');
+}
+
+function normalizeInlineText(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeMultilineText(value: string) {
+  return value.trim().replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n');
+}
+
+function sameStringList(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function getMarketTradeMethods(post: MarketPost): TradeMethod[] {
+  const methods = post.tags.filter((tag): tag is TradeMethod =>
+    TRADE_METHODS.includes(tag as TradeMethod),
+  );
+  if (methods.length) return methods;
+  if (post.tradeType === '나눔') return ['직거래', '비대면 나눔'];
+  return ['직거래'];
+}
+
+function hasWriteDraftContent(draft: CommunityWriteDraft, defaultMarketLocation = '') {
+  if (draft.tab === 'talk') {
+    return Boolean(
+      draft.talkBody.trim() ||
+        draft.talkTitle.trim() ||
+        draft.talkPhotos.length ||
+        draft.talkCategory !== '건강상담' ||
+        !sameStringList(draft.talkTags, DEFAULT_TALK_TAGS),
+    );
+  }
+
+  if (draft.tab === 'market') {
+    return Boolean(
+      draft.expiresAt.trim() ||
+        draft.marketBody.trim() ||
+        draft.marketCategory !== '사료·간식' ||
+        draft.marketPhotos.length ||
+        draft.price.trim() ||
+        draft.priceOffer ||
+        draft.productName.trim() ||
+        draft.tradeLocation.trim() !== defaultMarketLocation.trim() ||
+        !sameStringList(draft.tradeMethods, ['직거래']) ||
+        draft.tradeType !== '나눔',
+    );
+  }
+
+  return Boolean(
+    draft.reviewBody.trim() ||
+      draft.reviewCategory !== '병원' ||
+      draft.reviewKindness !== 5 ||
+      draft.reviewPhotos.length ||
+      draft.reviewPriceScore !== 4 ||
+      draft.reviewRating !== 5 ||
+      draft.reviewRevisit !== 5 ||
+      draft.reviewTarget.trim() ||
+      draft.reviewTitle.trim() ||
+      (draft.reviewVisitedAt.trim() && draft.reviewVisitedAt !== getDefaultReviewDate()),
+  );
 }
 
 function FieldCard({
@@ -246,58 +367,148 @@ function ChipGroup<T extends string>({
 function PhotoPickerRow({
   maxCount = MAX_PHOTOS,
   onAdd,
-  onMoveToFirst,
   onRemove,
+  onReorder,
   photos,
 }: {
   maxCount?: number;
   onAdd: () => void;
-  onMoveToFirst: (index: number) => void;
   onRemove: (uri: string) => void;
-  photos: string[];
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  photos: CommunityImageAsset[];
 }) {
   return (
     <>
       <View style={styles.photoRow}>
         {Array.from({ length: maxCount }).map((_, index) => {
-          const uri = photos[index];
+          const image = photos[index];
+          const uri = image ? getCommunityImageUri(image) : undefined;
 
           return (
-            <Pressable
-              accessibilityHint={uri && index > 0 ? '길게 누르면 대표 이미지로 이동합니다.' : undefined}
-              accessibilityLabel={uri ? `사진 ${index + 1} 삭제` : `사진 ${index + 1} 첨부`}
-              accessibilityRole="button"
-              key={index}
-              onLongPress={uri && index > 0 ? () => onMoveToFirst(index) : undefined}
-              onPress={uri ? () => onRemove(uri) : onAdd}
-              style={({ pressed }) => [
-                styles.photoBox,
-                index === 0 && styles.photoBoxPrimary,
-                pressed && styles.pressed,
-              ]}
-            >
-              {uri ? (
-                <>
-                  <Image source={{ uri }} style={styles.photoPreview} />
-                  {index === 0 ? (
-                    <View style={styles.coverBadge}>
-                      <Text style={styles.coverBadgeText}>대표</Text>
-                    </View>
-                  ) : null}
-                </>
-              ) : (
-                <AppIcon
-                  color={COLORS.primary}
-                  name={index === 0 ? 'camera-outline' : 'add'}
-                  size={index === 0 ? 22 : 24}
-                />
-              )}
-            </Pressable>
+            <DraggablePhotoBox
+              key={image?.assetId ?? index}
+              index={index}
+              maxPhotoIndex={Math.max(photos.length - 1, 0)}
+              onAdd={onAdd}
+              onRemove={onRemove}
+              onReorder={onReorder}
+              uri={uri}
+            />
           );
         })}
       </View>
-      <Text style={styles.photoGuide}>첫 번째 사진이 대표 이미지예요. 사진을 길게 누르면 대표로 이동해요.</Text>
+      <Text style={styles.photoGuide}>첫 번째 사진이 대표 이미지예요. 사진을 좌우로 드래그해 순서를 바꿀 수 있어요.</Text>
     </>
+  );
+}
+
+function DraggablePhotoBox({
+  index,
+  maxPhotoIndex,
+  onAdd,
+  onRemove,
+  onReorder,
+  uri,
+}: {
+  index: number;
+  maxPhotoIndex: number;
+  onAdd: () => void;
+  onRemove: (uri: string) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  uri?: string;
+}) {
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const uriRef = useRef(uri);
+
+  uriRef.current = uri;
+  const shouldStartDrag = (_: unknown, gesture: { dx: number; dy: number }) =>
+    Boolean(uriRef.current) &&
+    Math.abs(gesture.dx) > 4 &&
+    Math.abs(gesture.dx) > Math.abs(gesture.dy);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: shouldStartDrag,
+        onMoveShouldSetPanResponderCapture: shouldStartDrag,
+        onPanResponderGrant: () => {
+          setDragging(true);
+          setDragX(0);
+        },
+        onPanResponderMove: (_, gesture) => {
+          setDragX(gesture.dx);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const offset =
+            gesture.dx > 0
+              ? Math.floor((gesture.dx + PHOTO_SLOT_SIZE * 0.35) / PHOTO_SLOT_SIZE)
+              : Math.ceil((gesture.dx - PHOTO_SLOT_SIZE * 0.35) / PHOTO_SLOT_SIZE);
+          const nextIndex = Math.min(Math.max(index + offset, 0), maxPhotoIndex);
+          setDragging(false);
+          setDragX(0);
+
+          if (nextIndex !== index) {
+            onReorder(index, nextIndex);
+          }
+        },
+        onPanResponderTerminate: () => {
+          setDragging(false);
+          setDragX(0);
+        },
+      }),
+    [index, maxPhotoIndex, onReorder],
+  );
+
+  if (!uri) {
+    return (
+      <Pressable
+        accessibilityLabel={`사진 ${index + 1} 첨부`}
+        accessibilityRole="button"
+        onPress={onAdd}
+        style={({ pressed }) => [
+          styles.photoBox,
+          index === 0 && styles.photoBoxPrimary,
+          pressed && styles.pressed,
+        ]}
+      >
+        <AppIcon
+          color={COLORS.primary}
+          name={index === 0 ? 'camera-outline' : 'add'}
+          size={index === 0 ? 22 : 24}
+        />
+      </Pressable>
+    );
+  }
+
+  return (
+    <View
+      accessibilityHint="좌우로 드래그해 사진 순서를 변경할 수 있습니다."
+      accessibilityLabel={`사진 ${index + 1}`}
+      style={[
+        styles.photoBox,
+        index === 0 && styles.photoBoxPrimary,
+        dragging && styles.photoBoxDragging,
+        { transform: [{ translateX: dragX }] },
+      ]}
+      {...panResponder.panHandlers}
+    >
+      <Image source={{ uri }} style={styles.photoPreview} />
+      {index === 0 ? (
+        <View style={styles.coverBadge}>
+          <Text style={styles.coverBadgeText}>대표</Text>
+        </View>
+      ) : null}
+      <Pressable
+        accessibilityLabel={`사진 ${index + 1} 삭제`}
+        accessibilityRole="button"
+        hitSlop={SPACING.xs}
+        onPress={() => onRemove(uri)}
+        style={({ pressed }) => [styles.photoRemoveButton, pressed && styles.pressed]}
+      >
+        <AppIcon color={COLORS.background} name="close" size={12} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -346,28 +557,62 @@ function StarRating({
 
 export function CommunityWriteScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { type } = useLocalSearchParams<{ type?: string }>();
+  const { postId, type } = useLocalSearchParams<{ postId?: string; type?: string }>();
   const initialTab = resolveWriteTab(type);
-  const { addMarketPost, addReviewPost, addTalkPost, viewerId } = useCommunityStore();
+  const {
+    addMarketPost,
+    addReviewPost,
+    addTalkPost,
+    isReady,
+    posts,
+    reviewPosts,
+    updateMarketPost,
+    updateReviewPost,
+    updateTalkPost,
+    viewerId,
+  } = useCommunityStore();
   const { profile } = useMyPageStore();
   const { selectedPet } = usePetStore();
   const author = useMemo(
     () => getAuthor(profile, selectedPet, viewerId),
     [profile, selectedPet, viewerId],
   );
+  const reviewPostToEdit = useMemo(
+    () => initialTab === 'review' && postId
+      ? reviewPosts.find((post) => post.id === postId) ?? null
+      : null,
+    [initialTab, postId, reviewPosts],
+  );
+  const postToEdit = useMemo<CommunityPost | null>(
+    () => initialTab !== 'review' && postId
+      ? posts.find((post) => post.id === postId) ?? null
+      : null,
+    [initialTab, postId, posts],
+  );
+  const talkPostToEdit = postToEdit?.kind === 'talk' ? postToEdit : null;
+  const marketPostToEdit = postToEdit?.kind === 'market' ? postToEdit : null;
+  const isTalkEditRequested = initialTab === 'talk' && Boolean(postId);
+  const isMarketEditRequested = initialTab === 'market' && Boolean(postId);
+  const isReviewEditRequested = initialTab === 'review' && Boolean(postId);
+  const isEditRequested = isTalkEditRequested || isMarketEditRequested || isReviewEditRequested;
+  const isTalkEditMode = Boolean(talkPostToEdit?.author.userId === viewerId);
+  const isMarketEditMode = Boolean(marketPostToEdit?.author.userId === viewerId);
+  const isReviewEditMode = Boolean(reviewPostToEdit?.author.userId === viewerId);
+  const isEditMode = isTalkEditMode || isMarketEditMode || isReviewEditMode;
   const [submitting, setSubmitting] = useState(false);
 
   const [talkCategory, setTalkCategory] = useState<Exclude<TalkCategory, '전체'>>('건강상담');
   const [talkTitle, setTalkTitle] = useState('');
   const [talkBody, setTalkBody] = useState('');
-  const [talkPhotos, setTalkPhotos] = useState<string[]>([]);
-  const [talkTags, setTalkTags] = useState<string[]>(['피하수액', '응급']);
+  const [talkPhotos, setTalkPhotos] = useState<CommunityImageAsset[]>([]);
+  const [talkTags, setTalkTags] = useState<string[]>(DEFAULT_TALK_TAGS);
   const [customTag, setCustomTag] = useState('');
 
   const [tradeType, setTradeType] = useState<MarketTradeType>('나눔');
   const [marketCategory, setMarketCategory] = useState<Exclude<MarketCategory, '전체'>>('사료·간식');
-  const [marketPhotos, setMarketPhotos] = useState<string[]>([]);
+  const [marketPhotos, setMarketPhotos] = useState<CommunityImageAsset[]>([]);
   const [productName, setProductName] = useState('');
   const [price, setPrice] = useState('');
   const [priceOffer, setPriceOffer] = useState(false);
@@ -385,14 +630,359 @@ export function CommunityWriteScreen() {
   const [reviewPriceScore, setReviewPriceScore] = useState(4);
   const [reviewRevisit, setReviewRevisit] = useState(5);
   const [reviewTitle, setReviewTitle] = useState('');
-  const [reviewVisitedAt, setReviewVisitedAt] = useState('');
+  const [reviewVisitedAt, setReviewVisitedAt] = useState(getDefaultReviewDate);
   const [reviewCalendarVisible, setReviewCalendarVisible] = useState(false);
   const [pendingReviewDate, setPendingReviewDate] = useState(() => new Date());
   const [reviewBody, setReviewBody] = useState('');
-  const [reviewPhotos, setReviewPhotos] = useState<string[]>([]);
+  const [reviewPhotos, setReviewPhotos] = useState<CommunityImageAsset[]>([]);
   const reviewScoreLabels = getReviewScoreLabels(reviewCategory);
+  const originalImageIds = useMemo(() => {
+    if (talkPostToEdit?.images) return new Set(talkPostToEdit.images.map((image) => image.assetId));
+    if (marketPostToEdit?.images) return new Set(marketPostToEdit.images.map((image) => image.assetId));
+    if (reviewPostToEdit?.images) return new Set(reviewPostToEdit.images.map((image) => image.assetId));
+    return new Set<string>();
+  }, [marketPostToEdit?.images, reviewPostToEdit?.images, talkPostToEdit?.images]);
+  const [isDraftReady, setIsDraftReady] = useState(false);
+  const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
+  const draftCompleted = useRef(false);
+  const allowNavigation = useRef(false);
+  const defaultMarketLocation = profile?.location ?? '';
 
-  const pickPhotos = async (photos: string[], setPhotos: (photos: string[]) => void, maxCount = MAX_PHOTOS) => {
+  const currentDraft = useMemo<CommunityWriteDraft>(() => {
+    const updatedAt = new Date().toISOString();
+
+    if (initialTab === 'market') {
+      return {
+        expiresAt,
+        id: `write-${initialTab}`,
+        marketBody,
+        marketCategory,
+        marketPhotos,
+        price,
+        priceOffer,
+        productName,
+        tab: 'market',
+        tradeLocation,
+        tradeMethods,
+        tradeType,
+        updatedAt,
+        userId: viewerId,
+      };
+    }
+
+    if (initialTab === 'review') {
+      return {
+        id: `write-${initialTab}`,
+        reviewBody,
+        reviewCategory,
+        reviewKindness,
+        reviewPhotos,
+        reviewPriceScore,
+        reviewRating,
+        reviewRevisit,
+        reviewTarget,
+        reviewTitle,
+        reviewVisitedAt,
+        tab: 'review',
+        updatedAt,
+        userId: viewerId,
+      };
+    }
+
+    return {
+      id: `write-${initialTab}`,
+      tab: 'talk',
+      talkBody,
+      talkCategory,
+      talkPhotos,
+      talkTags,
+      talkTitle,
+      updatedAt,
+      userId: viewerId,
+    };
+  }, [
+    expiresAt,
+    initialTab,
+    marketBody,
+    marketCategory,
+    marketPhotos,
+    price,
+    priceOffer,
+    productName,
+    reviewBody,
+    reviewCategory,
+    reviewKindness,
+    reviewPhotos,
+    reviewPriceScore,
+    reviewRating,
+    reviewRevisit,
+    reviewTarget,
+    reviewTitle,
+    reviewVisitedAt,
+    talkBody,
+    talkCategory,
+    talkPhotos,
+    talkTags,
+    talkTitle,
+    tradeLocation,
+    tradeMethods,
+    tradeType,
+    viewerId,
+  ]);
+  const isReviewEditDirty = Boolean(
+    isReviewEditMode &&
+      reviewPostToEdit &&
+      (
+        reviewRating !== reviewPostToEdit.rating ||
+        reviewKindness !== (reviewPostToEdit.detailScores?.kindness ?? 5) ||
+        reviewPriceScore !== (reviewPostToEdit.detailScores?.price ?? 4) ||
+        reviewRevisit !== (reviewPostToEdit.detailScores?.revisit ?? 5) ||
+        reviewTitle !== reviewPostToEdit.title ||
+        reviewVisitedAt !== (reviewPostToEdit.visitedAt ?? '') ||
+        reviewBody !== reviewPostToEdit.body ||
+        reviewPhotos.map((image) => image.assetId).join('|') !==
+          (reviewPostToEdit.images ?? []).map((image) => image.assetId).join('|')
+      ),
+  );
+  const isTalkEditDirty = Boolean(
+    isTalkEditMode &&
+      talkPostToEdit &&
+      (
+        talkCategory !== talkPostToEdit.category ||
+        talkTitle !== talkPostToEdit.title ||
+        talkBody !== talkPostToEdit.body ||
+        !sameStringList(talkTags, talkPostToEdit.tags) ||
+        talkPhotos.map((image) => image.assetId).join('|') !==
+          (talkPostToEdit.images ?? []).map((image) => image.assetId).join('|')
+      ),
+  );
+  const isMarketEditDirty = Boolean(
+    isMarketEditMode &&
+      marketPostToEdit &&
+      (
+        tradeType !== marketPostToEdit.tradeType ||
+        marketCategory !== marketPostToEdit.category ||
+        productName !== marketPostToEdit.title ||
+        price !== parsePriceValue(marketPostToEdit.priceLabel) ||
+        priceOffer !== hasPriceOffer(marketPostToEdit.priceLabel) ||
+        expiresAt !== (marketPostToEdit.expiresAt ?? '') ||
+        marketBody !== marketPostToEdit.body ||
+        tradeLocation !== marketPostToEdit.location ||
+        !sameStringList(tradeMethods, getMarketTradeMethods(marketPostToEdit)) ||
+        marketPhotos.map((image) => image.assetId).join('|') !==
+          (marketPostToEdit.images ?? []).map((image) => image.assetId).join('|')
+      ),
+  );
+  const isDirty = isDraftReady &&
+    (isEditMode
+      ? isTalkEditDirty || isMarketEditDirty || isReviewEditDirty
+      : hasWriteDraftContent(currentDraft, defaultMarketLocation));
+
+  const applyDraft = useCallback((draft: CommunityWriteDraft) => {
+    if (draft.tab === 'talk') {
+      setTalkCategory(draft.talkCategory);
+      setTalkTitle(draft.talkTitle);
+      setTalkBody(draft.talkBody);
+      setTalkPhotos(draft.talkPhotos);
+      setTalkTags(draft.talkTags);
+      return;
+    }
+
+    if (draft.tab === 'market') {
+      setTradeType(draft.tradeType);
+      setMarketCategory(draft.marketCategory);
+      setMarketPhotos(draft.marketPhotos);
+      setProductName(draft.productName);
+      setPrice(draft.price);
+      setPriceOffer(draft.priceOffer);
+      setExpiresAt(draft.expiresAt);
+      setMarketBody(draft.marketBody);
+      setTradeMethods(draft.tradeMethods.filter((method): method is TradeMethod =>
+        TRADE_METHODS.includes(method as TradeMethod),
+      ));
+      setTradeLocation(draft.tradeLocation);
+      return;
+    }
+
+    setReviewCategory(draft.reviewCategory);
+    setReviewTarget(draft.reviewTarget);
+    setReviewRating(draft.reviewRating);
+    setReviewKindness(draft.reviewKindness);
+    setReviewPriceScore(draft.reviewPriceScore);
+    setReviewRevisit(draft.reviewRevisit);
+    setReviewTitle(draft.reviewTitle);
+    setReviewVisitedAt(draft.reviewVisitedAt);
+    setReviewBody(draft.reviewBody);
+    setReviewPhotos(draft.reviewPhotos);
+  }, []);
+
+  const applyTalkPost = useCallback((post: TalkPost) => {
+    setTalkCategory(post.category);
+    setTalkTitle(post.title);
+    setTalkBody(post.body);
+    setTalkPhotos(post.images ?? []);
+    setTalkTags(post.tags);
+  }, []);
+
+  const applyMarketPost = useCallback((post: MarketPost) => {
+    setTradeType(post.tradeType);
+    setMarketCategory(post.category);
+    setMarketPhotos(post.images ?? []);
+    setProductName(post.title);
+    setPrice(parsePriceValue(post.priceLabel));
+    setPriceOffer(hasPriceOffer(post.priceLabel));
+    setExpiresAt(post.expiresAt ?? '');
+    setMarketBody(post.body);
+    setTradeMethods(getMarketTradeMethods(post));
+    setTradeLocation(post.location);
+  }, []);
+
+  const applyReviewPost = useCallback((post: NonNullable<typeof reviewPostToEdit>) => {
+    setReviewCategory(post.category);
+    setReviewTarget(post.targetName ?? '');
+    setReviewRating(post.rating);
+    setReviewKindness(post.detailScores?.kindness ?? 5);
+    setReviewPriceScore(post.detailScores?.price ?? 4);
+    setReviewRevisit(post.detailScores?.revisit ?? 5);
+    setReviewTitle(post.title);
+    setReviewVisitedAt(post.visitedAt ?? '');
+    setReviewBody(post.body);
+    setReviewPhotos(post.images ?? []);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setIsDraftReady(false);
+    draftCompleted.current = false;
+    allowNavigation.current = false;
+
+    if (isTalkEditRequested) {
+      if (talkPostToEdit && talkPostToEdit.author.userId === viewerId) {
+        applyTalkPost(talkPostToEdit);
+      }
+      setIsDraftReady(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    if (isMarketEditRequested) {
+      if (marketPostToEdit && marketPostToEdit.author.userId === viewerId) {
+        applyMarketPost(marketPostToEdit);
+      }
+      setIsDraftReady(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    if (isReviewEditRequested) {
+      if (reviewPostToEdit && reviewPostToEdit.author.userId === viewerId) {
+        applyReviewPost(reviewPostToEdit);
+      }
+      setIsDraftReady(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    communityRepository
+      .loadWriteDraft(viewerId, initialTab)
+      .then((draft) => {
+        if (!active) return;
+        if (draft) applyDraft(draft);
+      })
+      .finally(() => {
+        if (active) setIsDraftReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    applyDraft,
+    applyMarketPost,
+    applyReviewPost,
+    applyTalkPost,
+    initialTab,
+    isMarketEditRequested,
+    isReviewEditRequested,
+    isTalkEditRequested,
+    marketPostToEdit,
+    reviewPostToEdit,
+    talkPostToEdit,
+    viewerId,
+  ]);
+
+  useEffect(() => {
+    if (!isDraftReady || draftCompleted.current || isEditMode) return undefined;
+
+    const timeout = setTimeout(() => {
+      if (draftCompleted.current) return;
+
+      if (hasWriteDraftContent(currentDraft, defaultMarketLocation)) {
+        void communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
+        return;
+      }
+
+      void communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
+    }, 220);
+
+    return () => clearTimeout(timeout);
+  }, [currentDraft, defaultMarketLocation, initialTab, isDraftReady, isEditMode, viewerId]);
+
+  usePreventRemove(isDirty && !submitting, ({ data }) => {
+    if (allowNavigation.current) {
+      navigation.dispatch(data.action);
+      return;
+    }
+
+    setPendingExitAction(data.action);
+  });
+
+  const discardDraftAndLeave = useCallback(() => {
+    const exitAction = pendingExitAction;
+    if (!exitAction) return;
+
+    setPendingExitAction(null);
+    void (async () => {
+      draftCompleted.current = true;
+      if (isEditMode) {
+        const photos = initialTab === 'talk'
+          ? talkPhotos
+          : initialTab === 'market'
+            ? marketPhotos
+            : reviewPhotos;
+        await removeCommunityImages(
+          viewerId,
+          photos.filter((image) => !originalImageIds.has(image.assetId)),
+        ).catch(() => undefined);
+      } else {
+        await communityRepository.discardWriteDraft(viewerId, initialTab).catch(() => undefined);
+        if (initialTab === 'talk') await removeCommunityImages(viewerId, talkPhotos).catch(() => undefined);
+        if (initialTab === 'market') await removeCommunityImages(viewerId, marketPhotos).catch(() => undefined);
+        if (initialTab === 'review') await removeCommunityImages(viewerId, reviewPhotos).catch(() => undefined);
+      }
+      allowNavigation.current = true;
+      navigation.dispatch(exitAction);
+    })();
+  }, [
+    initialTab,
+    isEditMode,
+    marketPhotos,
+    navigation,
+    originalImageIds,
+    pendingExitAction,
+    reviewPhotos,
+    talkPhotos,
+    viewerId,
+  ]);
+
+  const pickPhotos = async (
+    photos: CommunityImageAsset[],
+    setPhotos: (photos: CommunityImageAsset[]) => void,
+    maxCount = MAX_PHOTOS,
+  ) => {
     if (photos.length >= maxCount) return;
 
     try {
@@ -414,9 +1004,18 @@ export function CommunityWriteScreen() {
       });
       if (result.canceled) return;
 
+      const persistedImages: CommunityImageAsset[] = [];
+      try {
+        for (const asset of result.assets.slice(0, maxCount - photos.length)) {
+          persistedImages.push(await persistCommunityImage(viewerId, asset.uri));
+        }
+      } catch (error) {
+        await removeCommunityImages(viewerId, persistedImages).catch(() => undefined);
+        throw error;
+      }
       const nextPhotos = [
         ...photos,
-        ...result.assets.map((asset) => asset.uri),
+        ...persistedImages,
       ].slice(0, maxCount);
       setPhotos(nextPhotos);
     } catch {
@@ -424,15 +1023,38 @@ export function CommunityWriteScreen() {
     }
   };
 
-  const removePhoto = (photos: string[], setPhotos: (photos: string[]) => void, uri: string) => {
-    setPhotos(photos.filter((photo) => photo !== uri));
+  const removePhoto = (
+    photos: CommunityImageAsset[],
+    setPhotos: (photos: CommunityImageAsset[]) => void,
+    uri: string,
+  ) => {
+    const target = photos.find((photo) => getCommunityImageUri(photo) === uri);
+    if (target && (!isEditMode || !originalImageIds.has(target.assetId))) {
+      void removeCommunityImage(viewerId, target).catch(() => undefined);
+    }
+    setPhotos(photos.filter((photo) => getCommunityImageUri(photo) !== uri));
   };
 
-  const movePhotoToFirst = (photos: string[], setPhotos: (photos: string[]) => void, index: number) => {
-    if (index <= 0 || index >= photos.length) return;
+  const reorderPhotos = (
+    photos: CommunityImageAsset[],
+    setPhotos: (photos: CommunityImageAsset[]) => void,
+    fromIndex: number,
+    toIndex: number,
+  ) => {
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= photos.length ||
+      toIndex >= photos.length
+    ) {
+      return;
+    }
+
     const nextPhotos = [...photos];
-    const [selectedPhoto] = nextPhotos.splice(index, 1);
-    setPhotos([selectedPhoto, ...nextPhotos]);
+    const [selectedPhoto] = nextPhotos.splice(fromIndex, 1);
+    nextPhotos.splice(toIndex, 0, selectedPhoto);
+    setPhotos(nextPhotos);
   };
 
   const selectReviewDate = (date: Date) => {
@@ -505,6 +1127,11 @@ export function CommunityWriteScreen() {
   const marketNeedsPrice = tradeType === '판매';
   const marketNeedsLocation = tradeMethods.includes('직거래') || tradeMethods.includes('비대면 나눔');
   const hasInvalidExpiry = Boolean(expiresAt.trim() && !isFutureDateValue(expiresAt));
+  const normalizedReviewBody = normalizeMultilineText(reviewBody);
+  const normalizedReviewTarget = normalizeInlineText(reviewTarget);
+  const normalizedReviewTitle = normalizeInlineText(reviewTitle);
+  const reviewVisitedDate = parseDateValue(reviewVisitedAt);
+  const hasInvalidReviewDate = Boolean(reviewVisitedAt.trim() && !isPastOrTodayDateValue(reviewVisitedAt));
   const canSubmitMarket = Boolean(
     productName.trim() &&
       marketBody.trim() &&
@@ -513,7 +1140,14 @@ export function CommunityWriteScreen() {
       !hasInvalidExpiry &&
       (!marketNeedsLocation || tradeLocation.trim()),
   );
-  const canSubmitReview = Boolean(reviewTarget.trim() && reviewTitle.trim() && reviewBody.trim());
+  const canSubmitReview = Boolean(
+    normalizedReviewTarget &&
+      normalizedReviewTitle &&
+      normalizedReviewBody.length >= MIN_REVIEW_BODY_LENGTH &&
+      normalizedReviewBody.length <= MAX_REVIEW_BODY_LENGTH &&
+      reviewVisitedDate &&
+      !hasInvalidReviewDate,
+  );
   const canSubmit =
     initialTab === 'talk'
       ? canSubmitTalk
@@ -540,9 +1174,14 @@ export function CommunityWriteScreen() {
       return null;
     }
 
-    if (!reviewTarget.trim()) return '리뷰 대상을 입력해주세요.';
-    if (!reviewTitle.trim()) return '제목을 입력해주세요.';
-    if (!reviewBody.trim()) return '후기 내용을 입력해주세요.';
+    if (!normalizedReviewTarget) return '리뷰 대상을 입력해주세요.';
+    if (normalizedReviewTarget.length > MAX_REVIEW_TARGET_LENGTH) return '리뷰 대상은 50자 이하로 입력해주세요.';
+    if (!normalizedReviewTitle) return '제목을 입력해주세요.';
+    if (!reviewVisitedAt.trim()) return '이용 날짜를 입력해주세요.';
+    if (hasInvalidReviewDate || !reviewVisitedDate) return '이용 날짜는 오늘 이전 날짜로 입력해주세요.';
+    if (!normalizedReviewBody) return '후기 내용을 입력해주세요.';
+    if (normalizedReviewBody.length < MIN_REVIEW_BODY_LENGTH) return '후기 내용은 10자 이상 입력해주세요.';
+    if (normalizedReviewBody.length > MAX_REVIEW_BODY_LENGTH) return '후기 내용은 700자 이하로 입력해주세요.';
     return null;
   };
 
@@ -559,18 +1198,41 @@ export function CommunityWriteScreen() {
 
     try {
       if (initialTab === 'talk') {
+        if (isTalkEditMode && postId) {
+          const result = await updateTalkPost(postId, {
+            body: talkBody,
+            category: talkCategory,
+            images: talkPhotos,
+            showNeighborhood: true,
+            tags: talkTags,
+            title: talkTitle,
+          });
+          if (result.ok) {
+            draftCompleted.current = true;
+            allowNavigation.current = true;
+            router.replace({ pathname: '/community/[postId]', params: { postId } });
+            return;
+          }
+
+          Alert.alert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+          return;
+        }
+
         const result = await addTalkPost({
           author,
           baseBookmarkCount: 0,
           baseReactionCounts: { like: 0 },
           body: talkBody,
           category: talkCategory,
-          photoUris: talkPhotos,
+          images: talkPhotos,
           showNeighborhood: true,
           tags: talkTags,
           title: talkTitle,
         });
         if (result.ok && result.postId) {
+          draftCompleted.current = true;
+          allowNavigation.current = true;
+          await communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
           router.replace({ pathname: '/community/[postId]', params: { postId: result.postId } });
           return;
         }
@@ -588,26 +1250,45 @@ export function CommunityWriteScreen() {
               : tradeType === '구해요' && !price.replace(/[^0-9]/g, '')
                 ? '가격 협의'
                 : formatPrice(price);
-        const result = await addMarketPost({
-          author,
-          baseBookmarkCount: 0,
-          baseReactionCounts: { helpful: 0, notHelpful: 0 },
+        const marketPayload = {
           body: marketBody,
           category: marketCategory,
           expiresAt: expiresAt.trim() || undefined,
+          images: marketPhotos,
           imageCount: marketPhotos.length,
           location: tradeLocation.trim() || profile?.location || '지역 미설정',
-          photoUris: marketPhotos,
           priceLabel:
             tradeType === '판매' && priceOffer && resolvedPrice
               ? `${resolvedPrice} · 가격 제안 가능`
               : resolvedPrice,
-          status: '진행 중',
           tags: [marketCategory, tradeType, ...tradeMethods],
           title: productName,
           tradeType,
+        };
+        if (isMarketEditMode && postId) {
+          const result = await updateMarketPost(postId, marketPayload);
+          if (result.ok) {
+            draftCompleted.current = true;
+            allowNavigation.current = true;
+            router.replace({ pathname: '/community/[postId]', params: { postId } });
+            return;
+          }
+
+          Alert.alert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+          return;
+        }
+
+        const result = await addMarketPost({
+          ...marketPayload,
+          author,
+          baseBookmarkCount: 0,
+          baseReactionCounts: { helpful: 0, notHelpful: 0 },
+          status: '진행 중',
         });
         if (result.ok && result.postId) {
+          draftCompleted.current = true;
+          allowNavigation.current = true;
+          await communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
           router.replace({ pathname: '/community/[postId]', params: { postId: result.postId } });
           return;
         }
@@ -616,23 +1297,42 @@ export function CommunityWriteScreen() {
         return;
       }
 
-      const result = await addReviewPost({
-        author,
-        baseReactionCounts: { helpful: 0, notHelpful: 0 },
-        body: reviewBody,
-        category: reviewCategory,
+      const reviewPayload = {
+        body: normalizedReviewBody,
         detailScores: {
           kindness: reviewKindness,
           price: reviewPriceScore,
           revisit: reviewRevisit,
         },
+        images: reviewPhotos,
         rating: reviewRating,
-        photoUris: reviewPhotos,
-        targetName: reviewTarget,
-        title: reviewTitle,
-        visitedAt: reviewVisitedAt.trim() || undefined,
+        title: normalizedReviewTitle,
+        visitedAt: reviewVisitedDate ? formatDateValue(reviewVisitedDate) : undefined,
+      };
+      if (isReviewEditMode && postId) {
+        const result = await updateReviewPost(postId, reviewPayload);
+        if (result.ok) {
+          draftCompleted.current = true;
+          allowNavigation.current = true;
+          router.replace({ pathname: '/community/[postId]', params: { postId } });
+          return;
+        }
+
+        Alert.alert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+        return;
+      }
+
+      const result = await addReviewPost({
+        ...reviewPayload,
+        author,
+        baseReactionCounts: { helpful: 0, notHelpful: 0 },
+        category: reviewCategory,
+        targetName: normalizedReviewTarget,
       });
       if (result.ok && result.postId) {
+        draftCompleted.current = true;
+        allowNavigation.current = true;
+        await communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
         router.replace({ pathname: '/community/[postId]', params: { postId: result.postId } });
         return;
       }
@@ -644,11 +1344,38 @@ export function CommunityWriteScreen() {
   };
 
   const title =
-    initialTab === 'market'
+    isTalkEditMode
+      ? '소통 수정'
+      : isMarketEditMode
+        ? '장터 수정'
+        : isReviewEditMode
+      ? '리뷰 수정'
+      : initialTab === 'market'
       ? '장터 글쓰기'
       : initialTab === 'review'
         ? '리뷰 글쓰기'
         : '소통 글쓰기';
+  const submitLabel = isEditMode ? '저장' : '등록';
+
+  if (isEditRequested && !isReady) {
+    return <LoadingView label="게시글을 불러오고 있어요" />;
+  }
+
+  if (isEditRequested && !isEditMode && isDraftReady) {
+    return (
+      <ScreenLayout
+        headerFullWidth
+        headerVariant="auth"
+        title="커뮤니티"
+      >
+        <EmptyState
+          description="이미 삭제되었거나 수정할 수 없는 게시글이에요."
+          icon={<AppIcon color={COLORS.primary} name="alert-circle-outline" size={32} />}
+          title="게시글을 찾을 수 없어요"
+        />
+      </ScreenLayout>
+    );
+  }
 
   return (
     <>
@@ -669,7 +1396,7 @@ export function CommunityWriteScreen() {
           ]}
         >
           <Text style={[styles.submitPillText, canSubmit && styles.submitPillTextActive]}>
-            등록
+            {submitLabel}
           </Text>
         </Pressable>
       }
@@ -724,8 +1451,8 @@ export function CommunityWriteScreen() {
               <FieldCard title="사진 첨부" subtitle="검사 결과, 처방 봉투, 증상 사진 등을 올릴 수 있어요">
                 <PhotoPickerRow
                   onAdd={() => void pickPhotos(talkPhotos, setTalkPhotos)}
-                  onMoveToFirst={(index) => movePhotoToFirst(talkPhotos, setTalkPhotos, index)}
                   onRemove={(uri) => removePhoto(talkPhotos, setTalkPhotos, uri)}
+                  onReorder={(fromIndex, toIndex) => reorderPhotos(talkPhotos, setTalkPhotos, fromIndex, toIndex)}
                   photos={talkPhotos}
                 />
               </FieldCard>
@@ -813,8 +1540,8 @@ export function CommunityWriteScreen() {
               <FieldCard required={marketNeedsPhoto} title="상품 사진" subtitle="대표 사진은 첫 번째로 보여져요.">
                 <PhotoPickerRow
                   onAdd={() => void pickPhotos(marketPhotos, setMarketPhotos)}
-                  onMoveToFirst={(index) => movePhotoToFirst(marketPhotos, setMarketPhotos, index)}
                   onRemove={(uri) => removePhoto(marketPhotos, setMarketPhotos, uri)}
+                  onReorder={(fromIndex, toIndex) => reorderPhotos(marketPhotos, setMarketPhotos, fromIndex, toIndex)}
                   photos={marketPhotos}
                 />
                 {marketNeedsPhoto && marketPhotos.length === 0 ? (
@@ -930,17 +1657,28 @@ export function CommunityWriteScreen() {
           {initialTab === 'review' ? (
             <>
               <FieldCard title="리뷰 종류" subtitle="경험한 서비스나 장소를 골라주세요">
-                <ChipGroup onChange={setReviewCategory} value={reviewCategory} values={REVIEW_WRITE_CATEGORIES} />
+                {isReviewEditMode ? (
+                  <View style={styles.lockedReviewCategory}>
+                    <Text style={styles.lockedReviewCategoryText}>{reviewCategory}</Text>
+                  </View>
+                ) : (
+                  <ChipGroup onChange={setReviewCategory} value={reviewCategory} values={REVIEW_WRITE_CATEGORIES} />
+                )}
                 <Text style={styles.sectionLabel}>
                   대상
                   <Text style={styles.requiredMark}> *</Text>
                 </Text>
                 <AppInput
+                  editable={!isReviewEditMode}
                   leftElement={<AppIcon color={COLORS.primary} name="search-outline" size={18} />}
+                  maxLength={MAX_REVIEW_TARGET_LENGTH}
                   onChangeText={setReviewTarget}
                   placeholder={getReviewTargetPlaceholder(reviewCategory)}
                   value={reviewTarget}
                 />
+                {isReviewEditMode ? (
+                  <Text style={styles.lockedReviewGuide}>리뷰 종류와 대상은 수정할 수 없어요.</Text>
+                ) : null}
               </FieldCard>
 
               <FieldCard title="평점" subtitle="별점과 세부 만족도를 남겨주세요">
@@ -976,7 +1714,7 @@ export function CommunityWriteScreen() {
                   />
                 </View>
                 <View style={styles.formRow}>
-                  <Text style={styles.formLabel}>이용 날짜</Text>
+                  <FormLabel required title="이용 날짜" />
                   <AppInput
                     containerStyle={styles.formInput}
                     leftElement={
@@ -990,8 +1728,9 @@ export function CommunityWriteScreen() {
                         <AppIcon color={COLORS.primary} name="calendar-outline" size={18} />
                       </Pressable>
                     }
+                    keyboardType="number-pad"
                     maxLength={10}
-                    onChangeText={setReviewVisitedAt}
+                    onChangeText={(value) => setReviewVisitedAt(formatDateInput(value))}
                     placeholder="2026.07.05"
                     value={reviewVisitedAt}
                   />
@@ -1001,20 +1740,20 @@ export function CommunityWriteScreen() {
               <FieldCard required title="후기 내용" subtitle="좋았던 점과 아쉬웠던 점을 솔직하게 남겨주세요">
                 <AppInput
                   inputStyle={styles.marketBodyInput}
-                  maxLength={MAX_BODY_LENGTH}
+                  maxLength={MAX_REVIEW_BODY_LENGTH}
                   multiline
                   onChangeText={setReviewBody}
                   placeholder="예) 진료 설명이 자세했고 대기 시간이 짧았어요. 비용 안내도 미리 받을 수 있어서 좋았어요."
                   value={reviewBody}
                 />
-                <Text style={styles.counter}>{reviewBody.length} / {MAX_BODY_LENGTH}</Text>
+                <Text style={styles.counter}>{reviewBody.length} / {MAX_REVIEW_BODY_LENGTH}</Text>
               </FieldCard>
 
               <FieldCard title="사진 첨부" subtitle="방문 사진이나 영수증을 선택할 수 있어요">
                 <PhotoPickerRow
                   onAdd={() => void pickPhotos(reviewPhotos, setReviewPhotos)}
-                  onMoveToFirst={(index) => movePhotoToFirst(reviewPhotos, setReviewPhotos, index)}
                   onRemove={(uri) => removePhoto(reviewPhotos, setReviewPhotos, uri)}
+                  onReorder={(fromIndex, toIndex) => reorderPhotos(reviewPhotos, setReviewPhotos, fromIndex, toIndex)}
                   photos={reviewPhotos}
                 />
               </FieldCard>
@@ -1084,6 +1823,24 @@ export function CommunityWriteScreen() {
           </AppModal>
         </>
       ) : null}
+
+      <AppModal
+        onClose={() => setPendingExitAction(null)}
+        primaryAction={{
+          label: '나가기',
+          onPress: discardDraftAndLeave,
+          variant: 'danger',
+        }}
+        secondaryAction={{
+          label: '계속 작성',
+          onPress: () => setPendingExitAction(null),
+        }}
+        title="글쓰기를 그만할까요?"
+        variant="center"
+        visible={Boolean(pendingExitAction)}
+      >
+        <Text style={styles.exitModalDescription}>작성 중인 내용이 삭제돼요.</Text>
+      </AppModal>
     </>
   );
 }
@@ -1220,9 +1977,25 @@ const styles = StyleSheet.create({
   photoBoxPrimary: {
     borderColor: COLORS.primary,
   },
+  photoBoxDragging: {
+    elevation: 8,
+    opacity: 0.92,
+    zIndex: 10,
+  },
   photoPreview: {
     height: '100%',
     width: '100%',
+  },
+  photoRemoveButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(26, 26, 26, 0.56)',
+    borderRadius: RADIUS.round,
+    height: 20,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 3,
+    top: 3,
+    width: 20,
   },
   coverBadge: {
     backgroundColor: COLORS.primary,
@@ -1305,6 +2078,23 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     marginTop: SPACING.sm,
   },
+  lockedReviewCategory: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary,
+    borderRadius: RADIUS.round,
+    borderWidth: 1,
+    paddingHorizontal: SPACING.xxl,
+    paddingVertical: SPACING.sm,
+  },
+  lockedReviewCategoryText: {
+    ...TYPOGRAPHY.label,
+    color: COLORS.primary,
+  },
+  lockedReviewGuide: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.gray500,
+  },
   formRow: {
     alignItems: 'flex-start',
     flexDirection: 'row',
@@ -1363,6 +2153,11 @@ const styles = StyleSheet.create({
   errorText: {
     ...TYPOGRAPHY.caption,
     color: COLORS.error,
+  },
+  exitModalDescription: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.gray600,
+    textAlign: 'center',
   },
   ratingRow: {
     alignItems: 'center',

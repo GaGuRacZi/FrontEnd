@@ -21,11 +21,18 @@ export type CommunityAuthorSnapshot = {
   userId: string;
 };
 
+export type CommunityImageAsset = {
+  assetId: string;
+  localUri?: string;
+  url?: string;
+};
+
 type CommunityPostBase = {
   author: CommunityAuthorSnapshot;
   body: string;
   createdAt: string;
   id: string;
+  images?: CommunityImageAsset[];
   kind: PostKind;
   photoUris?: string[];
   tags: string[];
@@ -68,6 +75,7 @@ export type ReviewPost = {
     revisit: number;
   };
   id: string;
+  images?: CommunityImageAsset[];
   photoUris?: string[];
   placeholderPhotoCount?: number;
   rating: number;
@@ -90,13 +98,62 @@ export type CommunityComment = {
 export type CommunityViewerState = {
   bookmarkedPostIds: string[];
   filterSession: {
+    activeTab: PostKind;
     marketCategory: MarketCategory;
     marketStatuses: MarketStatus[];
     marketTradeTypes: MarketTradeType[];
+    reviewCategory: ReviewCategory;
+    searchQuery: string;
+    searchTab: PostKind;
     talkCategory: TalkCategory;
   };
   reactionPostIds: Partial<Record<ReactionKind, string[]>>;
 };
+
+export type CommunityWriteDraft =
+  | {
+      id: string;
+      tab: 'talk';
+      talkBody: string;
+      talkCategory: Exclude<TalkCategory, '전체'>;
+      talkPhotos: CommunityImageAsset[];
+      talkTags: string[];
+      talkTitle: string;
+      updatedAt: string;
+      userId: string;
+    }
+  | {
+      expiresAt: string;
+      id: string;
+      marketBody: string;
+      marketCategory: Exclude<MarketCategory, '전체'>;
+      marketPhotos: CommunityImageAsset[];
+      price: string;
+      priceOffer: boolean;
+      productName: string;
+      tab: 'market';
+      tradeLocation: string;
+      tradeMethods: string[];
+      tradeType: MarketTradeType;
+      updatedAt: string;
+      userId: string;
+    }
+  | {
+      id: string;
+      reviewBody: string;
+      reviewCategory: Exclude<ReviewCategory, '전체'>;
+      reviewKindness: number;
+      reviewPhotos: CommunityImageAsset[];
+      reviewPriceScore: number;
+      reviewRating: number;
+      reviewRevisit: number;
+      reviewTarget: string;
+      reviewTitle: string;
+      reviewVisitedAt: string;
+      tab: 'review';
+      updatedAt: string;
+      userId: string;
+    };
 
 export type StoredCommunityState = {
   comments: CommunityComment[];
