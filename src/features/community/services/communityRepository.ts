@@ -9,6 +9,10 @@ import type { CommunityImageAsset, CommunityWriteDraft, StoredCommunityState } f
 
 const COMMUNITY_STORAGE_KEY = 'paw:community-store';
 const COMMUNITY_WRITE_DRAFT_PREFIX = 'paw:community-write-draft:';
+type TalkWriteDraft = Extract<CommunityWriteDraft, { tab: 'talk' }>;
+type MarketWriteDraft = Extract<CommunityWriteDraft, { tab: 'market' }>;
+type ReviewWriteDraft = Extract<CommunityWriteDraft, { tab: 'review' }>;
+let writeDraftQueue = Promise.resolve();
 
 function writeDraftKey(userId: string, tab: CommunityWriteDraft['tab']) {
   return `${COMMUNITY_WRITE_DRAFT_PREFIX}${encodeURIComponent(userId)}:${tab}`;
@@ -16,6 +20,15 @@ function writeDraftKey(userId: string, tab: CommunityWriteDraft['tab']) {
 
 function writeDraftPrefix(userId: string) {
   return `${COMMUNITY_WRITE_DRAFT_PREFIX}${encodeURIComponent(userId)}:`;
+}
+
+function enqueueWriteDraftOperation<T>(operation: () => Promise<T>) {
+  const nextOperation = writeDraftQueue.then(operation, operation);
+  writeDraftQueue = nextOperation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return nextOperation;
 }
 
 function readStoredState(stored: string) {
@@ -94,60 +107,196 @@ function normalizeDraftImages(value: unknown): CommunityImageAsset[] {
   }, []);
 }
 
-function normalizeWriteDraft(draft: CommunityWriteDraft): CommunityWriteDraft {
-  if (draft.tab === 'talk') {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object');
+}
+
+function getString(value: unknown) {
+  return typeof value === 'string' ? value : null;
+}
+
+function getBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function getNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function getStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : null;
+}
+
+function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
+  if (!isRecord(value)) return null;
+  const userId = getString(value.userId);
+  const id = getString(value.id);
+  const tab = getString(value.tab);
+  const updatedAt = getString(value.updatedAt);
+
+  if (!userId || !id || !updatedAt) return null;
+
+  if (tab === 'talk') {
+    const talkTitle = getString(value.talkTitle);
+    const talkBody = getString(value.talkBody);
+    const talkCategory = getString(value.talkCategory);
+    const talkTags = getStringArray(value.talkTags);
+
+    if (!talkTitle || talkBody === null || !talkCategory || !talkTags) return null;
+
     return {
-      ...draft,
-      talkPhotos: normalizeDraftImages(draft.talkPhotos),
+      id,
+      tab,
+      talkBody,
+      talkCategory: talkCategory as TalkWriteDraft['talkCategory'],
+      talkPhotos: normalizeDraftImages(value.talkPhotos),
+      talkTags,
+      talkTitle,
+      updatedAt,
+      userId,
     };
   }
 
-  if (draft.tab === 'market') {
+  if (tab === 'market') {
+    const expiresAt = getString(value.expiresAt);
+    const marketBody = getString(value.marketBody);
+    const marketCategory = getString(value.marketCategory);
+    const price = getString(value.price);
+    const priceOffer = getBoolean(value.priceOffer);
+    const productName = getString(value.productName);
+    const tradeLocation = getString(value.tradeLocation);
+    const tradeMethods = getStringArray(value.tradeMethods);
+    const tradeType = getString(value.tradeType);
+
+    if (
+      expiresAt === null ||
+      marketBody === null ||
+      !marketCategory ||
+      price === null ||
+      priceOffer === null ||
+      productName === null ||
+      tradeLocation === null ||
+      !tradeMethods ||
+      !tradeType
+    ) {
+      return null;
+    }
+
     return {
-      ...draft,
-      marketPhotos: normalizeDraftImages(draft.marketPhotos),
+      expiresAt,
+      id,
+      marketBody,
+      marketCategory: marketCategory as MarketWriteDraft['marketCategory'],
+      marketPhotos: normalizeDraftImages(value.marketPhotos),
+      price,
+      priceOffer,
+      productName,
+      tab,
+      tradeLocation,
+      tradeMethods,
+      tradeType: tradeType as MarketWriteDraft['tradeType'],
+      updatedAt,
+      userId,
     };
+  }
+
+  if (tab !== 'review') return null;
+
+  const reviewBody = getString(value.reviewBody);
+  const reviewCategory = getString(value.reviewCategory);
+  const reviewKindness = getNumber(value.reviewKindness);
+  const reviewPriceScore = getNumber(value.reviewPriceScore);
+  const reviewRating = getNumber(value.reviewRating);
+  const reviewRevisit = getNumber(value.reviewRevisit);
+  const reviewTarget = getString(value.reviewTarget);
+  const reviewTitle = getString(value.reviewTitle);
+  const reviewVisitedAt = getString(value.reviewVisitedAt);
+
+  if (
+    reviewBody === null ||
+    !reviewCategory ||
+    reviewKindness === null ||
+    reviewPriceScore === null ||
+    reviewRating === null ||
+    reviewRevisit === null ||
+    reviewTarget === null ||
+    reviewTitle === null ||
+    reviewVisitedAt === null
+  ) {
+    return null;
   }
 
   return {
-    ...draft,
-    reviewPhotos: normalizeDraftImages(draft.reviewPhotos),
+    id,
+    reviewBody,
+    reviewCategory: reviewCategory as ReviewWriteDraft['reviewCategory'],
+    reviewKindness,
+    reviewPhotos: normalizeDraftImages(value.reviewPhotos),
+    reviewPriceScore,
+    reviewRating,
+    reviewRevisit,
+    reviewTarget,
+    reviewTitle,
+    reviewVisitedAt,
+    tab,
+    updatedAt,
+    userId,
   };
+}
+
+async function readWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
+  const stored = await AsyncStorage.getItem(writeDraftKey(userId, tab));
+  if (!stored) return null;
+
+  try {
+    const parsed = normalizeWriteDraft(JSON.parse(stored));
+    if (parsed?.userId === userId && parsed.tab === tab) return parsed;
+  } catch {
+    await AsyncStorage.removeItem(writeDraftKey(userId, tab));
+    return null;
+  }
+
+  await AsyncStorage.removeItem(writeDraftKey(userId, tab));
+  return null;
 }
 
 export const communityRepository = {
   async clearWriteDrafts(userId: string) {
-    const keys = await AsyncStorage.getAllKeys();
-    const draftKeys = keys.filter((key) => key.startsWith(writeDraftPrefix(userId)));
-    const drafts = await Promise.all(
-      draftKeys.map(async (key) => {
-        const stored = await AsyncStorage.getItem(key);
-        if (!stored) return null;
+    await enqueueWriteDraftOperation(async () => {
+      const keys = await AsyncStorage.getAllKeys();
+      const draftKeys = keys.filter((key) => key.startsWith(writeDraftPrefix(userId)));
+      const drafts = await Promise.all(
+        draftKeys.map(async (key) => {
+          const stored = await AsyncStorage.getItem(key);
+          if (!stored) return null;
 
-        try {
-          const parsed = JSON.parse(stored) as CommunityWriteDraft;
-          return parsed.userId === userId ? normalizeWriteDraft(parsed) : null;
-        } catch {
-          return null;
-        }
-      }),
-    );
-    await Promise.all(
-      drafts
-        .filter((draft): draft is CommunityWriteDraft => Boolean(draft))
-        .map((draft) => removeCommunityImages(userId, getDraftImages(draft))),
-    );
-    if (draftKeys.length) await AsyncStorage.multiRemove(draftKeys);
+          try {
+            const parsed = normalizeWriteDraft(JSON.parse(stored));
+            return parsed?.userId === userId ? parsed : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      await Promise.all(
+        drafts
+          .filter((draft): draft is CommunityWriteDraft => Boolean(draft))
+          .map((draft) => removeCommunityImages(userId, getDraftImages(draft))),
+      );
+      if (draftKeys.length) await AsyncStorage.multiRemove(draftKeys);
+    });
   },
 
   async deleteWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
-    await AsyncStorage.removeItem(writeDraftKey(userId, tab));
+    await enqueueWriteDraftOperation(() => AsyncStorage.removeItem(writeDraftKey(userId, tab)));
   },
 
   async discardWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
-    const draft = await this.loadWriteDraft(userId, tab);
-    if (draft) await removeCommunityImages(userId, getDraftImages(draft));
-    await this.deleteWriteDraft(userId, tab);
+    await enqueueWriteDraftOperation(async () => {
+      const draft = await readWriteDraft(userId, tab);
+      if (draft) await removeCommunityImages(userId, getDraftImages(draft));
+      await AsyncStorage.removeItem(writeDraftKey(userId, tab));
+    });
   },
 
   async deleteUserState(userId: string) {
@@ -190,18 +339,11 @@ export const communityRepository = {
   },
 
   async loadWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
-    const stored = await AsyncStorage.getItem(writeDraftKey(userId, tab));
-    if (!stored) return null;
-
     try {
-      const parsed = JSON.parse(stored) as CommunityWriteDraft;
-      if (parsed.userId !== userId || parsed.tab !== tab) {
-        await this.deleteWriteDraft(userId, tab);
-        return null;
-      }
-      return normalizeWriteDraft(parsed);
+      await writeDraftQueue;
+      return await readWriteDraft(userId, tab);
     } catch {
-      await this.deleteWriteDraft(userId, tab);
+      await AsyncStorage.removeItem(writeDraftKey(userId, tab));
       return null;
     }
   },
@@ -227,6 +369,8 @@ export const communityRepository = {
   },
 
   async saveWriteDraft(draft: CommunityWriteDraft) {
-    await AsyncStorage.setItem(writeDraftKey(draft.userId, draft.tab), JSON.stringify(draft));
+    await enqueueWriteDraftOperation(() =>
+      AsyncStorage.setItem(writeDraftKey(draft.userId, draft.tab), JSON.stringify(draft)),
+    );
   },
 };

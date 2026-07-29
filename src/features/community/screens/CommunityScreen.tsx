@@ -154,9 +154,13 @@ function hasSearchValue(values: string[], query: string) {
   const normalizedQuery = normalizeText(query);
   const compactQuery = normalizeSearchText(query);
   if (!normalizedQuery) return false;
+  if (!compactQuery) return false;
   return values.some((value) => {
     const normalizedValue = normalizeText(value);
-    return normalizedValue.includes(normalizedQuery) || normalizeSearchText(value).includes(compactQuery);
+    return (
+      normalizedValue.includes(normalizedQuery) ||
+      Boolean(compactQuery && normalizeSearchText(value).includes(compactQuery))
+    );
   });
 }
 
@@ -201,8 +205,10 @@ function getReviewSearchRank(post: ReviewPost, query: string) {
   const normalizedQuery = normalizeText(query);
   const compactQuery = normalizeSearchText(query);
   if (!normalizedQuery) return 2;
+  if (!compactQuery) return 2;
   const hasMatch = (value: string) =>
-    normalizeText(value).includes(normalizedQuery) || normalizeSearchText(value).includes(compactQuery);
+    normalizeText(value).includes(normalizedQuery) ||
+    Boolean(compactQuery && normalizeSearchText(value).includes(compactQuery));
   if (hasMatch(post.targetName ?? '')) return 0;
   if (hasMatch(post.category)) return 1;
   if (hasMatch(post.title)) return 1;
@@ -1744,13 +1750,20 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       </AppModal>
 
       <AppModal
-        onClose={() => setPendingMarketStatus(null)}
+        onClose={() => {
+          if (!statusSubmitting) setPendingMarketStatus(null);
+        }}
         primaryAction={{
+          disabled: statusSubmitting,
           label: '완료로 변경',
           loading: statusSubmitting,
           onPress: () => void confirmMarketStatus(),
         }}
-        secondaryAction={{ label: '취소', onPress: () => setPendingMarketStatus(null) }}
+        secondaryAction={{
+          disabled: statusSubmitting,
+          label: '취소',
+          onPress: () => setPendingMarketStatus(null),
+        }}
         title="거래를 완료할까요?"
         variant="center"
         visible={Boolean(pendingMarketStatus)}
@@ -1859,7 +1872,7 @@ export function CommunityScreen() {
   const lastSavedSessionRef = useRef('');
 
   useEffect(() => {
-    if (!isReady) return;
+    if (!isReady || sessionRestoredRef.current) return;
 
     sessionRestoredRef.current = true;
     setActiveTab(filterSession.activeTab);

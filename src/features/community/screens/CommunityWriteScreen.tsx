@@ -54,6 +54,12 @@ import type {
   TalkCategory,
   TalkPost,
 } from '../types';
+import {
+  formatDateValue,
+  isFutureDateValue,
+  isPastOrTodayDateValue,
+  parseDateValue,
+} from '../utils/date';
 
 const TALK_WRITE_CATEGORIES = TALK_CATEGORIES.filter(
   (category): category is Exclude<TalkCategory, '전체'> => category !== '전체',
@@ -106,43 +112,6 @@ function resolveWriteTab(value?: string): WriteTab {
   return 'talk';
 }
 
-function isFutureDateValue(value: string) {
-  const date = parseDateValue(value);
-  if (!date) return false;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime() > today.getTime();
-}
-
-function parseDateValue(value: string) {
-  const match = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec(value.trim());
-  if (!match) return null;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return date;
-}
-
-function formatDateValue(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}.${month}.${day}`;
-}
-
 function getDefaultReviewDate() {
   return formatDateValue(new Date());
 }
@@ -152,16 +121,6 @@ function formatDateInput(value: string) {
   if (digits.length <= 4) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 4)}.${digits.slice(4)}`;
   return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
-}
-
-function isPastOrTodayDateValue(value: string) {
-  const date = parseDateValue(value);
-  if (!date) return false;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime() <= today.getTime();
 }
 
 function getTomorrow() {
@@ -419,17 +378,15 @@ function DraggablePhotoBox({
 }) {
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const uriRef = useRef(uri);
-
-  uriRef.current = uri;
-  const shouldStartDrag = (_: unknown, gesture: { dx: number; dy: number }) =>
-    Boolean(uriRef.current) &&
-    Math.abs(gesture.dx) > 4 &&
-    Math.abs(gesture.dx) > Math.abs(gesture.dy);
 
   const panResponder = useMemo(
-    () =>
-      PanResponder.create({
+    () => {
+      const shouldStartDrag = (_: unknown, gesture: { dx: number; dy: number }) =>
+        Boolean(uri) &&
+        Math.abs(gesture.dx) > 4 &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy);
+
+      return PanResponder.create({
         onMoveShouldSetPanResponder: shouldStartDrag,
         onMoveShouldSetPanResponderCapture: shouldStartDrag,
         onPanResponderGrant: () => {
@@ -456,8 +413,9 @@ function DraggablePhotoBox({
           setDragging(false);
           setDragX(0);
         },
-      }),
-    [index, maxPhotoIndex, onReorder],
+      });
+    },
+    [index, maxPhotoIndex, onReorder, uri],
   );
 
   if (!uri) {
@@ -483,8 +441,20 @@ function DraggablePhotoBox({
 
   return (
     <View
+      accessibilityActions={[
+        ...(index > 0 ? [{ name: 'moveBackward', label: '앞으로 이동' }] : []),
+        ...(index < maxPhotoIndex ? [{ name: 'moveForward', label: '뒤로 이동' }] : []),
+      ]}
       accessibilityHint="좌우로 드래그해 사진 순서를 변경할 수 있습니다."
       accessibilityLabel={`사진 ${index + 1}`}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'moveBackward' && index > 0) {
+          onReorder(index, index - 1);
+        }
+        if (event.nativeEvent.actionName === 'moveForward' && index < maxPhotoIndex) {
+          onReorder(index, index + 1);
+        }
+      }}
       style={[
         styles.photoBox,
         index === 0 && styles.photoBoxPrimary,
@@ -502,7 +472,7 @@ function DraggablePhotoBox({
       <Pressable
         accessibilityLabel={`사진 ${index + 1} 삭제`}
         accessibilityRole="button"
-        hitSlop={SPACING.xs}
+        hitSlop={SPACING.md}
         onPress={() => onRemove(uri)}
         style={({ pressed }) => [styles.photoRemoveButton, pressed && styles.pressed]}
       >
@@ -646,6 +616,7 @@ export function CommunityWriteScreen() {
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
   const draftCompleted = useRef(false);
   const allowNavigation = useRef(false);
+  const appliedEditPostId = useRef<string | null>(null);
   const defaultMarketLocation = profile?.location ?? '';
 
   const currentDraft = useMemo<CommunityWriteDraft>(() => {
@@ -852,6 +823,8 @@ export function CommunityWriteScreen() {
 
   useEffect(() => {
     let active = true;
+    if (isEditRequested && appliedEditPostId.current === postId) return undefined;
+
     setIsDraftReady(false);
     draftCompleted.current = false;
     allowNavigation.current = false;
@@ -859,6 +832,7 @@ export function CommunityWriteScreen() {
     if (isTalkEditRequested) {
       if (talkPostToEdit && talkPostToEdit.author.userId === viewerId) {
         applyTalkPost(talkPostToEdit);
+        appliedEditPostId.current = postId ?? null;
       }
       setIsDraftReady(true);
       return () => {
@@ -869,6 +843,7 @@ export function CommunityWriteScreen() {
     if (isMarketEditRequested) {
       if (marketPostToEdit && marketPostToEdit.author.userId === viewerId) {
         applyMarketPost(marketPostToEdit);
+        appliedEditPostId.current = postId ?? null;
       }
       setIsDraftReady(true);
       return () => {
@@ -879,6 +854,7 @@ export function CommunityWriteScreen() {
     if (isReviewEditRequested) {
       if (reviewPostToEdit && reviewPostToEdit.author.userId === viewerId) {
         applyReviewPost(reviewPostToEdit);
+        appliedEditPostId.current = postId ?? null;
       }
       setIsDraftReady(true);
       return () => {
@@ -905,17 +881,19 @@ export function CommunityWriteScreen() {
     applyReviewPost,
     applyTalkPost,
     initialTab,
+    isEditRequested,
     isMarketEditRequested,
     isReviewEditRequested,
     isTalkEditRequested,
     marketPostToEdit,
+    postId,
     reviewPostToEdit,
     talkPostToEdit,
     viewerId,
   ]);
 
   useEffect(() => {
-    if (!isDraftReady || draftCompleted.current || isEditMode) return undefined;
+    if (!isDraftReady || draftCompleted.current || isEditMode || isEditRequested) return undefined;
 
     const timeout = setTimeout(() => {
       if (draftCompleted.current) return;
@@ -929,7 +907,7 @@ export function CommunityWriteScreen() {
     }, 220);
 
     return () => clearTimeout(timeout);
-  }, [currentDraft, defaultMarketLocation, initialTab, isDraftReady, isEditMode, viewerId]);
+  }, [currentDraft, defaultMarketLocation, initialTab, isDraftReady, isEditMode, isEditRequested, viewerId]);
 
   usePreventRemove(isDirty && !submitting, ({ data }) => {
     if (allowNavigation.current) {
@@ -1384,7 +1362,7 @@ export function CommunityWriteScreen() {
       headerVariant="auth"
       rightContent={
         <Pressable
-          accessibilityLabel="등록"
+          accessibilityLabel={submitLabel}
           accessibilityRole="button"
           accessibilityState={{ disabled: submitting }}
           disabled={submitting}

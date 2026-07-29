@@ -6,6 +6,7 @@ import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { COMMUNITY_GUEST_ID } from './communityData';
 import { removeCommunityImages } from './services/communityImageStorage';
 import { communityRepository } from './services/communityRepository';
+import { isPastOrTodayDateValue } from './utils/date';
 import type {
   CommunityAuthorSnapshot,
   CommunityComment,
@@ -104,31 +105,6 @@ function isValidPostText(title: string, body: string) {
   );
 }
 
-function isValidReviewDate(value?: string) {
-  if (!value?.trim()) return false;
-
-  const match = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec(value.trim());
-  if (!match) return false;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return false;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime() <= today.getTime();
-}
-
 function isValidReviewScore(value: number) {
   return Number.isFinite(value) && value >= 0.5 && value <= 5 && Number.isInteger(value * 2);
 }
@@ -136,6 +112,28 @@ function isValidReviewScore(value: number) {
 function isValidReviewDetailScores(scores?: ReviewPost['detailScores']) {
   if (!scores) return true;
   return [scores.kindness, scores.price, scores.revisit].every(isValidReviewScore);
+}
+
+function getValidReviewInput(
+  post: Pick<ReviewPost, 'body' | 'detailScores' | 'rating' | 'title' | 'visitedAt'>,
+) {
+  const title = post.title.trim();
+  const body = post.body.trim();
+  const visitedAt = post.visitedAt?.trim();
+
+  if (!title || !body || !visitedAt) return null;
+  if (
+    title.length > MAX_REVIEW_TITLE_LENGTH ||
+    body.length < MIN_REVIEW_BODY_LENGTH ||
+    body.length > MAX_REVIEW_BODY_LENGTH ||
+    !isPastOrTodayDateValue(visitedAt) ||
+    !isValidReviewScore(post.rating) ||
+    !isValidReviewDetailScores(post.detailScores)
+  ) {
+    return null;
+  }
+
+  return { body, title, visitedAt };
 }
 
 const DEFAULT_FILTER_SESSION: CommunityViewerState['filterSession'] = {
@@ -521,19 +519,8 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       enqueueMutation(async (): Promise<MutationResult & { postId?: string }> => {
         if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
 
-        const trimmedTitle = post.title.trim();
-        const trimmedBody = post.body.trim();
-        if (!trimmedTitle || !trimmedBody) return { ok: false, reason: 'empty' };
-        if (
-          trimmedTitle.length > MAX_REVIEW_TITLE_LENGTH ||
-          trimmedBody.length < MIN_REVIEW_BODY_LENGTH ||
-          trimmedBody.length > MAX_REVIEW_BODY_LENGTH ||
-          !isValidReviewDate(post.visitedAt) ||
-          !isValidReviewScore(post.rating) ||
-          !isValidReviewDetailScores(post.detailScores)
-        ) {
-          return { ok: false, reason: 'empty' };
-        }
+        const reviewInput = getValidReviewInput(post);
+        if (!reviewInput) return { ok: false, reason: 'empty' };
 
         const now = new Date().toISOString();
         const postId = createId('review');
@@ -542,12 +529,12 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           reviewPosts: [
             {
               ...post,
-              body: trimmedBody,
+              body: reviewInput.body,
               createdAt: now,
               id: postId,
               targetName: post.targetName?.trim(),
-              title: trimmedTitle,
-              visitedAt: post.visitedAt?.trim(),
+              title: reviewInput.title,
+              visitedAt: reviewInput.visitedAt,
             },
             ...stateRef.current.reviewPosts,
           ],
@@ -779,19 +766,8 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (!previousPost) return { ok: false, reason: 'not-found' };
         if (previousPost.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
 
-        const trimmedTitle = post.title.trim();
-        const trimmedBody = post.body.trim();
-        if (!trimmedTitle || !trimmedBody) return { ok: false, reason: 'empty' };
-        if (
-          trimmedTitle.length > MAX_REVIEW_TITLE_LENGTH ||
-          trimmedBody.length < MIN_REVIEW_BODY_LENGTH ||
-          trimmedBody.length > MAX_REVIEW_BODY_LENGTH ||
-          !isValidReviewDate(post.visitedAt) ||
-          !isValidReviewScore(post.rating) ||
-          !isValidReviewDetailScores(post.detailScores)
-        ) {
-          return { ok: false, reason: 'empty' };
-        }
+        const reviewInput = getValidReviewInput(post);
+        if (!reviewInput) return { ok: false, reason: 'empty' };
 
         const nextImages = post.images ?? [];
         const nextImageIds = new Set(nextImages.map((image) => image.assetId));
@@ -803,12 +779,12 @@ export function CommunityProvider({ children }: PropsWithChildren) {
             currentPost.id === postId
               ? {
                   ...currentPost,
-                  body: trimmedBody,
+                  body: reviewInput.body,
                   detailScores: post.detailScores,
                   images: nextImages,
                   rating: post.rating,
-                  title: trimmedTitle,
-                  visitedAt: post.visitedAt?.trim(),
+                  title: reviewInput.title,
+                  visitedAt: reviewInput.visitedAt,
                 }
               : currentPost,
           ),
