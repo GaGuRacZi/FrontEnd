@@ -25,7 +25,13 @@ export function PetBloodTypeModal({
   const options: (string | null)[] = [null, ...BLOOD_TYPES[petType]];
 
   return (
-    <AppModal initialHeight={400} onClose={onClose} title="혈액형 선택" visible={visible}>
+    <AppModal
+      animateSheetOnly
+      initialHeight={400}
+      onClose={onClose}
+      title="혈액형 선택"
+      visible={visible}
+    >
       <Text style={styles.description}>모르는 경우 선택하지 않아도 괜찮아요.</Text>
       <View style={styles.options}>
         {options.map((bloodType) => {

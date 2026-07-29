@@ -4,13 +4,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
 import { COMMUNITY_GUEST_ID } from './communityData';
+import { removeCommunityImages } from './services/communityImageStorage';
 import { communityRepository } from './services/communityRepository';
+import { getValidReviewInput, getValidReviewTarget } from './utils/reviewValidation';
 import type {
   CommunityAuthorSnapshot,
   CommunityComment,
   CommunityPost,
   CommunityViewerState,
   MarketPost,
+  MarketStatus,
   ReactionKind,
   ReviewPost,
   StoredCommunityState,
@@ -20,6 +23,12 @@ import type {
 type MutationResult =
   | { ok: true }
   | { ok: false; reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-yours' };
+
+type TalkPostForm = Pick<TalkPost, 'body' | 'category' | 'images' | 'showNeighborhood' | 'tags' | 'title'>;
+type MarketPostForm = Pick<
+  MarketPost,
+  'body' | 'category' | 'expiresAt' | 'imageCount' | 'images' | 'location' | 'priceLabel' | 'tags' | 'title' | 'tradeType'
+>;
 
 type CommunityStoreContextValue = {
   addComment: (
@@ -41,7 +50,9 @@ type CommunityStoreContextValue = {
   comments: CommunityComment[];
   deleteComment: (commentId: string) => Promise<MutationResult>;
   deletePost: (postId: string) => Promise<MutationResult>;
+  deleteReviewPost: (postId: string) => Promise<MutationResult>;
   deleteUserCommunityData: (userId?: string) => Promise<void>;
+  filterSession: CommunityViewerState['filterSession'];
   getAuthoredPosts: (userId?: string) => CommunityPost[];
   getBookmarkedPosts: (userId?: string) => CommunityPost[];
   getCommentCount: (postId: string) => number;
@@ -59,6 +70,14 @@ type CommunityStoreContextValue = {
   toggleBookmark: (postId: string) => Promise<MutationResult>;
   toggleReaction: (postId: string, kind: ReactionKind) => Promise<MutationResult>;
   updateComment: (commentId: string, body: string) => Promise<MutationResult>;
+  updateFilterSession: (session: Partial<CommunityViewerState['filterSession']>) => void;
+  updateMarketPost: (postId: string, post: MarketPostForm) => Promise<MutationResult>;
+  updateMarketStatus: (postId: string, status: MarketStatus) => Promise<MutationResult>;
+  updateReviewPost: (
+    postId: string,
+    post: Pick<ReviewPost, 'body' | 'detailScores' | 'images' | 'rating' | 'title' | 'visitedAt'>,
+  ) => Promise<MutationResult>;
+  updateTalkPost: (postId: string, post: TalkPostForm) => Promise<MutationResult>;
   viewerId: string;
 };
 
@@ -71,30 +90,77 @@ const EMPTY_STATE: StoredCommunityState = {
   viewerStates: {},
 };
 
+const MAX_POST_BODY_LENGTH = 500;
+const MAX_POST_TITLE_LENGTH = 40;
+
+function isValidPostText(title: string, body: string) {
+  return Boolean(
+    title &&
+      body &&
+      title.length <= MAX_POST_TITLE_LENGTH &&
+      body.length <= MAX_POST_BODY_LENGTH,
+  );
+}
+
 const DEFAULT_FILTER_SESSION: CommunityViewerState['filterSession'] = {
+  activeTab: 'talk',
   marketCategory: '전체',
   marketStatuses: [],
   marketTradeTypes: [],
+  reviewCategory: '전체',
+  searchQuery: '',
+  searchTab: 'talk',
   talkCategory: '전체',
 };
+
+function createDefaultFilterSession(): CommunityViewerState['filterSession'] {
+  return {
+    ...DEFAULT_FILTER_SESSION,
+    marketStatuses: [],
+    marketTradeTypes: [],
+  };
+}
+
+function normalizeFilterSession(
+  filterSession?: Partial<CommunityViewerState['filterSession']>,
+): CommunityViewerState['filterSession'] {
+  return {
+    ...createDefaultFilterSession(),
+    ...filterSession,
+    marketStatuses: filterSession?.marketStatuses ?? [],
+    marketTradeTypes: filterSession?.marketTradeTypes ?? [],
+  };
+}
 
 function createViewerState(): CommunityViewerState {
   return {
     bookmarkedPostIds: [],
-    filterSession: { ...DEFAULT_FILTER_SESSION },
+    filterSession: createDefaultFilterSession(),
     reactionPostIds: {},
   };
 }
 
 function getViewerState(state: StoredCommunityState, viewerId: string) {
-  return state.viewerStates[viewerId] ?? createViewerState();
+  const viewerState = state.viewerStates[viewerId];
+  if (!viewerState) return createViewerState();
+
+  return {
+    ...viewerState,
+    filterSession: normalizeFilterSession(viewerState.filterSession),
+  };
 }
 
 function getViewerStateFromMap(
   viewerStates: StoredCommunityState['viewerStates'],
   viewerId: string,
 ) {
-  return viewerStates[viewerId] ?? createViewerState();
+  const viewerState = viewerStates[viewerId];
+  if (!viewerState) return createViewerState();
+
+  return {
+    ...viewerState,
+    filterSession: normalizeFilterSession(viewerState.filterSession),
+  };
 }
 
 function toggleValue(values: string[], value: string) {
@@ -258,6 +324,11 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'not-found' };
         }
 
+        const reviewPost = current.reviewPosts.find((post) => post.id === postId);
+        if (reviewPost?.author.userId === viewerId) {
+          return { ok: false, reason: 'not-yours' };
+        }
+
         const previous = getViewerState(current, viewerId);
         const exclusiveKind =
           kind === 'helpful' ? 'notHelpful' : kind === 'notHelpful' ? 'helpful' : null;
@@ -350,7 +421,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
         const trimmedTitle = post.title.trim();
         const trimmedBody = post.body.trim();
-        if (!trimmedTitle || !trimmedBody) return { ok: false, reason: 'empty' };
+        if (!isValidPostText(trimmedTitle, trimmedBody)) return { ok: false, reason: 'empty' };
 
         const now = new Date().toISOString();
         const postId = createId('talk');
@@ -383,7 +454,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
         const trimmedTitle = post.title.trim();
         const trimmedBody = post.body.trim();
-        if (!trimmedTitle || !trimmedBody) return { ok: false, reason: 'empty' };
+        if (!isValidPostText(trimmedTitle, trimmedBody)) return { ok: false, reason: 'empty' };
 
         const now = new Date().toISOString();
         const postId = createId('market');
@@ -414,9 +485,9 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       enqueueMutation(async (): Promise<MutationResult & { postId?: string }> => {
         if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
 
-        const trimmedTitle = post.title.trim();
-        const trimmedBody = post.body.trim();
-        if (!trimmedTitle || !trimmedBody) return { ok: false, reason: 'empty' };
+        const reviewInput = getValidReviewInput(post);
+        const targetName = getValidReviewTarget(post.targetName);
+        if (!reviewInput || !targetName) return { ok: false, reason: 'empty' };
 
         const now = new Date().toISOString();
         const postId = createId('review');
@@ -425,12 +496,12 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           reviewPosts: [
             {
               ...post,
-              body: trimmedBody,
+              body: reviewInput.body,
               createdAt: now,
               id: postId,
-              targetName: post.targetName?.trim(),
-              title: trimmedTitle,
-              visitedAt: post.visitedAt?.trim(),
+              targetName,
+              title: reviewInput.title,
+              visitedAt: reviewInput.visitedAt,
             },
             ...stateRef.current.reviewPosts,
           ],
@@ -462,6 +533,118 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         };
       }),
     [mutateState, viewerId],
+  );
+
+  const updateMarketStatus = useCallback(
+    (postId: string, status: MarketStatus) =>
+      mutateState((current) => {
+        const post = current.posts.find((currentPost) => currentPost.id === postId);
+        if (!post) return { ok: false, reason: 'not-found' };
+        if (post.kind !== 'market') return { ok: false, reason: 'not-found' };
+        if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
+        if (post.status === status) return current;
+        if (post.status === '완료') return { ok: false, reason: 'not-ready' };
+
+        return {
+          ...current,
+          posts: current.posts.map((currentPost) =>
+            currentPost.id === postId && currentPost.kind === 'market'
+              ? { ...currentPost, status, updatedAt: new Date().toISOString() }
+              : currentPost,
+          ),
+        };
+      }),
+    [mutateState, viewerId],
+  );
+
+  const updateTalkPost = useCallback(
+    (postId: string, post: TalkPostForm) =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+
+        const current = stateRef.current;
+        const previousPost = current.posts.find((currentPost) => currentPost.id === postId);
+        if (!previousPost) return { ok: false, reason: 'not-found' };
+        if (previousPost.kind !== 'talk') return { ok: false, reason: 'not-found' };
+        if (previousPost.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
+
+        const trimmedTitle = post.title.trim();
+        const trimmedBody = post.body.trim();
+        if (!isValidPostText(trimmedTitle, trimmedBody)) return { ok: false, reason: 'empty' };
+
+        const nextImages = post.images ?? [];
+        const nextImageIds = new Set(nextImages.map((image) => image.assetId));
+        const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
+        const now = new Date().toISOString();
+
+        const result = await persistMutation({
+          ...current,
+          posts: current.posts.map((currentPost) =>
+            currentPost.id === postId && currentPost.kind === 'talk'
+              ? {
+                  ...currentPost,
+                  body: trimmedBody,
+                  category: post.category,
+                  images: nextImages,
+                  showNeighborhood: post.showNeighborhood,
+                  tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
+                  title: trimmedTitle,
+                  updatedAt: now,
+                }
+              : currentPost,
+          ),
+        });
+        if (result.ok) await removeCommunityImages(viewerId, removedImages).catch(() => undefined);
+        return result;
+      }),
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
+  );
+
+  const updateMarketPost = useCallback(
+    (postId: string, post: MarketPostForm) =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+
+        const current = stateRef.current;
+        const previousPost = current.posts.find((currentPost) => currentPost.id === postId);
+        if (!previousPost) return { ok: false, reason: 'not-found' };
+        if (previousPost.kind !== 'market') return { ok: false, reason: 'not-found' };
+        if (previousPost.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
+
+        const trimmedTitle = post.title.trim();
+        const trimmedBody = post.body.trim();
+        if (!isValidPostText(trimmedTitle, trimmedBody)) return { ok: false, reason: 'empty' };
+
+        const nextImages = post.images ?? [];
+        const nextImageIds = new Set(nextImages.map((image) => image.assetId));
+        const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
+        const now = new Date().toISOString();
+
+        const result = await persistMutation({
+          ...current,
+          posts: current.posts.map((currentPost) =>
+            currentPost.id === postId && currentPost.kind === 'market'
+              ? {
+                  ...currentPost,
+                  body: trimmedBody,
+                  category: post.category,
+                  expiresAt: post.expiresAt?.trim() || undefined,
+                  imageCount: post.imageCount,
+                  images: nextImages,
+                  location: post.location.trim(),
+                  priceLabel: post.priceLabel.trim(),
+                  tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
+                  title: trimmedTitle,
+                  tradeType: post.tradeType,
+                  updatedAt: now,
+                }
+              : currentPost,
+          ),
+        });
+        if (result.ok) await removeCommunityImages(viewerId, removedImages).catch(() => undefined);
+        return result;
+      }),
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
   );
 
   const deleteComment = useCallback(
@@ -498,8 +681,94 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
   const deletePost = useCallback(
     (postId: string) =>
-      mutateState((current) => {
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+
+        const current = stateRef.current;
         const post = current.posts.find((currentPost) => currentPost.id === postId);
+        if (!post) return { ok: false, reason: 'not-found' };
+        if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
+        if (post.kind === 'market' && post.status !== '진행 중') {
+          return { ok: false, reason: 'not-ready' };
+        }
+
+        const viewerStates = Object.fromEntries(
+          Object.entries(current.viewerStates).map(([currentViewerId, viewerState]) => [
+            currentViewerId,
+            {
+              ...viewerState,
+              bookmarkedPostIds: viewerState.bookmarkedPostIds.filter((id) => id !== postId),
+              reactionPostIds: Object.fromEntries(
+                Object.entries(viewerState.reactionPostIds).map(([kind, postIds]) => [
+                  kind,
+                  postIds.filter((id) => id !== postId),
+                ]),
+              ),
+            },
+          ]),
+        );
+
+        const result = await persistMutation({
+          ...current,
+          comments: current.comments.filter((comment) => comment.postId !== postId),
+          posts: current.posts.filter((currentPost) => currentPost.id !== postId),
+          viewerStates,
+        });
+        if (result.ok) await removeCommunityImages(viewerId, post.images).catch(() => undefined);
+        return result;
+      }),
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
+  );
+
+  const updateReviewPost = useCallback(
+    (
+      postId: string,
+      post: Pick<ReviewPost, 'body' | 'detailScores' | 'images' | 'rating' | 'title' | 'visitedAt'>,
+    ) =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+
+        const current = stateRef.current;
+        const previousPost = current.reviewPosts.find((currentPost) => currentPost.id === postId);
+        if (!previousPost) return { ok: false, reason: 'not-found' };
+        if (previousPost.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
+
+        const reviewInput = getValidReviewInput(post);
+        if (!reviewInput) return { ok: false, reason: 'empty' };
+
+        const nextImages = post.images ?? [];
+        const nextImageIds = new Set(nextImages.map((image) => image.assetId));
+        const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
+
+        const result = await persistMutation({
+          ...current,
+          reviewPosts: current.reviewPosts.map((currentPost) =>
+            currentPost.id === postId
+              ? {
+                  ...currentPost,
+                  body: reviewInput.body,
+                  detailScores: post.detailScores,
+                  images: nextImages,
+                  rating: post.rating,
+                  title: reviewInput.title,
+                  visitedAt: reviewInput.visitedAt,
+                }
+              : currentPost,
+          ),
+        });
+        if (result.ok) await removeCommunityImages(viewerId, removedImages).catch(() => undefined);
+        return result;
+      }),
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
+  );
+
+  const deleteReviewPost = useCallback(
+    (postId: string) =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+
+        const current = stateRef.current;
+        const post = current.reviewPosts.find((currentPost) => currentPost.id === postId);
         if (!post) return { ok: false, reason: 'not-found' };
         if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
 
@@ -519,14 +788,16 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           ]),
         );
 
-        return {
+        const result = await persistMutation({
           ...current,
           comments: current.comments.filter((comment) => comment.postId !== postId),
-          posts: current.posts.filter((currentPost) => currentPost.id !== postId),
+          reviewPosts: current.reviewPosts.filter((currentPost) => currentPost.id !== postId),
           viewerStates,
-        };
+        });
+        if (result.ok) await removeCommunityImages(viewerId, post.images).catch(() => undefined);
+        return result;
       }),
-    [mutateState, viewerId],
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
   );
 
   const getBookmarkedPosts = useCallback(
@@ -568,7 +839,36 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     [viewerId],
   );
 
+  const filterSession = useMemo(
+    () => getViewerStateFromMap(state.viewerStates, viewerId).filterSession,
+    [state.viewerStates, viewerId],
+  );
+
+  const updateFilterSession = useCallback(
+    (session: Partial<CommunityViewerState['filterSession']>) => {
+      void mutateState((current) => {
+        const previous = getViewerState(current, viewerId);
+
+        return {
+          ...current,
+          viewerStates: {
+            ...current.viewerStates,
+            [viewerId]: {
+              ...previous,
+              filterSession: normalizeFilterSession({
+                ...previous.filterSession,
+                ...session,
+              }),
+            },
+          },
+        };
+      });
+    },
+    [mutateState, viewerId],
+  );
+
   const clearScreenSession = useCallback(() => {
+    void communityRepository.clearWriteDrafts(viewerId).catch(() => undefined);
     void mutateState((current) => {
       const previous = getViewerState(current, viewerId);
 
@@ -578,7 +878,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           ...current.viewerStates,
           [viewerId]: {
             ...previous,
-            filterSession: { ...DEFAULT_FILTER_SESSION },
+            filterSession: createDefaultFilterSession(),
           },
         },
       };
@@ -607,7 +907,9 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       comments: state.comments,
       deleteComment,
       deletePost,
+      deleteReviewPost,
       deleteUserCommunityData,
+      filterSession,
       getAuthoredPosts,
       getBookmarkedPosts,
       getCommentCount,
@@ -625,6 +927,11 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       toggleBookmark,
       toggleReaction,
       updateComment,
+      updateFilterSession,
+      updateMarketPost,
+      updateMarketStatus,
+      updateReviewPost,
+      updateTalkPost,
       viewerId,
     }),
     [
@@ -635,7 +942,9 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       clearScreenSession,
       deleteComment,
       deletePost,
+      deleteReviewPost,
       deleteUserCommunityData,
+      filterSession,
       getAuthoredPosts,
       getBookmarkedPosts,
       getCommentCount,
@@ -654,6 +963,11 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       toggleBookmark,
       toggleReaction,
       updateComment,
+      updateFilterSession,
+      updateMarketPost,
+      updateMarketStatus,
+      updateReviewPost,
+      updateTalkPost,
       viewerId,
     ],
   );

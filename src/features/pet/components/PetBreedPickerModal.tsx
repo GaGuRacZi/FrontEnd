@@ -46,6 +46,7 @@ export function PetBreedPickerModal({
 
   return (
     <AppModal
+      animateSheetOnly
       initialHeight={570}
       onClose={close}
       resizable
