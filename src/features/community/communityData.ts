@@ -3,6 +3,7 @@ import type {
   CommunityPost,
   MarketCategory,
   MarketStatus,
+  MarketTradeMethod,
   MarketTradeType,
   ReviewCategory,
   ReviewPost,
@@ -33,6 +34,8 @@ export const MARKET_CATEGORIES: MarketCategory[] = [
 ];
 
 export const MARKET_TRADE_TYPES: MarketTradeType[] = ['나눔', '판매', '교환', '구해요'];
+
+export const MARKET_TRADE_METHODS: MarketTradeMethod[] = ['직거래', '택배', '비대면 나눔'];
 
 export const MARKET_STATUSES: MarketStatus[] = ['진행 중', '예약 중', '완료'];
 

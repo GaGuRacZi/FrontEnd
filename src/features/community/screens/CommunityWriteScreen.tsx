@@ -30,6 +30,7 @@ import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 import {
+  MARKET_TRADE_METHODS,
   MARKET_TRADE_TYPES,
   REVIEW_CATEGORIES,
   TALK_CATEGORIES,
@@ -49,6 +50,7 @@ import type {
   CommunityWriteDraft,
   MarketCategory,
   MarketPost,
+  MarketTradeMethod,
   MarketTradeType,
   ReviewCategory,
   TalkCategory,
@@ -60,6 +62,12 @@ import {
   isPastOrTodayDateValue,
   parseDateValue,
 } from '../utils/date';
+import {
+  REVIEW_BODY_MAX_LENGTH,
+  REVIEW_BODY_MIN_LENGTH,
+  REVIEW_TARGET_MAX_LENGTH,
+  REVIEW_TITLE_MAX_LENGTH,
+} from '../utils/reviewValidation';
 
 const TALK_WRITE_CATEGORIES = TALK_CATEGORIES.filter(
   (category): category is Exclude<TalkCategory, '전체'> => category !== '전체',
@@ -73,21 +81,16 @@ const MARKET_WRITE_CATEGORIES: Exclude<MarketCategory, '전체'>[] = [
 const REVIEW_WRITE_CATEGORIES = REVIEW_CATEGORIES.filter(
   (category): category is Exclude<ReviewCategory, '전체'> => category !== '전체',
 );
-const TRADE_METHODS = ['직거래', '택배', '비대면 나눔'] as const;
 const TALK_TAG_SUGGESTIONS = ['피하수액', '응급', '동네병원', '산책', '고양이'];
 const DEFAULT_TALK_TAGS = ['피하수액', '응급'];
 const MAX_PHOTOS = 5;
 const MAX_TITLE_LENGTH = 40;
 const MAX_BODY_LENGTH = 500;
-const MAX_REVIEW_BODY_LENGTH = 700;
-const MAX_REVIEW_TARGET_LENGTH = 50;
-const MIN_REVIEW_BODY_LENGTH = 10;
 const MAX_TAG_COUNT = 5;
 const MAX_TAG_LENGTH = 10;
 const REVIEW_STAR_COLOR = COLORS.starWarm;
 const PHOTO_SLOT_SIZE = 62;
 
-type TradeMethod = (typeof TRADE_METHODS)[number];
 type WriteTab = 'market' | 'review' | 'talk';
 type UserProfileState = ReturnType<typeof useMyPageStore>['profile'];
 type SelectedPetState = ReturnType<typeof usePetStore>['selectedPet'];
@@ -181,9 +184,9 @@ function sameStringList(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function getMarketTradeMethods(post: MarketPost): TradeMethod[] {
-  const methods = post.tags.filter((tag): tag is TradeMethod =>
-    TRADE_METHODS.includes(tag as TradeMethod),
+function getMarketTradeMethods(post: MarketPost): MarketTradeMethod[] {
+  const methods = post.tags.filter((tag): tag is MarketTradeMethod =>
+    MARKET_TRADE_METHODS.includes(tag as MarketTradeMethod),
   );
   if (methods.length) return methods;
   if (post.tradeType === '나눔') return ['직거래', '비대면 나눔'];
@@ -442,17 +445,29 @@ function DraggablePhotoBox({
   return (
     <View
       accessibilityActions={[
-        ...(index > 0 ? [{ name: 'moveBackward', label: '앞으로 이동' }] : []),
-        ...(index < maxPhotoIndex ? [{ name: 'moveForward', label: '뒤로 이동' }] : []),
+        ...(index > 0 ? [{ name: 'decrement', label: '앞으로 이동' }] : []),
+        ...(index < maxPhotoIndex ? [{ name: 'increment', label: '뒤로 이동' }] : []),
+        { name: 'deletePhoto', label: '사진 삭제' },
       ]}
       accessibilityHint="좌우로 드래그해 사진 순서를 변경할 수 있습니다."
       accessibilityLabel={`사진 ${index + 1}`}
+      accessibilityRole="adjustable"
+      accessibilityValue={{
+        max: maxPhotoIndex + 1,
+        min: 1,
+        now: index + 1,
+        text: index === 0 ? '대표 이미지' : `${index + 1}번째 이미지`,
+      }}
+      accessible
       onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === 'moveBackward' && index > 0) {
+        if (event.nativeEvent.actionName === 'decrement' && index > 0) {
           onReorder(index, index - 1);
         }
-        if (event.nativeEvent.actionName === 'moveForward' && index < maxPhotoIndex) {
+        if (event.nativeEvent.actionName === 'increment' && index < maxPhotoIndex) {
           onReorder(index, index + 1);
+        }
+        if (event.nativeEvent.actionName === 'deletePhoto') {
+          onRemove(uri);
         }
       }}
       style={[
@@ -470,13 +485,13 @@ function DraggablePhotoBox({
         </View>
       ) : null}
       <Pressable
-        accessibilityLabel={`사진 ${index + 1} 삭제`}
-        accessibilityRole="button"
-        hitSlop={SPACING.md}
+        accessible={false}
         onPress={() => onRemove(uri)}
         style={({ pressed }) => [styles.photoRemoveButton, pressed && styles.pressed]}
       >
-        <AppIcon color={COLORS.background} name="close" size={12} />
+        <View style={styles.photoRemoveIcon}>
+          <AppIcon color={COLORS.background} name="close" size={12} />
+        </View>
       </Pressable>
     </View>
   );
@@ -590,7 +605,7 @@ export function CommunityWriteScreen() {
   const [expiryCalendarVisible, setExpiryCalendarVisible] = useState(false);
   const [pendingExpiryDate, setPendingExpiryDate] = useState(getTomorrow);
   const [marketBody, setMarketBody] = useState('');
-  const [tradeMethods, setTradeMethods] = useState<TradeMethod[]>(['직거래']);
+  const [tradeMethods, setTradeMethods] = useState<MarketTradeMethod[]>(['직거래']);
   const [tradeLocation, setTradeLocation] = useState(profile?.location ?? '');
 
   const [reviewCategory, setReviewCategory] = useState<Exclude<ReviewCategory, '전체'>>('병원');
@@ -616,8 +631,10 @@ export function CommunityWriteScreen() {
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
   const draftCompleted = useRef(false);
   const allowNavigation = useRef(false);
-  const appliedEditPostId = useRef<string | null>(null);
+  const appliedEditRequestKey = useRef<string | null>(null);
   const defaultMarketLocation = profile?.location ?? '';
+  const editRequestKey =
+    isEditRequested && postId ? `${initialTab}:${postId}:${viewerId}` : null;
 
   const currentDraft = useMemo<CommunityWriteDraft>(() => {
     const updatedAt = new Date().toISOString();
@@ -768,8 +785,8 @@ export function CommunityWriteScreen() {
       setPriceOffer(draft.priceOffer);
       setExpiresAt(draft.expiresAt);
       setMarketBody(draft.marketBody);
-      setTradeMethods(draft.tradeMethods.filter((method): method is TradeMethod =>
-        TRADE_METHODS.includes(method as TradeMethod),
+      setTradeMethods(draft.tradeMethods.filter((method): method is MarketTradeMethod =>
+        MARKET_TRADE_METHODS.includes(method),
       ));
       setTradeLocation(draft.tradeLocation);
       return;
@@ -823,7 +840,8 @@ export function CommunityWriteScreen() {
 
   useEffect(() => {
     let active = true;
-    if (isEditRequested && appliedEditPostId.current === postId) return undefined;
+    if (editRequestKey && appliedEditRequestKey.current === editRequestKey) return undefined;
+    if (!editRequestKey) appliedEditRequestKey.current = null;
 
     setIsDraftReady(false);
     draftCompleted.current = false;
@@ -832,7 +850,7 @@ export function CommunityWriteScreen() {
     if (isTalkEditRequested) {
       if (talkPostToEdit && talkPostToEdit.author.userId === viewerId) {
         applyTalkPost(talkPostToEdit);
-        appliedEditPostId.current = postId ?? null;
+        appliedEditRequestKey.current = editRequestKey;
       }
       setIsDraftReady(true);
       return () => {
@@ -843,7 +861,7 @@ export function CommunityWriteScreen() {
     if (isMarketEditRequested) {
       if (marketPostToEdit && marketPostToEdit.author.userId === viewerId) {
         applyMarketPost(marketPostToEdit);
-        appliedEditPostId.current = postId ?? null;
+        appliedEditRequestKey.current = editRequestKey;
       }
       setIsDraftReady(true);
       return () => {
@@ -854,7 +872,7 @@ export function CommunityWriteScreen() {
     if (isReviewEditRequested) {
       if (reviewPostToEdit && reviewPostToEdit.author.userId === viewerId) {
         applyReviewPost(reviewPostToEdit);
-        appliedEditPostId.current = postId ?? null;
+        appliedEditRequestKey.current = editRequestKey;
       }
       setIsDraftReady(true);
       return () => {
@@ -880,13 +898,13 @@ export function CommunityWriteScreen() {
     applyMarketPost,
     applyReviewPost,
     applyTalkPost,
+    editRequestKey,
     initialTab,
     isEditRequested,
     isMarketEditRequested,
     isReviewEditRequested,
     isTalkEditRequested,
     marketPostToEdit,
-    postId,
     reviewPostToEdit,
     talkPostToEdit,
     viewerId,
@@ -1120,9 +1138,11 @@ export function CommunityWriteScreen() {
   );
   const canSubmitReview = Boolean(
     normalizedReviewTarget &&
+      normalizedReviewTarget.length <= REVIEW_TARGET_MAX_LENGTH &&
       normalizedReviewTitle &&
-      normalizedReviewBody.length >= MIN_REVIEW_BODY_LENGTH &&
-      normalizedReviewBody.length <= MAX_REVIEW_BODY_LENGTH &&
+      normalizedReviewTitle.length <= REVIEW_TITLE_MAX_LENGTH &&
+      normalizedReviewBody.length >= REVIEW_BODY_MIN_LENGTH &&
+      normalizedReviewBody.length <= REVIEW_BODY_MAX_LENGTH &&
       reviewVisitedDate &&
       !hasInvalidReviewDate,
   );
@@ -1153,13 +1173,14 @@ export function CommunityWriteScreen() {
     }
 
     if (!normalizedReviewTarget) return '리뷰 대상을 입력해주세요.';
-    if (normalizedReviewTarget.length > MAX_REVIEW_TARGET_LENGTH) return '리뷰 대상은 50자 이하로 입력해주세요.';
+    if (normalizedReviewTarget.length > REVIEW_TARGET_MAX_LENGTH) return '리뷰 대상은 50자 이하로 입력해주세요.';
     if (!normalizedReviewTitle) return '제목을 입력해주세요.';
+    if (normalizedReviewTitle.length > REVIEW_TITLE_MAX_LENGTH) return '제목은 40자 이하로 입력해주세요.';
     if (!reviewVisitedAt.trim()) return '이용 날짜를 입력해주세요.';
-    if (hasInvalidReviewDate || !reviewVisitedDate) return '이용 날짜는 오늘 이전 날짜로 입력해주세요.';
+    if (hasInvalidReviewDate || !reviewVisitedDate) return '이용 날짜는 오늘 또는 이전 날짜로 입력해주세요.';
     if (!normalizedReviewBody) return '후기 내용을 입력해주세요.';
-    if (normalizedReviewBody.length < MIN_REVIEW_BODY_LENGTH) return '후기 내용은 10자 이상 입력해주세요.';
-    if (normalizedReviewBody.length > MAX_REVIEW_BODY_LENGTH) return '후기 내용은 700자 이하로 입력해주세요.';
+    if (normalizedReviewBody.length < REVIEW_BODY_MIN_LENGTH) return '후기 내용은 10자 이상 입력해주세요.';
+    if (normalizedReviewBody.length > REVIEW_BODY_MAX_LENGTH) return '후기 내용은 700자 이하로 입력해주세요.';
     return null;
   };
 
@@ -1603,7 +1624,7 @@ export function CommunityWriteScreen() {
 
               <FieldCard title="거래 방법" subtitle="여러 개를 함께 선택할 수 있어요">
                 <View style={styles.chipGroup}>
-                  {TRADE_METHODS.map((method) => {
+                  {MARKET_TRADE_METHODS.map((method) => {
                     const selected = tradeMethods.includes(method);
                     return (
                       <ChoiceChip
@@ -1649,7 +1670,7 @@ export function CommunityWriteScreen() {
                 <AppInput
                   editable={!isReviewEditMode}
                   leftElement={<AppIcon color={COLORS.primary} name="search-outline" size={18} />}
-                  maxLength={MAX_REVIEW_TARGET_LENGTH}
+                  maxLength={REVIEW_TARGET_MAX_LENGTH}
                   onChangeText={setReviewTarget}
                   placeholder={getReviewTargetPlaceholder(reviewCategory)}
                   value={reviewTarget}
@@ -1685,7 +1706,7 @@ export function CommunityWriteScreen() {
                   <FormLabel required title="제목" />
                   <AppInput
                     containerStyle={styles.formInput}
-                    maxLength={MAX_TITLE_LENGTH}
+                    maxLength={REVIEW_TITLE_MAX_LENGTH}
                     onChangeText={setReviewTitle}
                     placeholder="제목을 입력해주세요"
                     value={reviewTitle}
@@ -1718,13 +1739,13 @@ export function CommunityWriteScreen() {
               <FieldCard required title="후기 내용" subtitle="좋았던 점과 아쉬웠던 점을 솔직하게 남겨주세요">
                 <AppInput
                   inputStyle={styles.marketBodyInput}
-                  maxLength={MAX_REVIEW_BODY_LENGTH}
+                  maxLength={REVIEW_BODY_MAX_LENGTH}
                   multiline
                   onChangeText={setReviewBody}
                   placeholder="예) 진료 설명이 자세했고 대기 시간이 짧았어요. 비용 안내도 미리 받을 수 있어서 좋았어요."
                   value={reviewBody}
                 />
-                <Text style={styles.counter}>{reviewBody.length} / {MAX_REVIEW_BODY_LENGTH}</Text>
+                <Text style={styles.counter}>{reviewBody.length} / {REVIEW_BODY_MAX_LENGTH}</Text>
               </FieldCard>
 
               <FieldCard title="사진 첨부" subtitle="방문 사진이나 영수증을 선택할 수 있어요">
@@ -1966,13 +1987,22 @@ const styles = StyleSheet.create({
   },
   photoRemoveButton: {
     alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 44,
+  },
+  photoRemoveIcon: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
     backgroundColor: 'rgba(26, 26, 26, 0.56)',
     borderRadius: RADIUS.round,
     height: 20,
     justifyContent: 'center',
-    position: 'absolute',
-    right: 3,
-    top: 3,
+    marginRight: 3,
+    marginTop: 3,
     width: 20,
   },
   coverBadge: {

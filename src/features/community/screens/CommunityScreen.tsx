@@ -159,7 +159,7 @@ function hasSearchValue(values: string[], query: string) {
     const normalizedValue = normalizeText(value);
     return (
       normalizedValue.includes(normalizedQuery) ||
-      Boolean(compactQuery && normalizeSearchText(value).includes(compactQuery))
+      normalizeSearchText(value).includes(compactQuery)
     );
   });
 }
@@ -208,7 +208,7 @@ function getReviewSearchRank(post: ReviewPost, query: string) {
   if (!compactQuery) return 2;
   const hasMatch = (value: string) =>
     normalizeText(value).includes(normalizedQuery) ||
-    Boolean(compactQuery && normalizeSearchText(value).includes(compactQuery));
+    normalizeSearchText(value).includes(compactQuery);
   if (hasMatch(post.targetName ?? '')) return 0;
   if (hasMatch(post.category)) return 1;
   if (hasMatch(post.title)) return 1;
@@ -741,6 +741,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   const [statusPickerVisible, setStatusPickerVisible] = useState(false);
   const [pendingMarketStatus, setPendingMarketStatus] = useState<MarketStatus | null>(null);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const statusSubmittingRef = useRef(false);
   const [marketActionVisible, setMarketActionVisible] = useState(false);
   const [marketDeleteVisible, setMarketDeleteVisible] = useState(false);
   const [marketDeleting, setMarketDeleting] = useState(false);
@@ -1426,9 +1427,35 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   const moveImage = (direction: -1 | 1) => {
     setImageIndex((current) => (current + direction + imageCount) % imageCount);
   };
+  const submitMarketStatus = async (status: MarketStatus) => {
+    if (selectedPost.kind !== 'market' || statusSubmittingRef.current) return false;
+
+    statusSubmittingRef.current = true;
+    setStatusSubmitting(true);
+
+    try {
+      const result = await updateMarketStatus(selectedPost.id, status);
+      if (result.ok) return true;
+
+      setModal({
+        description: '거래 상태를 다시 확인해주세요.',
+        title: '상태를 변경하지 못했어요',
+      });
+      return false;
+    } catch {
+      setModal({
+        description: '잠시 후 다시 시도해주세요.',
+        title: '상태를 변경하지 못했어요',
+      });
+      return false;
+    } finally {
+      statusSubmittingRef.current = false;
+      setStatusSubmitting(false);
+    }
+  };
   const changeMarketStatus = async (status: MarketStatus) => {
     if (selectedPost.kind !== 'market') return;
-    if (statusSubmitting) return;
+    if (statusSubmittingRef.current) return;
     if (status === selectedPost.status) {
       setStatusPickerVisible(false);
       return;
@@ -1447,33 +1474,15 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       return;
     }
 
-    setStatusSubmitting(true);
-    const result = await updateMarketStatus(selectedPost.id, status);
-    setStatusSubmitting(false);
+    await submitMarketStatus(status);
     setStatusPickerVisible(false);
-
-    if (!result.ok) {
-      setModal({
-        description: '게시글 작성자만 거래 상태를 변경할 수 있어요.',
-        title: '상태를 변경하지 못했어요',
-      });
-    }
   };
   const confirmMarketStatus = async () => {
     if (!pendingMarketStatus || selectedPost.kind !== 'market') return;
-    if (statusSubmitting) return;
+    if (statusSubmittingRef.current) return;
 
-    setStatusSubmitting(true);
-    const result = await updateMarketStatus(selectedPost.id, pendingMarketStatus);
-    setStatusSubmitting(false);
+    await submitMarketStatus(pendingMarketStatus);
     setPendingMarketStatus(null);
-
-    if (!result.ok) {
-      setModal({
-        description: '거래 상태를 다시 확인해주세요.',
-        title: '상태를 변경하지 못했어요',
-      });
-    }
   };
   const requestDeleteMarketPost = () => {
     if (selectedPost.kind !== 'market') return;
@@ -1751,7 +1760,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
 
       <AppModal
         onClose={() => {
-          if (!statusSubmitting) setPendingMarketStatus(null);
+          if (!statusSubmittingRef.current) setPendingMarketStatus(null);
         }}
         primaryAction={{
           disabled: statusSubmitting,
@@ -1762,7 +1771,9 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
         secondaryAction={{
           disabled: statusSubmitting,
           label: '취소',
-          onPress: () => setPendingMarketStatus(null),
+          onPress: () => {
+            if (!statusSubmittingRef.current) setPendingMarketStatus(null);
+          },
         }}
         title="거래를 완료할까요?"
         variant="center"
@@ -1868,13 +1879,12 @@ export function CommunityScreen() {
   const [searchTab, setSearchTab] = useState<CommunityTab>(filterSession.searchTab);
   const [searchQuery, setSearchQuery] = useState(filterSession.searchQuery);
   const [modal, setModal] = useState<ModalState>(null);
-  const sessionRestoredRef = useRef(false);
+  const [restoredViewerId, setRestoredViewerId] = useState<string | null>(null);
   const lastSavedSessionRef = useRef('');
 
   useEffect(() => {
-    if (!isReady || sessionRestoredRef.current) return;
+    if (!isReady || hasLoadError || restoredViewerId === viewerId) return;
 
-    sessionRestoredRef.current = true;
     setActiveTab(filterSession.activeTab);
     setTalkCategory(filterSession.talkCategory);
     setMarketCategory(filterSession.marketCategory);
@@ -1884,10 +1894,11 @@ export function CommunityScreen() {
     setSearchTab(filterSession.searchTab);
     setSearchQuery(filterSession.searchQuery);
     lastSavedSessionRef.current = JSON.stringify(filterSession);
-  }, [filterSession, isReady]);
+    setRestoredViewerId(viewerId);
+  }, [filterSession, hasLoadError, isReady, restoredViewerId, viewerId]);
 
   useEffect(() => {
-    if (!isReady || !sessionRestoredRef.current) return undefined;
+    if (!isReady || hasLoadError || restoredViewerId !== viewerId) return undefined;
 
     const nextSession = {
       activeTab,
@@ -1910,6 +1921,7 @@ export function CommunityScreen() {
     return () => clearTimeout(timer);
   }, [
     activeTab,
+    hasLoadError,
     isReady,
     marketCategory,
     marketStatuses,
@@ -1919,6 +1931,8 @@ export function CommunityScreen() {
     searchTab,
     talkCategory,
     updateFilterSession,
+    viewerId,
+    restoredViewerId,
   ]);
 
   const talkPosts = useMemo(

@@ -25,22 +25,22 @@ export function formatDateValue(date: Date) {
   return `${year}.${month}.${day}`;
 }
 
-export function isFutureDateValue(value: string) {
+function compareDateWithToday(value: string) {
   const date = parseDateValue(value);
-  if (!date) return false;
+  if (!date) return null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   date.setHours(0, 0, 0, 0);
-  return date.getTime() > today.getTime();
+  return date.getTime() - today.getTime();
+}
+
+export function isFutureDateValue(value: string) {
+  const comparison = compareDateWithToday(value);
+  return comparison !== null && comparison > 0;
 }
 
 export function isPastOrTodayDateValue(value: string) {
-  const date = parseDateValue(value);
-  if (!date) return false;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime() <= today.getTime();
+  const comparison = compareDateWithToday(value);
+  return comparison !== null && comparison <= 0;
 }

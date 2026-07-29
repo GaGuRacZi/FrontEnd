@@ -6,7 +6,7 @@ import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { COMMUNITY_GUEST_ID } from './communityData';
 import { removeCommunityImages } from './services/communityImageStorage';
 import { communityRepository } from './services/communityRepository';
-import { isPastOrTodayDateValue } from './utils/date';
+import { getValidReviewInput, getValidReviewTarget } from './utils/reviewValidation';
 import type {
   CommunityAuthorSnapshot,
   CommunityComment,
@@ -90,9 +90,6 @@ const EMPTY_STATE: StoredCommunityState = {
   viewerStates: {},
 };
 
-const MIN_REVIEW_BODY_LENGTH = 10;
-const MAX_REVIEW_BODY_LENGTH = 700;
-const MAX_REVIEW_TITLE_LENGTH = 40;
 const MAX_POST_BODY_LENGTH = 500;
 const MAX_POST_TITLE_LENGTH = 40;
 
@@ -103,37 +100,6 @@ function isValidPostText(title: string, body: string) {
       title.length <= MAX_POST_TITLE_LENGTH &&
       body.length <= MAX_POST_BODY_LENGTH,
   );
-}
-
-function isValidReviewScore(value: number) {
-  return Number.isFinite(value) && value >= 0.5 && value <= 5 && Number.isInteger(value * 2);
-}
-
-function isValidReviewDetailScores(scores?: ReviewPost['detailScores']) {
-  if (!scores) return true;
-  return [scores.kindness, scores.price, scores.revisit].every(isValidReviewScore);
-}
-
-function getValidReviewInput(
-  post: Pick<ReviewPost, 'body' | 'detailScores' | 'rating' | 'title' | 'visitedAt'>,
-) {
-  const title = post.title.trim();
-  const body = post.body.trim();
-  const visitedAt = post.visitedAt?.trim();
-
-  if (!title || !body || !visitedAt) return null;
-  if (
-    title.length > MAX_REVIEW_TITLE_LENGTH ||
-    body.length < MIN_REVIEW_BODY_LENGTH ||
-    body.length > MAX_REVIEW_BODY_LENGTH ||
-    !isPastOrTodayDateValue(visitedAt) ||
-    !isValidReviewScore(post.rating) ||
-    !isValidReviewDetailScores(post.detailScores)
-  ) {
-    return null;
-  }
-
-  return { body, title, visitedAt };
 }
 
 const DEFAULT_FILTER_SESSION: CommunityViewerState['filterSession'] = {
@@ -520,7 +486,8 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
 
         const reviewInput = getValidReviewInput(post);
-        if (!reviewInput) return { ok: false, reason: 'empty' };
+        const targetName = getValidReviewTarget(post.targetName);
+        if (!reviewInput || !targetName) return { ok: false, reason: 'empty' };
 
         const now = new Date().toISOString();
         const postId = createId('review');
@@ -532,7 +499,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
               body: reviewInput.body,
               createdAt: now,
               id: postId,
-              targetName: post.targetName?.trim(),
+              targetName,
               title: reviewInput.title,
               visitedAt: reviewInput.visitedAt,
             },

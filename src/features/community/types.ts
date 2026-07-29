@@ -10,6 +10,8 @@ export type ReviewCategory = '미용실' | '병원' | '산책 장소' | '용품�
 
 export type MarketTradeType = '교환' | '구해요' | '나눔' | '판매';
 
+export type MarketTradeMethod = '비대면 나눔' | '직거래' | '택배';
+
 export type MarketStatus = '예약 중' | '완료' | '진행 중';
 
 export type CommunityAuthorSnapshot = {
@@ -133,7 +135,7 @@ export type CommunityWriteDraft =
       productName: string;
       tab: 'market';
       tradeLocation: string;
-      tradeMethods: string[];
+      tradeMethods: MarketTradeMethod[];
       tradeType: MarketTradeType;
       updatedAt: string;
       userId: string;
