@@ -39,6 +39,7 @@ export function SignupScaffold({
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const navigationDisabled = backDisabled || nextLoading;
+  const bodyInteractionDisabled = nextLoading || contentDisabled;
 
   const handleBack = useCallback(() => {
     if (navigationDisabled) return;
@@ -100,11 +101,11 @@ export function SignupScaffold({
         <SignupProgress currentStep={currentStep} />
       </View>
       <View
-        accessibilityElementsHidden={nextLoading || contentDisabled}
+        accessibilityElementsHidden={bodyInteractionDisabled}
         importantForAccessibility={
-          nextLoading || contentDisabled ? 'no-hide-descendants' : 'auto'
+          bodyInteractionDisabled ? 'no-hide-descendants' : 'auto'
         }
-        pointerEvents={nextLoading || contentDisabled ? 'none' : 'auto'}
+        pointerEvents={bodyInteractionDisabled ? 'none' : 'auto'}
         style={[styles.body, bodyStyle]}
       >
         {children}

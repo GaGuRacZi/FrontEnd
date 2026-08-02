@@ -119,7 +119,11 @@ export function MyPageCheckoutScreen() {
         const result = await switchPlan(selectedPlan.id, paymentStatus);
 
         if (!result.ok) {
-          showAlert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
+          if (result.reason === 'payment-method-required') {
+            setPaymentGuideVisible(true);
+          } else {
+            showAlert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
+          }
           return;
         }
 

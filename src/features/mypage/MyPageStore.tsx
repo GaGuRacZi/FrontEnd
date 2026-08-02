@@ -41,13 +41,18 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'error' | 'invalid' | 'not-ready' };
+  | {
+      ok: false;
+      reason: 'error' | 'invalid' | 'not-ready' | 'payment-method-required';
+    };
+
+export type StoredProfileStatus = 'missing' | 'recoverable' | 'valid';
 
 type MyPageStoreContextValue = {
   clearScreenSession: () => void;
   deleteUserProfileData: (userId?: string) => Promise<void>;
   hasLoadError: boolean;
-  hasStoredUserProfileData: (userId: string) => Promise<boolean>;
+  hasStoredUserProfileData: (userId: string) => Promise<StoredProfileStatus>;
   isReady: boolean;
   notificationSettings: NotificationSettings | null;
   paymentHistory: PaymentHistoryItem[];
@@ -185,8 +190,14 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           const nextState = await updater(stateRef.current);
           await persist(userId, nextState);
           return { ok: true };
-        } catch {
-          return { ok: false, reason: 'error' };
+        } catch (error) {
+          return {
+            ok: false,
+            reason:
+              error instanceof Error && error.message === 'payment-method-required'
+                ? 'payment-method-required'
+                : 'error',
+          };
         }
       });
     },
@@ -211,13 +222,17 @@ export function MyPageProvider({ children }: PropsWithChildren) {
             profile: { ...profile, profileImageUri },
           };
 
+          await mypageRepository.saveState(userId, nextState);
+
           if (
             previous.profile.profileImageUri &&
             previous.profile.profileImageUri !== profileImageUri
           ) {
-            await queueProfileImageRemoval(userId, previous.profile.profileImageUri);
+            await queueProfileImageRemoval(
+              userId,
+              previous.profile.profileImageUri,
+            ).catch(() => undefined);
           }
-          await mypageRepository.saveState(userId, nextState);
 
           if (activeUserRef.current === userId) {
             readyUserRef.current = userId;
@@ -236,7 +251,8 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   );
 
   const hasStoredUserProfileData = useCallback(
-    (userId: string) => enqueueMutation(() => mypageRepository.hasStoredState(userId)),
+    (userId: string) =>
+      enqueueMutation(() => mypageRepository.getStoredStateStatus(userId)),
     [enqueueMutation],
   );
 
@@ -262,10 +278,16 @@ export function MyPageProvider({ children }: PropsWithChildren) {
         const nextState = { ...current, profile: nextProfile };
 
         try {
-          if (previousUri && previousUri !== nextProfile.profileImageUri) {
-            await queueProfileImageRemoval(userId, previousUri);
-          }
-          await persist(userId, nextState);
+          await persist(
+            userId,
+            nextState,
+            previousUri && previousUri !== nextProfile.profileImageUri
+              ? () =>
+                  queueProfileImageRemoval(userId, previousUri).catch(
+                    () => undefined,
+                  )
+              : undefined,
+          );
 
           return { ok: true };
         } catch {

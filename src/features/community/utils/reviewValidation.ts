@@ -39,14 +39,20 @@ export function getReviewInputValidationMessage(
   const visitedAt = post.visitedAt?.trim();
 
   if (!title) return '제목을 입력해주세요.';
-  if (title.length > REVIEW_TITLE_MAX_LENGTH) return '제목은 40자 이하로 입력해주세요.';
+  if (title.length > REVIEW_TITLE_MAX_LENGTH) {
+    return `제목은 ${REVIEW_TITLE_MAX_LENGTH}자 이하로 입력해주세요.`;
+  }
   if (!visitedAt) return '이용 날짜를 입력해주세요.';
   if (!isPastOrTodayDateValue(visitedAt)) {
     return '이용 날짜는 오늘 또는 이전 날짜로 입력해주세요.';
   }
   if (!body) return '후기 내용을 입력해주세요.';
-  if (body.length < REVIEW_BODY_MIN_LENGTH) return '후기 내용은 10자 이상 입력해주세요.';
-  if (body.length > REVIEW_BODY_MAX_LENGTH) return '후기 내용은 700자 이하로 입력해주세요.';
+  if (body.length < REVIEW_BODY_MIN_LENGTH) {
+    return `후기 내용은 ${REVIEW_BODY_MIN_LENGTH}자 이상 입력해주세요.`;
+  }
+  if (body.length > REVIEW_BODY_MAX_LENGTH) {
+    return `후기 내용은 ${REVIEW_BODY_MAX_LENGTH}자 이하로 입력해주세요.`;
+  }
   if (!isValidReviewScore(post.rating) || !isValidReviewDetailScores(post.detailScores)) {
     return '평점을 다시 선택해주세요.';
   }
@@ -56,7 +62,9 @@ export function getReviewInputValidationMessage(
 export function getReviewTargetValidationMessage(value?: string) {
   const target = normalizeReviewInlineText(value ?? '');
   if (!target) return '리뷰 대상을 입력해주세요.';
-  if (target.length > REVIEW_TARGET_MAX_LENGTH) return '리뷰 대상은 50자 이하로 입력해주세요.';
+  if (target.length > REVIEW_TARGET_MAX_LENGTH) {
+    return `리뷰 대상은 ${REVIEW_TARGET_MAX_LENGTH}자 이하로 입력해주세요.`;
+  }
   return null;
 }
 

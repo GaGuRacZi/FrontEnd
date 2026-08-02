@@ -42,12 +42,12 @@ export async function getRegionFromPosition(position: Location.LocationObject) {
   const values = [address.region, address.city, address.district, address.subregion];
   const isForeign = address.isoCountryCode
     ? address.isoCountryCode.toUpperCase() !== 'KR'
-    : values.some((value) => /[A-Za-z]/.test(value ?? ''));
-  const parts = (isForeign
-    ? [address.city ?? address.district ?? address.subregion, address.region]
-    : values
-  ).filter(
-    (part): part is string => Boolean(part),
+    : !values.some((value) => /[가-힣]/.test(value ?? ''));
+  const cityValue = [address.city, address.district, address.subregion].find(
+    (value): value is string => Boolean(value?.trim()),
+  );
+  const parts = (isForeign ? [cityValue, address.region] : values).filter(
+    (part): part is string => Boolean(part?.trim()),
   );
   const region = parts
     .filter((part, index) => parts.indexOf(part) === index)

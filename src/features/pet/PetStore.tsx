@@ -370,44 +370,40 @@ export function PetProvider({ children }: PropsWithChildren) {
   );
 
   const clearDrafts = useCallback(
-    async (userId = currentUserId ?? undefined) => {
-      if (!userId) return;
+    (userId = currentUserId ?? undefined) => {
+      if (!userId) return Promise.resolve();
 
-      const [draftsResult, stateResult, pendingPickerResult] = await Promise.allSettled([
-        petRepository.loadDrafts(userId),
-        petRepository.loadState(userId),
-        clearPendingPetImagePicker(userId),
-      ]);
+      return enqueueMutation(async () => {
+        const [draftsResult, stateResult, pendingPickerResult] = await Promise.allSettled([
+          petRepository.loadDrafts(userId),
+          petRepository.loadState(userId),
+          clearPendingPetImagePicker(userId),
+        ]);
 
-      if (draftsResult.status === 'rejected') throw draftsResult.reason;
-      if (stateResult.status === 'rejected') throw stateResult.reason;
+        if (draftsResult.status === 'rejected') throw draftsResult.reason;
+        if (stateResult.status === 'rejected') throw stateResult.reason;
 
-      const savedImages = collectImageUris(stateResult.value.pets);
-      const draftImages = draftsResult.value.flatMap((draft) => [
-        draft.profileImageUri,
-        draft.certificateImageUri,
-      ]);
-      const imageResults = await Promise.allSettled(
-        draftImages.map((uri) =>
-          uri && !savedImages.has(uri) ? removePetImage(userId, uri) : Promise.resolve(),
-        ),
-      );
-      const imageFailure = imageResults.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      );
-      if (imageFailure) throw imageFailure.reason;
+        await petRepository.clearDrafts(userId);
 
-      const clearDraftsResult = await Promise.allSettled([
-        petRepository.clearDrafts(userId),
-      ]);
-      const cleanupFailure = [pendingPickerResult, ...clearDraftsResult].find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      );
-      if (cleanupFailure) {
-        throw cleanupFailure.reason;
-      }
+        const savedImages = collectImageUris(stateResult.value.pets);
+        const draftImages = draftsResult.value.flatMap((draft) => [
+          draft.profileImageUri,
+          draft.certificateImageUri,
+        ]);
+        const imageResults = await Promise.allSettled(
+          draftImages.map((uri) =>
+            uri && !savedImages.has(uri)
+              ? removePetImage(userId, uri)
+              : Promise.resolve(),
+          ),
+        );
+        const cleanupFailure = [pendingPickerResult, ...imageResults].find(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        if (cleanupFailure) throw cleanupFailure.reason;
+      });
     },
-    [currentUserId],
+    [currentUserId, enqueueMutation],
   );
 
   const deleteUserPetData = useCallback(

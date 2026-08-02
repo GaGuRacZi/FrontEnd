@@ -135,12 +135,22 @@ export function flushQueuedProfileImageRemovals(
 
 export function removeUserProfileImages(userId: string) {
   return enqueueRemoval(async () => {
-    const directory = getUserDirectory(userId);
-    if (directory.exists) directory.delete();
-    fallbackRemovals.delete(userId);
-    await Promise.all([
+    let directoryRemoved = false;
+
+    try {
+      const directory = getUserDirectory(userId);
+      if (directory.exists) directory.delete();
+      directoryRemoved = true;
+    } catch {
+      directoryRemoved = false;
+    }
+
+    if (directoryRemoved) fallbackRemovals.delete(userId);
+    await Promise.allSettled([
       clearPendingProfileImagePicker(userId),
-      AsyncStorage.removeItem(getPendingRemovalKey(userId)),
+      directoryRemoved
+        ? AsyncStorage.removeItem(getPendingRemovalKey(userId))
+        : Promise.resolve(),
     ]);
   });
 }

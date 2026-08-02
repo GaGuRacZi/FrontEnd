@@ -304,8 +304,8 @@ class LocalPetRepository implements PetRepository {
   }
 
   async deleteUser(userId: string) {
-    await AsyncStorage.removeItem(stateKey(userId));
     await this.clearDrafts(userId);
+    await AsyncStorage.removeItem(stateKey(userId));
   }
 }
 

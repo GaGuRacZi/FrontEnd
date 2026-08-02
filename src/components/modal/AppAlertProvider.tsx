@@ -81,15 +81,10 @@ export function AppAlertProvider({ children }: PropsWithChildren) {
       };
     }
 
-    const cancelButton = activeAlert.buttons.find((button) => button.style === 'cancel');
-    const primaryButton =
-      activeAlert.buttons.find((button) => button !== cancelButton) ??
-      activeAlert.buttons[activeAlert.buttons.length - 1];
-    const secondaryButton =
-      cancelButton ??
-      (activeAlert.buttons.length > 1 && primaryButton === activeAlert.buttons[1]
-        ? activeAlert.buttons[0]
-        : undefined);
+    const [secondaryButton, primaryButton] =
+      activeAlert.buttons.length > 1
+        ? activeAlert.buttons
+        : [undefined, activeAlert.buttons[0]];
 
     return {
       primaryAction: primaryButton

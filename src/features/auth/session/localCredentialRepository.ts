@@ -87,6 +87,25 @@ async function loadCredential(userId: string) {
   return parsedValue;
 }
 
+function isCorruptCredentialError(error: unknown) {
+  return error instanceof Error && error.message === 'local-credential-corrupt';
+}
+
+async function deleteCredential(userId: string) {
+  const key = await getCredentialKey(userId);
+  await SecureStore.deleteItemAsync(key, SECURE_STORE_OPTIONS);
+}
+
+async function loadCredentialOrClearCorrupt(userId: string) {
+  try {
+    return await loadCredential(userId);
+  } catch (error) {
+    if (!isCorruptCredentialError(error)) throw error;
+    await deleteCredential(userId).catch(() => undefined);
+    return null;
+  }
+}
+
 export const localCredentialRepository = {
   async activate(userId: string) {
     const credential = await loadCredential(userId);
@@ -102,12 +121,11 @@ export const localCredentialRepository = {
   },
 
   async delete(userId: string) {
-    const key = await getCredentialKey(userId);
-    await SecureStore.deleteItemAsync(key, SECURE_STORE_OPTIONS);
+    await deleteCredential(userId);
   },
 
   async has(userId: string) {
-    return Boolean(await loadCredential(userId));
+    return Boolean(await loadCredentialOrClearCorrupt(userId));
   },
 
   async save(userId: string, password: string) {
@@ -136,7 +154,7 @@ export const localCredentialRepository = {
   ): Promise<LocalCredentialVerification> {
     if (!password) return 'invalid';
 
-    const credential = await loadCredential(userId);
+    const credential = await loadCredentialOrClearCorrupt(userId);
     if (!credential || credential.status !== 'active') return 'missing';
 
     const verifier = await createVerifier(password, credential.salt);

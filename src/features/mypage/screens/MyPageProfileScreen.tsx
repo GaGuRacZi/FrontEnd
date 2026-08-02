@@ -71,6 +71,7 @@ export function MyPageProfileScreen() {
   const pickerOpenRef = useRef(false);
   const profileIdRef = useRef<string | null>(null);
   const savingRef = useRef(false);
+  const profileId = profile?.id;
 
   useEffect(() => {
     if (!profile) return;
@@ -147,15 +148,17 @@ export function MyPageProfileScreen() {
   );
 
   useEffect(() => {
-    if (Platform.OS !== 'android' || !profile) return;
+    if (Platform.OS !== 'android' || !profileId) return;
 
     let active = true;
+    let lockedHere = false;
 
     void (async () => {
       try {
         const pendingUserId = await getPendingProfileImagePicker();
-        if (!active || pendingUserId !== profile.id) return;
+        if (!active || pendingUserId !== profileId || pickerOpenRef.current) return;
 
+        lockedHere = true;
         pickerOpenRef.current = true;
         const result = await ImagePicker.getPendingResultAsync();
         if (active) await handlePickerResult(result);
@@ -164,15 +167,17 @@ export function MyPageProfileScreen() {
           showAlert('사진을 불러오지 못했어요', '사진을 다시 선택해주세요.');
         }
       } finally {
-        await clearPendingProfileImagePicker(profile.id).catch(() => undefined);
-        pickerOpenRef.current = false;
+        if (lockedHere) {
+          await clearPendingProfileImagePicker(profileId).catch(() => undefined);
+          pickerOpenRef.current = false;
+        }
       }
     })();
 
     return () => {
       active = false;
     };
-  }, [handlePickerResult, profile, showAlert]);
+  }, [handlePickerResult, profileId, showAlert]);
 
   const errors = useMemo(() => {
     if (!draft) return { name: '', nickname: '' };

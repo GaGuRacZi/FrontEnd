@@ -63,7 +63,11 @@ export function GuestSessionGuard({
     return <AuthSessionStateScreen loadingLabel="로그인 정보를 확인하고 있어요." />;
   }
 
-  if (currentUserId && !authenticatedPathExceptions.includes(pathname)) {
+  const isAuthenticatedPathException = authenticatedPathExceptions.some(
+    (exception) => pathname === exception || pathname.startsWith(`${exception}/`),
+  );
+
+  if (currentUserId && !isAuthenticatedPathException) {
     return <Redirect href="/home" />;
   }
 

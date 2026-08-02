@@ -60,7 +60,7 @@ export function MyPageWithdrawScreen() {
   };
 
   const closeModal = () => {
-    if (verifyingRef.current || withdrawing || withdrawError) return;
+    if (verifyingRef.current || withdrawing) return;
     setModalVisible(false);
     resetVerification();
   };
@@ -69,6 +69,13 @@ export function MyPageWithdrawScreen() {
     if (!isReady) return;
     if (requiresSubscriptionAction) {
       showAlert('구독 해지가 먼저 필요해요', '내 요금제에서 구독 해지를 예약한 뒤 탈퇴할 수 있어요.');
+      return;
+    }
+    if (usesKakao) {
+      showAlert(
+        '카카오 확인이 필요해요',
+        '카카오 재인증 API 연결 후 탈퇴할 수 있어요.',
+      );
       return;
     }
     resetVerification();
@@ -91,6 +98,7 @@ export function MyPageWithdrawScreen() {
       const result = await verifyCurrentUserPassword(verificationValue);
 
       if (result === 'verified') {
+        setVerificationValue('');
         setReauthenticated(true);
         return;
       }
@@ -189,7 +197,7 @@ export function MyPageWithdrawScreen() {
       </ScrollView>
 
       <AppModal
-        closeOnBackdropPress={!modalBusy && !withdrawError}
+        closeOnBackdropPress={!modalBusy}
         onClose={closeModal}
         primaryAction={{
           disabled:
@@ -209,15 +217,11 @@ export function MyPageWithdrawScreen() {
               : () => void confirmIdentity(),
           variant: withdrawError || reauthenticated ? 'danger' : 'primary',
         }}
-        secondaryAction={
-          withdrawError
-            ? undefined
-            : {
-                disabled: modalBusy,
-                label: '취소',
-                onPress: closeModal,
-              }
-        }
+        secondaryAction={{
+          disabled: modalBusy,
+          label: withdrawError ? '닫기' : '취소',
+          onPress: closeModal,
+        }}
         title={
           withdrawError
             ? '탈퇴를 완료하지 못했어요'

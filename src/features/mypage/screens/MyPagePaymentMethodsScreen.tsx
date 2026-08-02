@@ -134,7 +134,7 @@ export function MyPagePaymentMethodsScreen() {
                     accessibilityLabel={`${method.label} 결제 수단 삭제`}
                     accessibilityRole="button"
                     disabled={updating}
-                    hitSlop={SPACING.sm}
+                    hitSlop={SPACING.md}
                     onPress={() => setMethodToDelete(method)}
                     style={({ pressed }) => [
                       styles.deleteIconButton,

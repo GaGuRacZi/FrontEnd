@@ -83,7 +83,8 @@ export function useAccountLifecycle() {
     const pendingUserId = await AsyncStorage.getItem(PENDING_WITHDRAWAL_KEY);
     if (!pendingUserId) return false;
     if (!currentUserId || pendingUserId !== currentUserId) {
-      throw new Error('withdrawal-user-mismatch');
+      await AsyncStorage.removeItem(PENDING_WITHDRAWAL_KEY).catch(() => undefined);
+      return false;
     }
 
     await deleteAccountData(currentUserId);

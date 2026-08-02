@@ -52,7 +52,7 @@ export type TalkPost = CommunityPostBase & {
 
 export type MarketPost = CommunityPostBase & {
   baseBookmarkCount: number;
-  baseReactionCounts: Partial<Record<ReactionKind, number>>;
+  baseReactionCounts?: Partial<Record<ReactionKind, number>>;
   category: Exclude<MarketCategory, '전체'>;
   expiresAt?: string;
   imageCount: number;

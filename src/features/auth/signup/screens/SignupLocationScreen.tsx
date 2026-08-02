@@ -268,7 +268,7 @@ export function SignupLocationScreen() {
       const ownsStoredTransaction = Boolean(
         transaction && isSignupTransactionOwner(transaction, transactionOwner),
       );
-      const [hasPetData, hasProfileData, consentHistory, hasCredentialData, currentTerms] =
+      const [hasPetData, profileStatus, consentHistory, hasCredentialData, currentTerms] =
         await Promise.all([
           hasStoredUserPetData(userId),
           hasStoredUserProfileData(userId),
@@ -280,7 +280,7 @@ export function SignupLocationScreen() {
         ]);
       const hasCompleteAccount =
         hasPetData &&
-        hasProfileData &&
+        profileStatus === 'valid' &&
         hasCurrentRequiredSignupConsents(consentHistory, currentTerms) &&
         hasCredentialData;
 
@@ -335,11 +335,17 @@ export function SignupLocationScreen() {
           await clearSignupTransaction(userId, transactionOwner.sessionId);
         } else if (
           hasPetData ||
-          hasProfileData ||
+          profileStatus !== 'missing' ||
           consentHistory.length > 0 ||
           (transactionOwner.method === 'local' && hasCredentialData)
         ) {
-          showAlert('이미 가입된 계정이에요', '기존 계정으로 로그인해주세요.');
+          showAlert('이미 가입된 계정이에요', '기존 계정으로 로그인해주세요.', [
+            { text: '닫기', style: 'cancel' },
+            {
+              text: '로그인하기',
+              onPress: () => navigateOnce(() => router.replace('/login')),
+            },
+          ]);
           throw new Error('signup-account-exists');
         }
 
@@ -395,9 +401,10 @@ export function SignupLocationScreen() {
       ) {
         showAlert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
       }
+      throw error;
+    } finally {
       submittingRef.current = false;
       setSubmitting(false);
-      throw error;
     }
   }, [
     activateLocalCredential,
@@ -413,6 +420,7 @@ export function SignupLocationScreen() {
     hasStoredUserPetData,
     hasStoredUserProfileData,
     markSignupCompleted,
+    navigateOnce,
     registerSignupPet,
     registerSignupProfile,
     registerLocalCredential,

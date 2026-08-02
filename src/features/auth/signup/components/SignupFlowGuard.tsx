@@ -32,19 +32,19 @@ export function SignupFlowGuard({ children }: PropsWithChildren) {
     ? ROUTE_ORDER[allowedRoute]
     : ROUTE_ORDER['/signup/terms'];
 
+  if (committedSignupRecovery) {
+    if (pathname !== '/signup/location' && pathname !== '/signup/complete') {
+      return <Redirect href="/signup/location" />;
+    }
+    return children;
+  }
+
   if (data.method === 'kakao') {
     return <Redirect href="/" />;
   }
 
   if (currentUserId && !signupCompleted) {
     return <Redirect href="/home" />;
-  }
-
-  if (committedSignupRecovery) {
-    if (pathname !== '/signup/location' && pathname !== '/signup/complete') {
-      return <Redirect href="/signup/location" />;
-    }
-    return children;
   }
 
   if (status === 'loading') {

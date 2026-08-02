@@ -1746,7 +1746,9 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
           secondaryAction={{
             disabled: talkDeleting,
             label: '취소',
-            onPress: () => setTalkDeleteVisible(false),
+            onPress: () => {
+              if (!talkDeletingRef.current) setTalkDeleteVisible(false);
+            },
           }}
           title="소통 글을 삭제할까요?"
           variant="center"
@@ -2225,7 +2227,9 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
         secondaryAction={{
           disabled: marketDeleting,
           label: '취소',
-          onPress: () => setMarketDeleteVisible(false),
+          onPress: () => {
+            if (!marketDeletingRef.current) setMarketDeleteVisible(false);
+          },
         }}
         title="장터 글을 삭제할까요?"
         variant="center"
@@ -2651,40 +2655,28 @@ export function CommunityScreen() {
 
     const focusedPost = posts.find((post) => post.id === params.focusPostId) ?? null;
     const focusedReview = reviewPosts.find((post) => post.id === params.focusPostId) ?? null;
-    let nextSession: Parameters<typeof updateFilterSession>[0] | null = null;
     let focusedTab: CommunityTab | null = null;
 
     if (focusedPost?.kind === 'talk') {
       focusedTab = 'talk';
       setActiveTab('talk');
       setTalkCategory(focusedPost.category);
-      nextSession = { activeTab: 'talk', talkCategory: focusedPost.category };
     } else if (focusedPost?.kind === 'market') {
       focusedTab = 'market';
       setActiveTab('market');
       setMarketCategory(focusedPost.category);
       setMarketStatuses([focusedPost.status]);
       setMarketTradeTypes([focusedPost.tradeType]);
-      nextSession = {
-        activeTab: 'market',
-        marketCategory: focusedPost.category,
-        marketStatuses: [focusedPost.status],
-        marketTradeTypes: [focusedPost.tradeType],
-      };
     } else if (focusedReview) {
       focusedTab = 'review';
       setActiveTab('review');
       setReviewCategory(focusedReview.category);
-      nextSession = { activeTab: 'review', reviewCategory: focusedReview.category };
     }
 
     if (focusedTab) {
       setPages((current) =>
         current[focusedTab] === 1 ? current : { ...current, [focusedTab]: 1 },
       );
-      if (nextSession) {
-        void updateFilterSession(nextSession, filterSessionGeneration);
-      }
       requestAnimationFrame(() => {
         mainScrollRef.current?.scrollTo({ animated: false, y: 0 });
       });
@@ -2692,14 +2684,12 @@ export function CommunityScreen() {
 
     router.setParams({ focusPostId: undefined });
   }, [
-    filterSessionGeneration,
     hasLoadError,
     isReady,
     params.focusPostId,
     posts,
     reviewPosts,
     router,
-    updateFilterSession,
   ]);
 
   const closeSearch = useCallback(() => {

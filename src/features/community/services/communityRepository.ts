@@ -182,6 +182,17 @@ function mergeSeedState(storedState: StoredCommunityState) {
   };
 }
 
+async function readCommunityState() {
+  const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
+  if (!stored) return createInitialCommunityState();
+
+  const nextState = mergeSeedState(readStoredState(stored));
+  if (JSON.stringify(nextState) !== stored) {
+    await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(nextState));
+  }
+  return nextState;
+}
+
 function getDraftImages(draft: CommunityWriteDraft): CommunityImageAsset[] {
   if (draft.tab === 'talk') return draft.talkPhotos;
   if (draft.tab === 'market') return draft.marketPhotos;
@@ -459,7 +470,7 @@ function normalizeMarketPost(value: unknown): MarketPost | null {
   return {
     author,
     baseBookmarkCount: getNonNegativeInteger(value.baseBookmarkCount),
-    baseReactionCounts: normalizeReactionCounts(value.baseReactionCounts, ['like']),
+    baseReactionCounts: normalizeReactionCounts(value.baseReactionCounts, []),
     body,
     category,
     createdAt,
@@ -925,7 +936,7 @@ export const communityRepository = {
     await enqueueWriteDraftOperation(async () => {
       const [keys, storedState] = await Promise.all([
         AsyncStorage.getAllKeys(),
-        this.loadState(),
+        readCommunityState(),
       ]);
       const draftKeys = keys.filter((key) => key.startsWith(writeDraftPrefix(userId)));
       const storedImageIds = getStoredImageIds(storedState);
@@ -959,7 +970,6 @@ export const communityRepository = {
       const key = writeDraftKey(userId, tab, editPostId);
       await retryWriteDraftOperation(() => AsyncStorage.setItem(key, 'null'));
       await retryWriteDraftOperation(() => AsyncStorage.removeItem(key)).catch(() => undefined);
-      await this.loadState();
     });
   },
 
@@ -971,7 +981,7 @@ export const communityRepository = {
     await enqueueWriteDraftOperation(async () => {
       const [draft, storedState] = await Promise.all([
         readWriteDraft(userId, tab, editPostId).catch(() => null),
-        this.loadState(),
+        readCommunityState(),
       ]);
       if (draft) {
         await queueCommunityImageRemovals(
@@ -985,7 +995,7 @@ export const communityRepository = {
   },
 
   async deleteUserState(userId: string) {
-    const state = await this.loadState();
+    const state = await readCommunityState();
     const deletedAt = new Date().toISOString();
     const removedImages = [...state.posts, ...state.reviewPosts]
       .filter((post) => post.author.userId === userId)
@@ -1080,18 +1090,7 @@ export const communityRepository = {
   },
 
   async loadState(): Promise<StoredCommunityState> {
-    const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
-    if (!stored) {
-      const initialState = createInitialCommunityState();
-      await this.flushImageRemovals(initialState).catch(() => undefined);
-      return initialState;
-    }
-
-    const restoredState = readStoredState(stored);
-    const nextState = mergeSeedState(restoredState);
-    if (JSON.stringify(nextState) !== stored) {
-      await this.saveState(nextState);
-    }
+    const nextState = await readCommunityState();
     await this.flushImageRemovals(nextState).catch(() => undefined);
     return nextState;
   },

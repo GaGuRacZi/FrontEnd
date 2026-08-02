@@ -647,7 +647,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     try {
       await petRepository.deleteDraft(completion.entity.userId, completion.draftId);
     } catch {
-      await petRepository.saveDraft(completion.fallbackDraft);
+      await petRepository
+        .saveDraft(completion.fallbackDraft)
+        .catch(() => undefined);
     }
 
     setPendingCompletion(null);

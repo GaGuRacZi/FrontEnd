@@ -42,10 +42,10 @@ function AccountDataGuard({ children }: PropsWithChildren) {
       const resumedWithdrawal = await resumePendingWithdrawal();
       if (!active || resumedWithdrawal) return;
 
-      const hasStoredProfile = await hasStoredUserProfileData(userId);
+      const profileStatus = await hasStoredUserProfileData(userId);
       if (!active) return;
 
-      if (!hasStoredProfile) {
+      if (profileStatus === 'missing') {
         await clearSession(userId);
         return;
       }

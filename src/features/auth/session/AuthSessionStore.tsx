@@ -41,17 +41,19 @@ type AuthSessionContextValue = {
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
+function getEmailUserId(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  return normalizedEmail
+    ? `${EMAIL_USER_ID_PREFIX}${encodeURIComponent(normalizedEmail)}`
+    : null;
+}
+
 export function getSignupUserId(
   method: AuthMethod,
   email: string,
   signupSessionId: string,
 ) {
-  const normalizedEmail = email.trim().toLowerCase();
-
-  if (normalizedEmail) {
-    return `user:email:${encodeURIComponent(normalizedEmail)}`;
-  }
-  return `${method}:u${signupSessionId}`;
+  return getEmailUserId(email) ?? `${method}:u${signupSessionId}`;
 }
 
 function parseSessionUserId(value: string | null) {
@@ -237,7 +239,9 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
 
   const signInWithPassword = useCallback(
     async (email: string, password: string): Promise<LocalSignInResult> => {
-      const userId = getSignupUserId('local', email, 'local-login');
+      const userId = parseSessionUserId(getEmailUserId(email));
+      if (!userId) return { status: 'invalid' };
+
       const status = await localCredentialRepository.verify(userId, password);
 
       if (status !== 'verified') return { status };
@@ -248,13 +252,11 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
     [setCurrentUserId],
   );
 
-  const verifyCurrentUserPassword = useCallback(
-    (password: string) => {
-      if (!currentUserId) throw new Error('auth-session-required');
-      return localCredentialRepository.verify(currentUserId, password);
-    },
-    [currentUserId],
-  );
+  const verifyCurrentUserPassword = useCallback((password: string) => {
+    const userId = currentUserIdRef.current;
+    if (!userId) throw new Error('auth-session-required');
+    return localCredentialRepository.verify(userId, password);
+  }, []);
 
   const clearSession = useCallback(
     (expectedUserId: string) =>

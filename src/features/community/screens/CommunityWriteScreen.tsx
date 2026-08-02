@@ -69,6 +69,7 @@ import {
 } from '../utils/date';
 import {
   createMarketPriceLabel,
+  getMarketTradeMethods,
   getPositiveMarketPrice,
   isValidMarketTradeMethodSelection,
 } from '../utils/marketValidation';
@@ -161,10 +162,8 @@ function sameStringList(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function getMarketTradeMethods(post: MarketPost): MarketTradeMethod[] {
-  const methods = post.tags.filter((tag): tag is MarketTradeMethod =>
-    MARKET_TRADE_METHODS.includes(tag as MarketTradeMethod),
-  );
+function getEditableMarketTradeMethods(post: MarketPost): MarketTradeMethod[] {
+  const methods = getMarketTradeMethods(post.tags);
   const compatibleMethods = post.tradeType === '나눔'
     ? methods
     : methods.filter((method) => method !== '비대면 나눔');
@@ -763,7 +762,7 @@ export function CommunityWriteScreen() {
         expiresAt !== (marketPostToEdit.expiresAt ?? '') ||
         marketBody !== marketPostToEdit.body ||
         tradeLocation !== marketPostToEdit.location ||
-        !sameStringList(tradeMethods, getMarketTradeMethods(marketPostToEdit)) ||
+        !sameStringList(tradeMethods, getEditableMarketTradeMethods(marketPostToEdit)) ||
         marketPhotos.map((image) => image.assetId).join('|') !==
           (marketPostToEdit.images ?? []).map((image) => image.assetId).join('|')
       ),
@@ -851,7 +850,7 @@ export function CommunityWriteScreen() {
     setPriceOffer(hasPriceOffer(post.priceLabel));
     setExpiresAt(post.expiresAt ?? '');
     setMarketBody(post.body);
-    setTradeMethods(getMarketTradeMethods(post));
+    setTradeMethods(getEditableMarketTradeMethods(post));
     setTradeLocation(post.location);
   }, []);
 
@@ -1461,7 +1460,6 @@ export function CommunityWriteScreen() {
           ...marketPayload,
           author,
           baseBookmarkCount: 0,
-          baseReactionCounts: { helpful: 0, notHelpful: 0 },
           status: '진행 중',
         });
         if (result.ok && result.postId) {
