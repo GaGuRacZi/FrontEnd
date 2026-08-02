@@ -10,6 +10,12 @@ type MonthlyHealthSummaryCardProps = {
   onPressMore: () => void;
 };
 
+const METRIC_COLOR_META: Record<string, string> = {
+  weight: COLORS.redSoft,
+  walk: COLORS.green,
+  medical: COLORS.primary,
+};
+
 export function MonthlyHealthSummaryCard({ metrics, onPressMore }: MonthlyHealthSummaryCardProps) {
   return (
     <View style={styles.card}>
@@ -37,12 +43,7 @@ export function MonthlyHealthSummaryCard({ metrics, onPressMore }: MonthlyHealth
           <View key={metric.id} style={styles.metricColumn}>
             <Text style={styles.metricLabel}>{metric.label}</Text>
             <Text style={styles.metricValue}>{metric.valueLabel}</Text>
-            <Text
-              style={[
-                styles.metricChange,
-                metric.changeSentiment === 'positive' ? styles.changePositive : styles.changeNegative,
-              ]}
-            >
+            <Text style={[styles.metricChange, { color: METRIC_COLOR_META[metric.id] ?? COLORS.gray600 }]}>
               {metric.changeLabel}
             </Text>
           </View>
@@ -83,6 +84,5 @@ const styles = StyleSheet.create({
     fontFamily: TYPOGRAPHY.button.fontFamily,
   },
   metricChange: { ...TYPOGRAPHY.caption, fontFamily: TYPOGRAPHY.button.fontFamily },
-  changePositive: { color: COLORS.redSoft },
-  changeNegative: { color: COLORS.primary },
+
 });

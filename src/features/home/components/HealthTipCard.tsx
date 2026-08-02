@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -13,7 +13,11 @@ export function HealthTipCard({ tip }: HealthTipCardProps) {
   return (
     <View style={styles.card}>
       <View style={styles.iconContainer}>
-        <AppIcon color={COLORS.primary} name="bulb-outline" size={18} />
+          <Image
+            accessibilityIgnoresInvertColors
+            source={require('../../../../assets/images/decorations/paw-tiny.png')}
+            style={styles.pillIcon}
+          />
       </View>
 
       <View style={styles.textGroup}>
@@ -27,7 +31,7 @@ export function HealthTipCard({ tip }: HealthTipCardProps) {
 const styles = StyleSheet.create({
   card: {
     alignItems: 'center',
-    backgroundColor: COLORS.yellow,
+    backgroundColor: COLORS.cream,
     borderRadius: RADIUS.button,
     flexDirection: 'row',
     gap: SPACING.lg,
@@ -35,12 +39,13 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.yellow,
     borderRadius: RADIUS.round,
     height: 36,
     justifyContent: 'center',
     width: 36,
   },
+  pillIcon: { height: 26, width: 26 },
   textGroup: { flex: 1, gap: 2 },
   title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
   description: { ...TYPOGRAPHY.small, color: COLORS.gray800 },
