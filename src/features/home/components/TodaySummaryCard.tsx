@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import type { AppIconName } from '@/src/components/common';
@@ -12,10 +12,10 @@ type TodaySummaryCardProps = {
   todos: readonly TodoSummaryItem[];
 };
 
-const CATEGORY_META: Record<TodoCategory, { /*icon: AppIconName;*/ tint: string }> = {
-  medication: { /*icon: 'medkit-outline',*/ tint: COLORS.primarySoft },
-  hospital: { /*icon: 'medical-outline',*/ tint: COLORS.yellow },
-  walk: { /*icon: 'medical-outline',*/ tint: COLORS.yellow },
+const CATEGORY_META: Record<TodoCategory, { icon: ImageSourcePropType; iconSize: number; tint: string }> = {
+  medication: { icon: require('../../../../assets/images/home/pill.png'), iconSize: 20, tint: COLORS.primarySoft },
+  hospital: { icon: require('../../../../assets/images/home/diagnosis.png'), iconSize: 24, tint: COLORS.yellow },
+  walk: { icon: require('../../../../assets/images/home/walk.png'), iconSize: 18, tint: COLORS.greenSoft }, 
 };
 
 export function TodaySummaryCard({ onPressMore, onToggleTodo, todos }: TodaySummaryCardProps) {
@@ -50,7 +50,11 @@ export function TodaySummaryCard({ onPressMore, onToggleTodo, todos }: TodaySumm
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             >
               <View style={[styles.iconContainer, { backgroundColor: meta.tint }]}>
-
+                  <Image
+                    accessibilityIgnoresInvertColors
+                    source={meta.icon}
+                    style={[styles.categoryIcon, { height: meta.iconSize, width: meta.iconSize }]}
+                  />
               </View>
 
               <View style={styles.textGroup}>
@@ -103,6 +107,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 34,
   },
+  categoryIcon: { resizeMode: 'contain' },
   textGroup: { flex: 1, gap: 2 },
   title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
   titleDone: { color: COLORS.gray500 },

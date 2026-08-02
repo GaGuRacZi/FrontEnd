@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -19,7 +19,13 @@ export function MedicationSummaryCard({ medications, onPress }: MedicationSummar
     >
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <View style={styles.iconContainer}/>
+          <View style={styles.iconContainer}>
+            <Image
+              accessibilityIgnoresInvertColors
+              source={require('../../../../assets/images/home/pill.png')}
+              style={styles.Icon}
+            />
+          </View>  
           <Text style={styles.label}>복약 목록</Text>
         </View>
         <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
@@ -48,7 +54,7 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.7 },
   headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  headerLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.xs },
+  headerLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
   iconContainer: {
     alignItems: 'center',
     backgroundColor: COLORS.cream,
@@ -57,7 +63,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 26,
   },
-  label: { ...TYPOGRAPHY.body2, color: COLORS.black },
+  Icon: { height: 14, width: 14 },
+  label: { ...TYPOGRAPHY.checkboxLabel, color: COLORS.black },
   list: { gap: 2 },
   item: { ...TYPOGRAPHY.caption, color: COLORS.black },
 });

@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -19,7 +19,13 @@ export function RecentDiagnosisCard({ diagnosis, onPress }: RecentDiagnosisCardP
     >
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <View style={styles.iconContainer}/>
+          <View style={styles.iconContainer}>
+            <Image
+              accessibilityIgnoresInvertColors
+              source={require('../../../../assets/images/home/diagnosis.png')}
+              style={styles.Icon}
+            />
+          </View>
           <Text style={styles.label}>최근 진료</Text>
         </View>
         <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
@@ -49,7 +55,7 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.7 },
   headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  headerLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.xs },
+  headerLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
   iconContainer: {
     alignItems: 'center',
     backgroundColor: COLORS.primarySoft,
@@ -58,7 +64,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 26,
   },
-  label: { ...TYPOGRAPHY.body2, color: COLORS.black },
+  Icon: { height: 18, width: 18 },
+  label: { ...TYPOGRAPHY.checkboxLabel, color: COLORS.black },
   title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
   badge: {
     alignSelf: 'flex-start',
