@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import type { AppIconName } from '@/src/components/common';
@@ -12,31 +12,35 @@ type NotificationCardProps = {
 };
 
 const CATEGORY_META: Record <NotificationCategory,
-  { chipColor: string; chipTint: string; icon: AppIconName; iconColor: string; iconTint: string }
+  { chipColor: string; chipTint: string; icon: ImageSourcePropType; iconSize: number; iconColor: string; iconTint: string }
 > = {
   schedule: {
-    icon: 'medkit-outline',
+    icon: require('../../../../assets/images/home/pill.png'),
+    iconSize: 20,
     iconColor: COLORS.primary,
     iconTint: COLORS.primarySoft,
     chipTint: COLORS.primarySoft,
     chipColor: COLORS.primary,
   },
   ai: {
-    icon: 'sparkles-outline',
+    icon: require('../../../../assets/images/paw-logo.png'),
+    iconSize: 30,
     iconColor: COLORS.primary,
     iconTint: COLORS.cream,
     chipTint: COLORS.cream,
     chipColor: COLORS.primary,
   },
   community: {
-    icon: 'chatbubble-outline',
+    icon: require('../../../../assets/images/home/notification/chat.png'),
+    iconSize: 20,
     iconColor: COLORS.community,
     iconTint: COLORS.communityback,
     chipTint: COLORS.communityback,
     chipColor: COLORS.community,
   },
   'blood-donation': {
-    icon: 'water',
+    icon: require('../../../../assets/images/home/notification/blood.png'),
+    iconSize: 20,
     iconColor: COLORS.redSoft,
     iconTint: COLORS.bloodbackground,
     chipTint: COLORS.bloodbackground,
@@ -53,10 +57,12 @@ export function NotificationCard({ notification, onPress }: NotificationCardProp
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      {!notification.isRead ? <View style={styles.unreadDot} /> : null}
-
       <View style={[styles.iconContainer, { backgroundColor: meta.iconTint }]}>
-        <AppIcon color={meta.iconColor} name={meta.icon} size={18} />
+        <Image
+          accessibilityIgnoresInvertColors
+          source={meta.icon}
+          style={[styles.Icon, { height: meta.iconSize, width: meta.iconSize }]}
+        />
       </View>
 
       <View style={styles.textGroup}>
@@ -72,21 +78,28 @@ export function NotificationCard({ notification, onPress }: NotificationCardProp
         </Text>
       </View>
 
-      <Text style={styles.time}>{notification.timeLabel}</Text>
+      <View style={styles.rightColumn}>
+        <View style={[styles.unreadDot, notification.isRead && styles.unreadDotHidden]} />
+        <View style={styles.rightMiddle}>
+          <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
+        </View>
+        <Text style={styles.time}>{notification.timeLabel}</Text>
+      </View> 
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     backgroundColor: COLORS.background,
     borderColor: COLORS.gray200,
     borderRadius: RADIUS.button,
     borderWidth: 1,
     flexDirection: 'row',
     gap: SPACING.lg,
-    padding: SPACING.xl,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.lg,
     position: 'relative',
   },
   pressed: { opacity: 0.7 },
@@ -94,11 +107,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.round,
     height: 7,
-    position: 'absolute',
-    right: SPACING.lg,
-    top: SPACING.lg,
     width: 7,
+    marginRight: 3,
+
   },
+  unreadDotHidden: { opacity: 0 },
   iconContainer: {
     alignItems: 'center',
     borderRadius: RADIUS.round,
@@ -106,15 +119,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 38,
   },
+  Icon: { resizeMode: 'contain' },
   textGroup: { flex: 1, gap: SPACING.xs },
   chip: {
     alignSelf: 'flex-start',
     borderRadius: RADIUS.round,
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.xxl,
     paddingVertical: 2,
   },
   chipText: { ...TYPOGRAPHY.caption, fontFamily: TYPOGRAPHY.button.fontFamily },
   title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
   description: { ...TYPOGRAPHY.caption, color: COLORS.gray600 },
   time: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
+  rightColumn: { alignItems: 'flex-end', justifyContent: 'space-between' },
+  rightMiddle: { alignItems: 'flex-end', flex: 1, justifyContent: 'center' },
 });

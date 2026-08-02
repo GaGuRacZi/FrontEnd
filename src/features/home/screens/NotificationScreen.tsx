@@ -11,13 +11,13 @@ import type { NotificationFilterValue } from '../types';
 
 const FILTER_OPTIONS: { label: string; value: NotificationFilterValue }[] = [
   { value: 'all', label: '전체' },
-  { value: 'schedule', label: '일정' },
+  { value: 'schedule', label: '할 일' },
   { value: 'ai', label: 'AI' },
   { value: 'community', label: '커뮤니티' },
   { value: 'blood-donation', label: '긴급' },
 ];
 
-export function NotificationScreen() {
+export function NotificationScreen() {    // TODO: 알림 읽음 상태가 로컬 state라 화면 이탈 시 초기화됨.
   const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
   const [filterValue, setFilterValue] = useState<NotificationFilterValue>('all');
 
@@ -93,7 +93,7 @@ export function NotificationScreen() {
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.65 },
-  markAllLabel: { ...TYPOGRAPHY.label, color: COLORS.gray600 },
+  markAllLabel: { ...TYPOGRAPHY.label, color: COLORS.primary },
   filterRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
   scroll: { flex: 1 },
   content: { gap: SPACING.xxl, paddingBottom: SPACING.xxxl, paddingTop: SPACING.xl },
