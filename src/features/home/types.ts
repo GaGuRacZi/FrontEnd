@@ -35,7 +35,6 @@ export type MedicationSummaryItem = {
 export type ChangeSentiment = 'negative' | 'positive';
 
 export type MonthlyHealthMetric = {
-  changeSentiment: ChangeSentiment;
   changeLabel: string; // "+0.1kg", "-20,000원"
   id: string;
   label: string;       // "체중"

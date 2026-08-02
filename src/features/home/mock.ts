@@ -40,9 +40,9 @@ export const MOCK_MEDICATIONS: MedicationSummaryItem[] = [
 ];
 
 export const MOCK_MONTHLY_HEALTH: MonthlyHealthMetric[] = [
-  { id: 'weight', label: '체중', valueLabel: '3.4kg', changeLabel: '+0.1kg', changeSentiment: 'positive' },
-  { id: 'walk', label: '산책', valueLabel: '주 45분', changeLabel: '+10분', changeSentiment: 'positive' },
-  { id: 'medical', label: '의료비', valueLabel: '274,000원', changeLabel: '-20,000원', changeSentiment: 'negative' },
+  { id: 'weight', label: '체중', valueLabel: '3.4kg', changeLabel: '+0.1kg' },
+  { id: 'walk', label: '산책', valueLabel: '주 45분', changeLabel: '+10분' },
+  { id: 'medical', label: '의료비', valueLabel: '274,000원', changeLabel: '-20,000원' },
 ];
 
 
