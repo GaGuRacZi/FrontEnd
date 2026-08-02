@@ -37,9 +37,10 @@ const styles = StyleSheet.create({
         height: 32,
         paddingHorizontal: SPACING.lg
     },
+    pillIcon: { height: 14, width: 14 },
     pressed: { opacity: 0.7},
-    pillText: { ...TYPOGRAPHY.small, color: COLORS.black },
-    dot: { backgroundColor: COLORS.primary, borderRadius: 4, height: 8, width: 8 },
+    pillText: { ...TYPOGRAPHY.checkboxLabel, color: COLORS.black },
+    dot: { backgroundColor: COLORS.green, borderRadius: 4, height: 8, width: 8 },
 });
 
 export function PetProfileCard( { onPressAddDiagnosis, onPressDetail, pet } : PetProfuleCardProps ) {
@@ -70,7 +71,11 @@ export function PetProfileCard( { onPressAddDiagnosis, onPressDetail, pet } : Pe
                     onPress={onPressDetail}
                     style={ ({pressed}) => [styles.pill, pressed&&styles.pressed]}
                     >
-                        <AppIcon color={COLORS.gray600} name='paw-outline' size={14} />
+                        <Image
+                            accessibilityIgnoresInvertColors
+                            source={require('../../../../assets/images/decorations/paw-tiny.png')}
+                            style={styles.pillIcon}
+                        />
                         <Text style={styles.pillText}>상세페이지</Text>
                     </Pressable>
 
