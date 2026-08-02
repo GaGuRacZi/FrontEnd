@@ -1,9 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
-import { Alert, Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import { SignupScaffold } from '../components/SignupScaffold';
@@ -11,6 +12,7 @@ import { useSignup } from '../SignupContext';
 
 export function SignupProfileScreen() {
   const router = useRouter();
+  const showAlert = useAppAlert();
   const { data, updateField } = useSignup();
   const pickerOpen = useRef(false);
 
@@ -19,7 +21,7 @@ export function SignupProfileScreen() {
       if (!result) return;
 
       if ('code' in result) {
-        Alert.alert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
         return;
       }
 
@@ -27,7 +29,7 @@ export function SignupProfileScreen() {
         updateField('profileImageUri', result.assets[0].uri);
       }
     },
-    [updateField],
+    [showAlert, updateField],
   );
 
   useEffect(() => {
@@ -36,9 +38,9 @@ export function SignupProfileScreen() {
     ImagePicker.getPendingResultAsync()
       .then(handlePickerResult)
       .catch(() => {
-        Alert.alert('사진을 불러오지 못했어요', '사진을 다시 선택해주세요.');
+        showAlert('사진을 불러오지 못했어요', '사진을 다시 선택해주세요.');
       });
-  }, [handlePickerResult]);
+  }, [handlePickerResult, showAlert]);
 
   const handleSelectPhoto = async () => {
     if (pickerOpen.current) return;
@@ -50,7 +52,7 @@ export function SignupProfileScreen() {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
         if (!permission.granted) {
-          Alert.alert(
+          showAlert(
             '사진 접근 권한이 필요해요',
             '설정에서 사진 접근 권한을 허용해주세요.',
             [
@@ -74,7 +76,7 @@ export function SignupProfileScreen() {
 
       handlePickerResult(result);
     } catch {
-      Alert.alert('사진첩을 열지 못했어요', '잠시 후 다시 시도해주세요.');
+      showAlert('사진첩을 열지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       pickerOpen.current = false;
     }

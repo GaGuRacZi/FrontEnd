@@ -1,19 +1,14 @@
 import { Redirect } from 'expo-router';
 
-import { LoadingView } from '@/src/components/common';
-import { AppScreen } from '@/src/components/layout';
+import { AuthSessionStateScreen } from '@/src/features/auth/session/AuthSessionGuard';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { LoginStartScreen } from '@/src/features/auth/screens/LoginStartScreen';
 
 export default function IndexRoute() {
-  const { currentUserId, isReady } = useAuthSession();
+  const { currentUserId, isReady, sessionLoadError } = useAuthSession();
 
-  if (!isReady) {
-    return (
-      <AppScreen>
-        <LoadingView label="PAW를 준비하고 있어요." />
-      </AppScreen>
-    );
+  if (!isReady || sessionLoadError) {
+    return <AuthSessionStateScreen loadingLabel="PAW를 준비하고 있어요." />;
   }
 
   if (currentUserId) {

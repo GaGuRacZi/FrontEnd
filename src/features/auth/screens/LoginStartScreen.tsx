@@ -4,6 +4,7 @@ import { StyleSheet, Text } from 'react-native';
 import { AppButton } from '@/src/components/common/AppButton';
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { AppScreen } from '@/src/components/layout/AppScreen';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, TYPOGRAPHY } from '@/src/constants';
 import { AuthActionPanel } from '@/src/features/auth/components/AuthActionPanel';
 import { AuthBrandHero } from '@/src/features/auth/components/AuthBrandHero';
@@ -12,6 +13,7 @@ import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 export function LoginStartScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
+  const showAlert = useAppAlert();
 
   return (
     <AppScreen
@@ -24,7 +26,7 @@ export function LoginStartScreen() {
 
       <AuthActionPanel style={styles.actionPanel}>
         <Text style={styles.title}>파우 시작하기</Text>
-        <Text style={styles.description}>카카오 계정으로 빠르게 로그인하세요</Text>
+        <Text style={styles.description}>이메일로 로그인하거나 회원가입하세요</Text>
 
         <AppButton
           accessibilityHint="로그인 화면으로 이동합니다"
@@ -34,14 +36,15 @@ export function LoginStartScreen() {
           variant="secondary"
         />
         <AppButton
-          accessibilityHint="카카오 회원가입 약관 동의 화면으로 이동합니다"
+          accessibilityHint="카카오 로그인 준비 상태를 안내합니다"
           accessibilityLabel="카카오로 시작하기"
           leftIcon={
             <AppIcon accessible={false} color={COLORS.black} name="chatbubble" size={24} />
           }
           onPress={() =>
-            navigateOnce(() =>
-              router.push({ pathname: '/signup/terms', params: { method: 'kakao' } }),
+            showAlert(
+              '카카오 로그인 준비 중이에요',
+              '카카오 로그인 연결이 완료되면 사용할 수 있어요.',
             )
           }
           title="카카오로 시작하기"

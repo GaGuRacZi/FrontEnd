@@ -39,10 +39,19 @@ export async function getRegionFromPosition(position: Location.LocationObject) {
 
   if (!address) return '';
 
-  const parts = [address.region, address.city, address.district, address.subregion].filter(
+  const values = [address.region, address.city, address.district, address.subregion];
+  const isForeign = address.isoCountryCode
+    ? address.isoCountryCode.toUpperCase() !== 'KR'
+    : values.some((value) => /[A-Za-z]/.test(value ?? ''));
+  const parts = (isForeign
+    ? [address.city ?? address.district ?? address.subregion, address.region]
+    : values
+  ).filter(
     (part): part is string => Boolean(part),
   );
-  const region = parts.filter((part, index) => parts.indexOf(part) === index).join(' ');
+  const region = parts
+    .filter((part, index) => parts.indexOf(part) === index)
+    .join(isForeign ? ', ' : ' ');
 
   return region || address.formattedAddress || address.name || '';
 }

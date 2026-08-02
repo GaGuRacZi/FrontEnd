@@ -48,7 +48,7 @@ export function hasValidSignupUserInfo(data: SignupData) {
     !getRequiredError(data.name, '이름을 입력해주세요.') &&
     !getRequiredError(data.nickname, '닉네임을 입력해주세요.');
 
-  if (data.method === 'kakao') return hasRequiredProfile;
+  if (data.method === 'kakao') return false;
 
   return (
     hasRequiredProfile &&

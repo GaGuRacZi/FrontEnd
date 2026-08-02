@@ -21,18 +21,16 @@ import { getEmailError } from '@/src/features/auth/authValidation';
 import { AuthActionPanel } from '@/src/features/auth/components/AuthActionPanel';
 import { AuthBrandHero } from '@/src/features/auth/components/AuthBrandHero';
 import { PasswordVisibilityButton } from '@/src/features/auth/components/PasswordVisibilityButton';
-import {
-  getSignupUserId,
-  useAuthSession,
-} from '@/src/features/auth/session/AuthSessionStore';
+import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 export function LoginScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { setCurrentUserId } = useAuthSession();
+  const { signInWithPassword } = useAuthSession();
   const passwordInputRef = useRef<TextInput>(null);
   const screenActiveRef = useRef(false);
+  const submittingRef = useRef(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string>();
@@ -66,7 +64,7 @@ export function LoginScreen() {
   };
 
   const handleLoginPress = async () => {
-    if (submitting) return;
+    if (submittingRef.current) return;
 
     const nextEmailError = getEmailError(email);
     const nextPasswordError = password ? undefined : '비밀번호를 입력해주세요.';
@@ -76,11 +74,18 @@ export function LoginScreen() {
 
     if (nextEmailError || nextPasswordError) return;
 
+    submittingRef.current = true;
     setSubmitting(true);
 
     try {
-      const userId = getSignupUserId('local', email, 'local-login');
-      await setCurrentUserId(userId);
+      const result = await signInWithPassword(email, password);
+      if (result.status !== 'verified') {
+        if (screenActiveRef.current) {
+          setFormError('이메일 또는 비밀번호가 일치하지 않아요.');
+        }
+        return;
+      }
+
       if (screenActiveRef.current) {
         router.replace('/home');
       }
@@ -89,6 +94,7 @@ export function LoginScreen() {
         setFormError('로그인 정보를 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
       }
     } finally {
+      submittingRef.current = false;
       if (screenActiveRef.current) {
         setSubmitting(false);
       }

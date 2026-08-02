@@ -1,7 +1,7 @@
 import type { ConsentStore } from './ConsentStore';
 import type { TermsRepository } from './TermsRepository';
 import type { ConsentRecord, TermDefinition, TermId } from './types';
-import { TERM_IDS } from './types';
+import { REQUIRED_SIGNUP_TERM_IDS, TERM_IDS } from './types';
 
 export function getLatestConsent(
   history: readonly ConsentRecord[],
@@ -22,6 +22,22 @@ export function hasCurrentTermConsent(
   term: TermDefinition,
 ) {
   return getLatestConsent(history, term.id, term.version)?.agreed === true;
+}
+
+export function hasCurrentRequiredSignupConsents(
+  history: readonly ConsentRecord[],
+  terms: readonly TermDefinition[],
+) {
+  const requiredTerms = terms.filter(
+    (term) => term.required && term.scope === 'signup',
+  );
+  const hasRequiredDefinitions = REQUIRED_SIGNUP_TERM_IDS.every((termId) =>
+    requiredTerms.some((term) => term.id === termId),
+  );
+  return (
+    hasRequiredDefinitions &&
+    requiredTerms.every((term) => hasCurrentTermConsent(history, term))
+  );
 }
 
 type RecordTermDecisionOptions = {

@@ -1,4 +1,4 @@
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/src/components/common';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -37,7 +37,6 @@ export function MyPagePaymentHistoryScreen() {
         {paymentHistory.length === 0 ? (
           <EmptyState
             description="아직 결제한 내역이 없어요."
-            icon={<Image source={require('@/assets/images/paw-logo.png')} style={styles.emptyLogo} />}
             title="결제 내역이 없어요."
           />
         ) : (
@@ -85,10 +84,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     minHeight: 80,
     paddingHorizontal: SPACING.xxl,
-  },
-  emptyLogo: {
-    height: 34,
-    width: 34,
   },
   historyText: {
     flex: 1,

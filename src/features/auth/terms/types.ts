@@ -11,6 +11,13 @@ export const TERM_IDS = {
   service: 'service-terms',
 } as const;
 
+export const REQUIRED_SIGNUP_TERM_IDS = [
+  TERM_IDS.age,
+  TERM_IDS.service,
+  TERM_IDS.privacy,
+  TERM_IDS.profilePrivacy,
+] as const;
+
 export type TermId = (typeof TERM_IDS)[keyof typeof TERM_IDS];
 export type TermKind =
   | 'age'

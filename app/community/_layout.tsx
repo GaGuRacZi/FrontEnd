@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 
 import { AuthSessionGuard } from '@/src/features/auth/session/AuthSessionGuard';
 
-export default function PetLayout() {
+export default function CommunityLayout() {
   return (
     <AuthSessionGuard>
       <Stack screenOptions={{ headerShown: false }} />

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { isValidClockTime, normalizePaymentMethods } from '../mypageData';
 import { createDefaultMyPageState } from '../mypageMappers';
 import type {
   LoginConnection,
@@ -82,8 +83,13 @@ function isNotificationSettings(value: unknown): value is Partial<NotificationSe
     (value.chat === undefined || isBoolean(value.chat)) &&
     (value.community === undefined || isBoolean(value.community)) &&
     (value.doNotDisturbEnabled === undefined || isBoolean(value.doNotDisturbEnabled)) &&
-    (value.doNotDisturbEnd === undefined || isString(value.doNotDisturbEnd)) &&
-    (value.doNotDisturbStart === undefined || isString(value.doNotDisturbStart)) &&
+    (value.doNotDisturbEnd === undefined ||
+      (isString(value.doNotDisturbEnd) && isValidClockTime(value.doNotDisturbEnd))) &&
+    (value.doNotDisturbStart === undefined ||
+      (isString(value.doNotDisturbStart) && isValidClockTime(value.doNotDisturbStart))) &&
+    (value.doNotDisturbStart === undefined ||
+      value.doNotDisturbEnd === undefined ||
+      value.doNotDisturbStart !== value.doNotDisturbEnd) &&
     (value.healthAlert === undefined || isBoolean(value.healthAlert)) &&
     (value.schedule === undefined || isBoolean(value.schedule))
   );
@@ -142,7 +148,7 @@ function createStateFromStoredValue(userId: string, value: unknown): StoredMyPag
         : defaults.paymentHistory,
     paymentMethods:
       Array.isArray(value.paymentMethods) && value.paymentMethods.every(isPaymentMethod)
-        ? value.paymentMethods
+        ? normalizePaymentMethods(value.paymentMethods)
         : defaults.paymentMethods,
     profile: isUserProfile(value.profile, userId) ? value.profile : defaults.profile,
     subscription: isSubscriptionState(value.subscription)
@@ -154,6 +160,18 @@ function createStateFromStoredValue(userId: string, value: unknown): StoredMyPag
 export const mypageRepository = {
   async deleteUser(userId: string) {
     await AsyncStorage.removeItem(getStorageKey(userId));
+  },
+
+  async hasStoredState(userId: string) {
+    const stored = await AsyncStorage.getItem(getStorageKey(userId));
+    if (!stored) return false;
+
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      return isRecord(parsed) && isUserProfile(parsed.profile, userId);
+    } catch {
+      return false;
+    }
   },
 
   async loadState(userId: string): Promise<StoredMyPageState> {

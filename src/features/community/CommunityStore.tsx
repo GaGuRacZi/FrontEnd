@@ -2,10 +2,21 @@ import type { PropsWithChildren } from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
+import { flushQueuedProfileImageRemovals } from '@/src/features/mypage/services/profileImageStorage';
 
 import { COMMUNITY_GUEST_ID } from './communityData';
-import { removeCommunityImages } from './services/communityImageStorage';
-import { communityRepository } from './services/communityRepository';
+import { queueCommunityImageRemovals } from './services/communityImageStorage';
+import {
+  communityRepository,
+  getDeletedComment,
+  normalizeCommunityFilterSession,
+} from './services/communityRepository';
+import {
+  getMarketTradeMethods,
+  isValidMarketPriceLabel,
+  isValidMarketTradeMethodSelection,
+} from './utils/marketValidation';
 import { getValidReviewInput, getValidReviewTarget } from './utils/reviewValidation';
 import type {
   CommunityAuthorSnapshot,
@@ -46,19 +57,21 @@ type CommunityStoreContextValue = {
   addTalkPost: (
     post: Omit<TalkPost, 'createdAt' | 'id' | 'kind' | 'updatedAt'>,
   ) => Promise<MutationResult & { postId?: string }>;
-  clearScreenSession: () => void;
+  clearScreenSession: () => Promise<void>;
   comments: CommunityComment[];
   deleteComment: (commentId: string) => Promise<MutationResult>;
   deletePost: (postId: string) => Promise<MutationResult>;
   deleteReviewPost: (postId: string) => Promise<MutationResult>;
   deleteUserCommunityData: (userId?: string) => Promise<void>;
   filterSession: CommunityViewerState['filterSession'];
+  filterSessionGeneration: number;
   getAuthoredPosts: (userId?: string) => CommunityPost[];
   getBookmarkedPosts: (userId?: string) => CommunityPost[];
   getCommentCount: (postId: string) => number;
   getCommentedPosts: (userId?: string) => CommunityPost[];
   getCommentsByPostId: (postId: string) => CommunityComment[];
   getPostById: (postId: string) => CommunityPost | null;
+  getReviewPostById: (postId: string) => ReviewPost | null;
   getReactionCount: (postId: string, kind: ReactionKind) => number;
   hasLoadError: boolean;
   isBookmarked: (postId: string) => boolean;
@@ -70,7 +83,10 @@ type CommunityStoreContextValue = {
   toggleBookmark: (postId: string) => Promise<MutationResult>;
   toggleReaction: (postId: string, kind: ReactionKind) => Promise<MutationResult>;
   updateComment: (commentId: string, body: string) => Promise<MutationResult>;
-  updateFilterSession: (session: Partial<CommunityViewerState['filterSession']>) => void;
+  updateFilterSession: (
+    session: Partial<CommunityViewerState['filterSession']>,
+    generation: number,
+  ) => Promise<MutationResult>;
   updateMarketPost: (postId: string, post: MarketPostForm) => Promise<MutationResult>;
   updateMarketStatus: (postId: string, status: MarketStatus) => Promise<MutationResult>;
   updateReviewPost: (
@@ -92,6 +108,7 @@ const EMPTY_STATE: StoredCommunityState = {
 
 const MAX_POST_BODY_LENGTH = 500;
 const MAX_POST_TITLE_LENGTH = 40;
+const TOGGLE_COOLDOWN_MS = 350;
 
 function isValidPostText(title: string, body: string) {
   return Boolean(
@@ -102,51 +119,21 @@ function isValidPostText(title: string, body: string) {
   );
 }
 
-const DEFAULT_FILTER_SESSION: CommunityViewerState['filterSession'] = {
-  activeTab: 'talk',
-  marketCategory: '전체',
-  marketStatuses: [],
-  marketTradeTypes: [],
-  reviewCategory: '전체',
-  searchQuery: '',
-  searchTab: 'talk',
-  talkCategory: '전체',
-};
-
-function createDefaultFilterSession(): CommunityViewerState['filterSession'] {
-  return {
-    ...DEFAULT_FILTER_SESSION,
-    marketStatuses: [],
-    marketTradeTypes: [],
-  };
-}
-
-function normalizeFilterSession(
-  filterSession?: Partial<CommunityViewerState['filterSession']>,
-): CommunityViewerState['filterSession'] {
-  return {
-    ...createDefaultFilterSession(),
-    ...filterSession,
-    marketStatuses: filterSession?.marketStatuses ?? [],
-    marketTradeTypes: filterSession?.marketTradeTypes ?? [],
-  };
+function isValidMarketPostInput(
+  post: Pick<MarketPost, 'priceLabel' | 'tags' | 'tradeType'>,
+) {
+  return isValidMarketPriceLabel(post.tradeType, post.priceLabel) &&
+    isValidMarketTradeMethodSelection(
+      post.tradeType,
+      getMarketTradeMethods(post.tags),
+    );
 }
 
 function createViewerState(): CommunityViewerState {
   return {
     bookmarkedPostIds: [],
-    filterSession: createDefaultFilterSession(),
+    filterSession: normalizeCommunityFilterSession(undefined),
     reactionPostIds: {},
-  };
-}
-
-function getViewerState(state: StoredCommunityState, viewerId: string) {
-  const viewerState = state.viewerStates[viewerId];
-  if (!viewerState) return createViewerState();
-
-  return {
-    ...viewerState,
-    filterSession: normalizeFilterSession(viewerState.filterSession),
   };
 }
 
@@ -159,7 +146,7 @@ function getViewerStateFromMap(
 
   return {
     ...viewerState,
-    filterSession: normalizeFilterSession(viewerState.filterSession),
+    filterSession: normalizeCommunityFilterSession(viewerState.filterSession),
   };
 }
 
@@ -175,13 +162,26 @@ function createId(prefix: string) {
 
 export function CommunityProvider({ children }: PropsWithChildren) {
   const { currentUserId, isReady: sessionReady } = useAuthSession();
+  const { profile } = useMyPageStore();
   const [state, setState] = useState<StoredCommunityState>(EMPTY_STATE);
   const [isReady, setIsReady] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [profileSyncRequest, setProfileSyncRequest] = useState(0);
+  const [filterSessionGeneration, setFilterSessionGeneration] = useState(0);
   const stateRef = useRef<StoredCommunityState>(EMPTY_STATE);
   const readyRef = useRef(false);
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingToggleKeysRef = useRef(new Set<string>());
+  const lastToggleAtRef = useRef(new Map<string, number>());
+  const syncedProfileRef = useRef('');
+  const profileSyncAttemptsRef = useRef(new Map<string, number>());
+  const activeViewerIdRef = useRef(currentUserId ?? COMMUNITY_GUEST_ID);
+  const filterSessionGenerationRef = useRef(0);
   const viewerId = currentUserId ?? COMMUNITY_GUEST_ID;
+
+  useEffect(() => {
+    activeViewerIdRef.current = viewerId;
+  }, [viewerId]);
 
   const applyState = useCallback((nextState: StoredCommunityState) => {
     stateRef.current = nextState;
@@ -192,6 +192,8 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     setIsReady(false);
     setHasLoadError(false);
     readyRef.current = false;
+    syncedProfileRef.current = '';
+    profileSyncAttemptsRef.current.clear();
 
     try {
       const loadedState = await communityRepository.loadState();
@@ -209,6 +211,8 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     let active = true;
     setIsReady(false);
     setHasLoadError(false);
+    syncedProfileRef.current = '';
+    profileSyncAttemptsRef.current.clear();
 
     communityRepository
       .loadState()
@@ -260,6 +264,27 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     [persist],
   );
 
+  const persistMutationWithImageRemovals = useCallback(
+    async (
+      nextState: StoredCommunityState,
+      userId: string,
+      images?: CommunityPost['images'],
+    ): Promise<MutationResult> => {
+      try {
+        await queueCommunityImageRemovals(userId, images);
+      } catch {
+        return { ok: false, reason: 'error' };
+      }
+
+      const result = await persistMutation(nextState);
+      await communityRepository
+        .flushImageRemovals(result.ok ? nextState : stateRef.current, userId)
+        .catch(() => undefined);
+      return result;
+    },
+    [persistMutation],
+  );
+
   const mutateState = useCallback(
     (updater: (current: StoredCommunityState) => StoredCommunityState | MutationResult) =>
       enqueueMutation(async (): Promise<MutationResult> => {
@@ -273,8 +298,123 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     [enqueueMutation, persistMutation, sessionReady],
   );
 
+  useEffect(() => {
+    if (!currentUserId || !profile || !isReady || !readyRef.current) return;
+
+    const signature = [
+      currentUserId,
+      profile.introduction,
+      profile.location,
+      profile.nickname,
+      profile.profileImageUri ?? '',
+      profile.updatedAt,
+    ].join(':');
+    if (syncedProfileRef.current === signature) return;
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    void mutateState((current) => {
+      let changed = false;
+      const syncAuthor = (author: CommunityAuthorSnapshot) => {
+        if (author.userId !== currentUserId) return author;
+
+        const nextAuthor = {
+          ...author,
+          introduction: profile.introduction,
+          location: profile.location,
+          nickname: profile.nickname,
+          profileImageUri: profile.profileImageUri,
+        };
+        if (
+          author.introduction === nextAuthor.introduction &&
+          author.location === nextAuthor.location &&
+          author.nickname === nextAuthor.nickname &&
+          author.profileImageUri === nextAuthor.profileImageUri
+        ) {
+          return author;
+        }
+
+        changed = true;
+        return nextAuthor;
+      };
+
+      const posts = current.posts.map((post) => ({
+        ...post,
+        author: syncAuthor(post.author),
+      }));
+      const reviewPosts = current.reviewPosts.map((post) => ({
+        ...post,
+        author: syncAuthor(post.author),
+      }));
+      const comments = current.comments.map((comment) => ({
+        ...comment,
+        author: syncAuthor(comment.author),
+      }));
+
+      return changed ? { ...current, comments, posts, reviewPosts } : { ok: true };
+    }).then(async (result) => {
+      if (!active) return;
+
+      if (result.ok) {
+        try {
+          await flushQueuedProfileImageRemovals(currentUserId, [
+            profile.profileImageUri,
+          ]);
+          if (!active) return;
+          syncedProfileRef.current = signature;
+          profileSyncAttemptsRef.current.delete(signature);
+          return;
+        } catch {
+          if (!active) return;
+        }
+      }
+
+      const attempts = (profileSyncAttemptsRef.current.get(signature) ?? 0) + 1;
+      profileSyncAttemptsRef.current.set(signature, attempts);
+      if (attempts < 3) {
+        retryTimer = setTimeout(() => {
+          if (active) setProfileSyncRequest((current) => current + 1);
+        }, 500);
+      }
+    });
+
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [currentUserId, isReady, mutateState, profile, profileSyncRequest]);
+
+  const runSingleToggle = useCallback(
+    async (key: string, mutation: () => Promise<MutationResult>) => {
+      const now = Date.now();
+      const lastToggleAt = lastToggleAtRef.current.get(key) ?? 0;
+      if (
+        pendingToggleKeysRef.current.has(key) ||
+        now - lastToggleAt < TOGGLE_COOLDOWN_MS
+      ) {
+        return { ok: true } as const;
+      }
+
+      pendingToggleKeysRef.current.add(key);
+      try {
+        const result = await mutation();
+        if (result.ok) lastToggleAtRef.current.set(key, Date.now());
+        return result;
+      } finally {
+        pendingToggleKeysRef.current.delete(key);
+      }
+    },
+    [],
+  );
+
   const getPostById = useCallback(
     (postId: string) => stateRef.current.posts.find((post) => post.id === postId) ?? null,
+    [],
+  );
+
+  const getReviewPostById = useCallback(
+    (postId: string) =>
+      stateRef.current.reviewPosts.find((post) => post.id === postId) ?? null,
     [],
   );
 
@@ -315,69 +455,74 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
   const toggleReaction = useCallback(
     (postId: string, kind: ReactionKind) =>
-      mutateState((current) => {
-        const postExists =
-          current.posts.some((post) => post.id === postId) ||
-          current.reviewPosts.some((post) => post.id === postId);
+      runSingleToggle(`reaction:${viewerId}:${postId}:${kind}`, () =>
+        mutateState((current) => {
+          if (kind === 'like') {
+            const talkPost = current.posts.find((post) => post.id === postId);
+            if (!talkPost || talkPost.kind !== 'talk') {
+              return { ok: false, reason: 'not-found' };
+            }
+          } else {
+            const reviewPost = current.reviewPosts.find((post) => post.id === postId);
+            if (!reviewPost) return { ok: false, reason: 'not-found' };
+            if (reviewPost.author.userId === viewerId) {
+              return { ok: false, reason: 'not-yours' };
+            }
+          }
 
-        if (!postExists) {
-          return { ok: false, reason: 'not-found' };
-        }
+          const previous = getViewerStateFromMap(current.viewerStates, viewerId);
+          const exclusiveKind =
+            kind === 'helpful' ? 'notHelpful' : kind === 'notHelpful' ? 'helpful' : null;
+          const nextReactionPostIds = {
+            ...previous.reactionPostIds,
+            ...(exclusiveKind
+              ? {
+                  [exclusiveKind]: (previous.reactionPostIds[exclusiveKind] ?? []).filter(
+                    (id) => id !== postId,
+                  ),
+                }
+              : {}),
+            [kind]: toggleValue(previous.reactionPostIds[kind] ?? [], postId),
+          };
 
-        const reviewPost = current.reviewPosts.find((post) => post.id === postId);
-        if (reviewPost?.author.userId === viewerId) {
-          return { ok: false, reason: 'not-yours' };
-        }
-
-        const previous = getViewerState(current, viewerId);
-        const exclusiveKind =
-          kind === 'helpful' ? 'notHelpful' : kind === 'notHelpful' ? 'helpful' : null;
-        const nextReactionPostIds = {
-          ...previous.reactionPostIds,
-          ...(exclusiveKind
-            ? {
-                [exclusiveKind]: (previous.reactionPostIds[exclusiveKind] ?? []).filter(
-                  (id) => id !== postId,
-                ),
-              }
-            : {}),
-          [kind]: toggleValue(previous.reactionPostIds[kind] ?? [], postId),
-        };
-
-        return {
-          ...current,
-          viewerStates: {
-            ...current.viewerStates,
-            [viewerId]: {
-              ...previous,
-              reactionPostIds: nextReactionPostIds,
+          return {
+            ...current,
+            viewerStates: {
+              ...current.viewerStates,
+              [viewerId]: {
+                ...previous,
+                reactionPostIds: nextReactionPostIds,
+              },
             },
-          },
-        };
-      }),
-    [mutateState, viewerId],
+          };
+        }),
+      ),
+    [mutateState, runSingleToggle, viewerId],
   );
 
   const toggleBookmark = useCallback(
     (postId: string) =>
-      mutateState((current) => {
-        if (!current.posts.some((post) => post.id === postId)) {
-          return { ok: false, reason: 'not-found' };
-        }
+      runSingleToggle(`bookmark:${viewerId}:${postId}`, () =>
+        mutateState((current) => {
+          const marketPost = current.posts.find((post) => post.id === postId);
+          if (!marketPost || marketPost.kind !== 'market') {
+            return { ok: false, reason: 'not-found' };
+          }
 
-        const previous = getViewerState(current, viewerId);
-        return {
-          ...current,
-          viewerStates: {
-            ...current.viewerStates,
-            [viewerId]: {
-              ...previous,
-              bookmarkedPostIds: toggleValue(previous.bookmarkedPostIds, postId),
+          const previous = getViewerStateFromMap(current.viewerStates, viewerId);
+          return {
+            ...current,
+            viewerStates: {
+              ...current.viewerStates,
+              [viewerId]: {
+                ...previous,
+                bookmarkedPostIds: toggleValue(previous.bookmarkedPostIds, postId),
+              },
             },
-          },
-        };
-      }),
-    [mutateState, viewerId],
+          };
+        }),
+      ),
+    [mutateState, runSingleToggle, viewerId],
   );
 
   const addComment = useCallback(
@@ -385,7 +530,9 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       mutateState((current) => {
         const trimmedBody = body.trim();
         if (!trimmedBody) return { ok: false, reason: 'empty' };
-        if (!current.posts.some((post) => post.id === postId)) {
+        if (author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
+        const talkPost = current.posts.find((post) => post.id === postId);
+        if (!talkPost || talkPost.kind !== 'talk') {
           return { ok: false, reason: 'not-found' };
         }
         const parentComment = parentId
@@ -393,7 +540,9 @@ export function CommunityProvider({ children }: PropsWithChildren) {
               (comment) => comment.id === parentId && comment.postId === postId,
             )
           : null;
-        if (parentId && !parentComment) return { ok: false, reason: 'not-found' };
+        if (parentId && (!parentComment || parentComment.deletedAt)) {
+          return { ok: false, reason: 'not-found' };
+        }
 
         const now = new Date().toISOString();
         const comment: CommunityComment = {
@@ -411,13 +560,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           comments: [...current.comments, comment],
         };
       }),
-    [mutateState],
+    [mutateState, viewerId],
   );
 
   const addTalkPost = useCallback(
     (post: Omit<TalkPost, 'createdAt' | 'id' | 'kind' | 'updatedAt'>) =>
       enqueueMutation(async (): Promise<MutationResult & { postId?: string }> => {
         if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
 
         const trimmedTitle = post.title.trim();
         const trimmedBody = post.body.trim();
@@ -444,17 +594,23 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (!saveResult.ok) return saveResult;
         return { ok: true, postId };
       }),
-    [enqueueMutation, persistMutation, sessionReady],
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
   );
 
   const addMarketPost = useCallback(
     (post: Omit<MarketPost, 'createdAt' | 'id' | 'kind' | 'updatedAt'>) =>
       enqueueMutation(async (): Promise<MutationResult & { postId?: string }> => {
         if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
 
         const trimmedTitle = post.title.trim();
         const trimmedBody = post.body.trim();
-        if (!isValidPostText(trimmedTitle, trimmedBody)) return { ok: false, reason: 'empty' };
+        if (
+          !isValidPostText(trimmedTitle, trimmedBody) ||
+          !isValidMarketPostInput(post)
+        ) {
+          return { ok: false, reason: 'empty' };
+        }
 
         const now = new Date().toISOString();
         const postId = createId('market');
@@ -477,13 +633,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (!saveResult.ok) return saveResult;
         return { ok: true, postId };
       }),
-    [enqueueMutation, persistMutation, sessionReady],
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
   );
 
   const addReviewPost = useCallback(
     (post: Omit<ReviewPost, 'createdAt' | 'id'>) =>
       enqueueMutation(async (): Promise<MutationResult & { postId?: string }> => {
         if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
 
         const reviewInput = getValidReviewInput(post);
         const targetName = getValidReviewTarget(post.targetName);
@@ -509,7 +666,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (!saveResult.ok) return saveResult;
         return { ok: true, postId };
       }),
-    [enqueueMutation, persistMutation, sessionReady],
+    [enqueueMutation, persistMutation, sessionReady, viewerId],
   );
 
   const updateComment = useCallback(
@@ -577,7 +734,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
         const now = new Date().toISOString();
 
-        const result = await persistMutation({
+        const nextState: StoredCommunityState = {
           ...current,
           posts: current.posts.map((currentPost) =>
             currentPost.id === postId && currentPost.kind === 'talk'
@@ -593,11 +750,19 @@ export function CommunityProvider({ children }: PropsWithChildren) {
                 }
               : currentPost,
           ),
-        });
-        if (result.ok) await removeCommunityImages(viewerId, removedImages).catch(() => undefined);
-        return result;
+        };
+        return persistMutationWithImageRemovals(
+          nextState,
+          viewerId,
+          removedImages,
+        );
       }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    [
+      enqueueMutation,
+      persistMutationWithImageRemovals,
+      sessionReady,
+      viewerId,
+    ],
   );
 
   const updateMarketPost = useCallback(
@@ -613,14 +778,19 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
         const trimmedTitle = post.title.trim();
         const trimmedBody = post.body.trim();
-        if (!isValidPostText(trimmedTitle, trimmedBody)) return { ok: false, reason: 'empty' };
+        if (
+          !isValidPostText(trimmedTitle, trimmedBody) ||
+          !isValidMarketPostInput(post)
+        ) {
+          return { ok: false, reason: 'empty' };
+        }
 
         const nextImages = post.images ?? [];
         const nextImageIds = new Set(nextImages.map((image) => image.assetId));
         const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
         const now = new Date().toISOString();
 
-        const result = await persistMutation({
+        const nextState: StoredCommunityState = {
           ...current,
           posts: current.posts.map((currentPost) =>
             currentPost.id === postId && currentPost.kind === 'market'
@@ -640,11 +810,19 @@ export function CommunityProvider({ children }: PropsWithChildren) {
                 }
               : currentPost,
           ),
-        });
-        if (result.ok) await removeCommunityImages(viewerId, removedImages).catch(() => undefined);
-        return result;
+        };
+        return persistMutationWithImageRemovals(
+          nextState,
+          viewerId,
+          removedImages,
+        );
       }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    [
+      enqueueMutation,
+      persistMutationWithImageRemovals,
+      sessionReady,
+      viewerId,
+    ],
   );
 
   const deleteComment = useCallback(
@@ -655,25 +833,40 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (comment.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
         if (comment.deletedAt) return { ok: false, reason: 'not-found' };
 
-        const now = new Date().toISOString();
+        const hasReplies = current.comments.some(
+          (currentComment) =>
+            currentComment.parentId === commentId && !currentComment.deletedAt,
+        );
+        const commentsWithoutTarget = current.comments.filter(
+          (currentComment) => currentComment.id !== commentId,
+        );
+        const deletedParentId = comment.parentId;
+        const deletedParent = deletedParentId
+          ? commentsWithoutTarget.find(
+              (currentComment) => currentComment.id === deletedParentId,
+            )
+          : null;
+        const hasRemainingReplies = deletedParentId
+          ? commentsWithoutTarget.some(
+              (currentComment) =>
+                currentComment.parentId === deletedParentId &&
+                !currentComment.deletedAt,
+            )
+          : false;
 
         return {
           ...current,
-          comments: current.comments.map((currentComment) =>
-            currentComment.id === commentId
-              ? {
-                  ...currentComment,
-                  author: {
-                    nickname: '',
-                    profileImageUri: null,
-                    userId: `deleted-${commentId}`,
-                  },
-                  body: '삭제된 댓글입니다.',
-                  deletedAt: now,
-                  updatedAt: now,
-                }
-              : currentComment,
-          ),
+          comments: hasReplies
+            ? current.comments.map((currentComment) =>
+                currentComment.id === commentId
+                  ? getDeletedComment(currentComment)
+                  : currentComment,
+              )
+            : deletedParent?.deletedAt && !hasRemainingReplies
+              ? commentsWithoutTarget.filter(
+                  (currentComment) => currentComment.id !== deletedParentId,
+                )
+              : commentsWithoutTarget,
         };
       }),
     [mutateState, viewerId],
@@ -708,16 +901,20 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           ]),
         );
 
-        const result = await persistMutation({
+        const nextState: StoredCommunityState = {
           ...current,
           comments: current.comments.filter((comment) => comment.postId !== postId),
           posts: current.posts.filter((currentPost) => currentPost.id !== postId),
           viewerStates,
-        });
-        if (result.ok) await removeCommunityImages(viewerId, post.images).catch(() => undefined);
-        return result;
+        };
+        return persistMutationWithImageRemovals(nextState, viewerId, post.images);
       }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    [
+      enqueueMutation,
+      persistMutationWithImageRemovals,
+      sessionReady,
+      viewerId,
+    ],
   );
 
   const updateReviewPost = useCallback(
@@ -740,7 +937,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const nextImageIds = new Set(nextImages.map((image) => image.assetId));
         const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
 
-        const result = await persistMutation({
+        const nextState: StoredCommunityState = {
           ...current,
           reviewPosts: current.reviewPosts.map((currentPost) =>
             currentPost.id === postId
@@ -755,11 +952,19 @@ export function CommunityProvider({ children }: PropsWithChildren) {
                 }
               : currentPost,
           ),
-        });
-        if (result.ok) await removeCommunityImages(viewerId, removedImages).catch(() => undefined);
-        return result;
+        };
+        return persistMutationWithImageRemovals(
+          nextState,
+          viewerId,
+          removedImages,
+        );
       }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    [
+      enqueueMutation,
+      persistMutationWithImageRemovals,
+      sessionReady,
+      viewerId,
+    ],
   );
 
   const deleteReviewPost = useCallback(
@@ -788,16 +993,20 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           ]),
         );
 
-        const result = await persistMutation({
+        const nextState: StoredCommunityState = {
           ...current,
           comments: current.comments.filter((comment) => comment.postId !== postId),
           reviewPosts: current.reviewPosts.filter((currentPost) => currentPost.id !== postId),
           viewerStates,
-        });
-        if (result.ok) await removeCommunityImages(viewerId, post.images).catch(() => undefined);
-        return result;
+        };
+        return persistMutationWithImageRemovals(nextState, viewerId, post.images);
       }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    [
+      enqueueMutation,
+      persistMutationWithImageRemovals,
+      sessionReady,
+      viewerId,
+    ],
   );
 
   const getBookmarkedPosts = useCallback(
@@ -845,9 +1054,26 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   );
 
   const updateFilterSession = useCallback(
-    (session: Partial<CommunityViewerState['filterSession']>) => {
-      void mutateState((current) => {
-        const previous = getViewerState(current, viewerId);
+    (
+      session: Partial<CommunityViewerState['filterSession']>,
+      generation: number,
+    ) => {
+      const ownerViewerId = viewerId;
+      if (
+        generation !== filterSessionGenerationRef.current ||
+        ownerViewerId !== activeViewerIdRef.current
+      ) {
+        return Promise.resolve({ ok: false, reason: 'not-ready' } as const);
+      }
+
+      return mutateState((current) => {
+        if (
+          generation !== filterSessionGenerationRef.current ||
+          ownerViewerId !== activeViewerIdRef.current
+        ) {
+          return { ok: false, reason: 'not-ready' };
+        }
+        const previous = getViewerStateFromMap(current.viewerStates, viewerId);
 
         return {
           ...current,
@@ -855,7 +1081,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
             ...current.viewerStates,
             [viewerId]: {
               ...previous,
-              filterSession: normalizeFilterSession({
+              filterSession: normalizeCommunityFilterSession({
                 ...previous.filterSession,
                 ...session,
               }),
@@ -867,23 +1093,41 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     [mutateState, viewerId],
   );
 
-  const clearScreenSession = useCallback(() => {
-    void communityRepository.clearWriteDrafts(viewerId).catch(() => undefined);
-    void mutateState((current) => {
-      const previous = getViewerState(current, viewerId);
+  const clearScreenSession = useCallback(async () => {
+    const sessionViewerId = viewerId;
+    const nextGeneration = filterSessionGenerationRef.current + 1;
+    filterSessionGenerationRef.current = nextGeneration;
 
-      return {
-        ...current,
-        viewerStates: {
-          ...current.viewerStates,
-          [viewerId]: {
-            ...previous,
-            filterSession: createDefaultFilterSession(),
-          },
-        },
-      };
-    });
-  }, [mutateState, viewerId]);
+    try {
+      const [draftResult, filterResult] = await Promise.allSettled([
+        communityRepository.clearWriteDrafts(sessionViewerId),
+        enqueueMutation(async () => {
+          const current = readyRef.current
+            ? stateRef.current
+            : await communityRepository.loadState();
+          const previous = getViewerStateFromMap(current.viewerStates, sessionViewerId);
+          await persist({
+            ...current,
+            viewerStates: {
+              ...current.viewerStates,
+              [sessionViewerId]: {
+                ...previous,
+                filterSession: normalizeCommunityFilterSession(undefined),
+              },
+            },
+          });
+        }),
+      ]);
+      if (
+        draftResult.status === 'rejected' ||
+        filterResult.status === 'rejected'
+      ) {
+        throw new Error('community-session-clear-failed');
+      }
+    } finally {
+      setFilterSessionGeneration(nextGeneration);
+    }
+  }, [enqueueMutation, persist, viewerId]);
 
   const deleteUserCommunityData = useCallback(
     (userId?: string) =>
@@ -910,12 +1154,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       deleteReviewPost,
       deleteUserCommunityData,
       filterSession,
+      filterSessionGeneration,
       getAuthoredPosts,
       getBookmarkedPosts,
       getCommentCount,
       getCommentedPosts,
       getCommentsByPostId,
       getPostById,
+      getReviewPostById,
       getReactionCount,
       hasLoadError,
       isBookmarked,
@@ -945,12 +1191,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       deleteReviewPost,
       deleteUserCommunityData,
       filterSession,
+      filterSessionGeneration,
       getAuthoredPosts,
       getBookmarkedPosts,
       getCommentCount,
       getCommentedPosts,
       getCommentsByPostId,
       getPostById,
+      getReviewPostById,
       getReactionCount,
       hasLoadError,
       isBookmarked,

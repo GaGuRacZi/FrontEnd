@@ -36,15 +36,7 @@ export function createDefaultSubscription(): SubscriptionState {
 }
 
 export function createDefaultPaymentMethods(): PaymentMethod[] {
-  return [
-    {
-      brand: '간편페이',
-      id: 'easy-pay',
-      isDefault: true,
-      label: '간편페이',
-      last4: '등록 대기',
-    },
-  ];
+  return [];
 }
 
 export function createDefaultPaymentHistory(): PaymentHistoryItem[] {

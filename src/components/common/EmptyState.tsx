@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import { AppButton } from './AppButton';
-import { AppIcon } from './AppIcon';
+import { BrandPawLogo } from './BrandPawLogo';
 
 type EmptyStateProps = {
   actionLabel?: string;
@@ -24,7 +24,7 @@ export function EmptyState({
   return (
     <View accessibilityLiveRegion="polite" style={styles.container}>
       <View style={styles.iconContainer}>
-        {icon ?? <AppIcon color={COLORS.primary} name="paw-outline" size={30} />}
+        {icon ?? <BrandPawLogo size={34} />}
       </View>
       <Text accessibilityRole="header" style={styles.title}>
         {title}

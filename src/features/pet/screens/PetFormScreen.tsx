@@ -5,11 +5,11 @@ import DateTimePicker, {
 import { type NavigationAction, useNavigation, usePreventRemove } from '@react-navigation/native';
 import { type Href, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text } from 'react-native';
+import { Platform, StyleSheet, Text } from 'react-native';
 
 import { AppButton, EmptyState, LoadingView } from '@/src/components/common';
 import { FormScreen, TopHeader } from '@/src/components/layout';
-import { AppModal } from '@/src/components/modal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, LAYOUT, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
@@ -34,11 +34,17 @@ import {
   removePetImage,
 } from '../services/petImageStorage';
 import { petRepository } from '../services/petRepository';
-import type { PetDraft, PetFormValues, PetSelectionField } from '../types';
+import type { PetDraft, PetEntity, PetFormValues, PetSelectionField } from '../types';
 
 type PetFormScreenProps =
   | { mode: 'add'; petId?: never }
   | { mode: 'edit'; petId: string };
+
+type PendingPetCompletion = {
+  draftId: string;
+  entity: PetEntity;
+  fallbackDraft: PetDraft;
+};
 
 const PET_DRAFT_FIELDS: readonly (keyof PetDraft)[] = [
   'birthDate',
@@ -92,6 +98,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const router = useRouter();
   const navigation = useNavigation();
   const navigateOnce = useNavigationLock();
+  const showAlert = useAppAlert();
   const { currentUserId, isReady: sessionReady } = useAuthSession();
   const {
     addPet,
@@ -113,6 +120,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const [isImageMutating, setIsImageMutating] = useState(false);
   const [pendingBirthDate, setPendingBirthDate] = useState(new Date());
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
+  const [pendingCompletion, setPendingCompletion] = useState<PendingPetCompletion | null>(null);
   const allowNavigation = useRef(false);
   const submitLocked = useRef(false);
   const draftCompleted = useRef(false);
@@ -132,11 +140,11 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
 
   const goBack = useCallback(() => {
     if (imageMutationLock.current) {
-      Alert.alert('사진을 처리 중이에요', '처리가 끝난 후 다시 시도해주세요.');
+      showAlert('사진을 처리 중이에요', '처리가 끝난 후 다시 시도해주세요.');
       return;
     }
     if (submitLocked.current) {
-      Alert.alert('정보를 저장 중이에요', '저장이 끝날 때까지 잠시 기다려주세요.');
+      showAlert('정보를 저장 중이에요', '저장이 끝날 때까지 잠시 기다려주세요.');
       return;
     }
 
@@ -146,7 +154,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     }
 
     router.replace('/mypage');
-  }, [router]);
+  }, [router, showAlert]);
 
   const removeUnreferencedImages = useCallback(
     async (...uris: (string | null)[]) => {
@@ -266,6 +274,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     setIsDraftReady(false);
     setTouched(new Set());
     draftCompleted.current = false;
+    setPendingCompletion(null);
     skipFocusedDraftReload.current = true;
 
     const initialDraft = createPetDraft(currentUserId, pet);
@@ -404,7 +413,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
 
       if (!discarded) {
         draftCompleted.current = false;
-        Alert.alert(
+        showAlert(
           '작성 내용을 정리하지 못했어요',
           '잠시 후 다시 시도해주세요.',
         );
@@ -415,26 +424,45 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       allowNavigation.current = true;
       navigation.dispatch(exitAction);
     })();
-  }, [cleanUnusedDraftImages, currentUserId, draftId, mode, navigation, pendingExitAction]);
+  }, [
+    cleanUnusedDraftImages,
+    currentUserId,
+    draftId,
+    mode,
+    navigation,
+    pendingExitAction,
+    showAlert,
+  ]);
 
-  usePreventRemove(isDirty || isImageMutating || isSubmitting, ({ data }) => {
-    if (allowNavigation.current) {
-      navigation.dispatch(data.action);
-      return;
-    }
+  usePreventRemove(
+    isDirty || isImageMutating || isSubmitting || Boolean(pendingCompletion),
+    ({ data }) => {
+      if (allowNavigation.current) {
+        navigation.dispatch(data.action);
+        return;
+      }
 
-    if (imageMutationLock.current) {
-      Alert.alert('사진을 처리 중이에요', '처리가 끝난 후 다시 시도해주세요.');
-      return;
-    }
+      if (imageMutationLock.current) {
+        showAlert('사진을 처리 중이에요', '처리가 끝난 후 다시 시도해주세요.');
+        return;
+      }
 
-    if (submitLocked.current) {
-      Alert.alert('정보를 저장 중이에요', '저장이 끝날 때까지 잠시 기다려주세요.');
-      return;
-    }
+      if (submitLocked.current) {
+        showAlert('정보를 저장 중이에요', '저장이 끝날 때까지 잠시 기다려주세요.');
+        return;
+      }
 
-    setPendingExitAction(data.action);
-  });
+      if (pendingCompletion) {
+        showAlert(
+          '정보는 저장했어요',
+          '임시 작성 내용을 정리한 뒤 이동할 수 있어요. 완료하기를 다시 눌러주세요.',
+        );
+        return;
+      }
+
+      setPendingExitAction(data.action);
+    },
+  );
 
   const replaceImage = useCallback(
     async (field: PetImageField, sourceUri: string) => {
@@ -503,13 +531,13 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
           await removeUnreferencedImages(uri);
         }
       } catch {
-        Alert.alert('사진을 삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('사진을 삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
       } finally {
         imageMutationLock.current = false;
         setIsImageMutating(false);
       }
     },
-    [currentUserId, removeUnreferencedImages],
+    [currentUserId, removeUnreferencedImages, showAlert],
   );
 
   const updateField = useCallback(
@@ -594,7 +622,14 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
 
   const openSelection = (field: PetSelectionField) => {
     const current = draftRef.current;
-    if (!current || imageMutationLock.current || submitLocked.current) return;
+    if (
+      !current ||
+      imageMutationLock.current ||
+      submitLocked.current ||
+      pendingCompletion
+    ) {
+      return;
+    }
 
     navigateOnce(async () => {
       try {
@@ -602,13 +637,47 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         const petParam = mode === 'edit' && petId ? `&petId=${encodeURIComponent(petId)}` : '';
         router.push(`/pet/selection?field=${field}&mode=${mode}${petParam}` as Href);
       } catch (error) {
-        Alert.alert('화면을 열지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('화면을 열지 못했어요', '잠시 후 다시 시도해주세요.');
         throw error;
       }
     });
   };
 
+  const finishSavedPet = async (completion: PendingPetCompletion) => {
+    try {
+      await petRepository.deleteDraft(completion.entity.userId, completion.draftId);
+    } catch {
+      await petRepository.saveDraft(completion.fallbackDraft);
+    }
+
+    setPendingCompletion(null);
+    allowNavigation.current = true;
+    if (mode === 'edit' && router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(`/pet/${encodeURIComponent(completion.entity.id)}` as Href);
+    }
+  };
+
   const submit = async () => {
+    if (pendingCompletion) {
+      if (submitLocked.current || imageMutationLock.current) return;
+      submitLocked.current = true;
+      setIsSubmitting(true);
+      try {
+        await finishSavedPet(pendingCompletion);
+      } catch {
+        showAlert(
+          '정보는 저장했어요',
+          '임시 작성 내용을 정리하지 못했어요. 잠시 후 완료하기를 다시 눌러주세요.',
+        );
+      } finally {
+        submitLocked.current = false;
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     const currentDraft = draftRef.current;
     if (
       !currentDraft ||
@@ -620,7 +689,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       return;
     }
     if (mode === 'edit' && pet && currentDraft.sourceUpdatedAt !== pet.updatedAt) {
-      Alert.alert(
+      showAlert(
         '정보가 변경되었어요',
         '최신 반려동물 정보를 확인한 뒤 다시 수정해주세요.',
       );
@@ -643,7 +712,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
             : result.reason === 'conflict'
               ? '다른 화면에서 정보가 변경되었어요. 최신 정보를 확인한 뒤 다시 수정해주세요.'
               : '반려동물 정보를 저장하지 못했어요.';
-        Alert.alert(
+        showAlert(
           result.reason === 'conflict' ? '정보가 변경되었어요' : '저장할 수 없어요',
           message,
         );
@@ -657,19 +726,22 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       isDirtyRef.current = false;
       setBaseDraft(savedDraft);
       setDraft(savedDraft);
-      await petRepository.deleteDraft(currentDraft.userId, currentDraft.id).catch(async () => {
-        const fallbackDraft =
-          mode === 'add' ? createPetDraft(currentDraft.userId) : savedDraft;
-        await petRepository.saveDraft(fallbackDraft).catch(() => undefined);
-      });
-      allowNavigation.current = true;
-      if (mode === 'edit' && router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace(`/pet/${encodeURIComponent(entity.id)}` as Href);
+      const completion = {
+        draftId: currentDraft.id,
+        entity,
+        fallbackDraft: mode === 'add' ? createPetDraft(currentDraft.userId) : savedDraft,
+      };
+      setPendingCompletion(completion);
+      try {
+        await finishSavedPet(completion);
+      } catch {
+        showAlert(
+          '정보는 저장했어요',
+          '임시 작성 내용을 정리하지 못했어요. 잠시 후 완료하기를 다시 눌러주세요.',
+        );
       }
     } catch {
-      Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+      showAlert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       submitLocked.current = false;
       setIsSubmitting(false);
@@ -730,7 +802,8 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     );
   }
 
-  const canSubmit = hasValidPetForm(draft) && (mode === 'add' || isDirty);
+  const canSubmit =
+    Boolean(pendingCompletion) || (hasValidPetForm(draft) && (mode === 'add' || isDirty));
 
   return (
     <>
@@ -742,7 +815,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
             loading={isSubmitting}
             onPress={() => void submit()}
             style={styles.submitButton}
-            title={mode === 'add' ? '등록하기' : '저장하기'}
+            title={pendingCompletion ? '완료하기' : mode === 'add' ? '등록하기' : '저장하기'}
           />
         }
         footerContainerStyle={styles.footer}
@@ -758,7 +831,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         }
       >
         <PetFormFields
-          disabled={isImageMutating || isSubmitting}
+          disabled={isImageMutating || isSubmitting || Boolean(pendingCompletion)}
           errors={visibleErrors}
           onBlur={(field) => setTouched((current) => new Set(current).add(field))}
           onChange={updateField}

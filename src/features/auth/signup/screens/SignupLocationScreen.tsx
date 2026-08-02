@@ -1,9 +1,8 @@
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Platform,
   Pressable,
@@ -13,16 +12,24 @@ import {
 } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import {
   getSignupUserId,
   useAuthSession,
 } from '@/src/features/auth/session/AuthSessionStore';
+import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { signupDataToPetEntity } from '@/src/features/pet/petMappers';
 import { usePetStore } from '@/src/features/pet/PetStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
-import { TERM_IDS, useTerms } from '../../terms';
+import {
+  consentStore,
+  hasCurrentRequiredSignupConsents,
+  TERM_IDS,
+  termsRepository,
+  useTerms,
+} from '../../terms';
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
 import { SignupScaffold } from '../components/SignupScaffold';
 import {
@@ -30,6 +37,13 @@ import {
   getRegionFromPosition,
   MAX_LOCATION_ACCURACY_METERS,
 } from '../services/locationService';
+import {
+  clearSignupTransaction,
+  isSignupTransactionOwner,
+  loadSignupTransaction,
+  saveSignupTransaction,
+  type SignupTransactionOwner,
+} from '../services/signupTransactionStore';
 import { useSignup } from '../SignupContext';
 import { hasValidSignupLocation } from '../signupValidation';
 
@@ -50,13 +64,33 @@ async function openLocationSettings() {
 export function SignupLocationScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { data, markSignupCompleted, signupSessionId, updateField } = useSignup();
-  const { activateSignupUser } = useAuthSession();
-  const { registerSignupPet } = usePetStore();
+  const showAlert = useAppAlert();
+  const {
+    committedSignupRecovery,
+    data,
+    markSignupCompleted,
+    signupSessionId,
+    updateField,
+  } = useSignup();
+  const {
+    activateLocalCredential,
+    activateSignupUser,
+    deleteLocalCredential,
+    hasLocalCredential,
+    registerLocalCredential,
+  } = useAuthSession();
+  const { deleteUserPetData, hasStoredUserPetData, registerSignupPet } = usePetStore();
+  const {
+    deleteUserProfileData,
+    hasStoredUserProfileData,
+    registerSignupProfile,
+  } = useMyPageStore();
   const [searching, setSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const recoveryAttemptedRef = useRef(false);
   const locating = useRef(false);
   const locationRequestId = useRef(0);
   const currentLocationSelected = data.regionSource === 'current';
@@ -64,6 +98,7 @@ export function SignupLocationScreen() {
     finalizeSignupConsents,
     getTerm,
     hasCurrentConsent,
+    signupIdentityFinalized,
     status: termsStatus,
   } = useTerms();
 
@@ -122,7 +157,7 @@ export function SignupLocationScreen() {
 
       if (!permission.granted) {
         setLocationError('현재 위치를 사용하려면 위치 권한을 허용해주세요.');
-        Alert.alert(
+        showAlert(
           '위치 권한이 필요해요',
           '현재 위치로 설정하려면 앱 설정에서 위치 권한을 허용해주세요.',
           [
@@ -137,7 +172,7 @@ export function SignupLocationScreen() {
 
       if (Platform.OS === 'android' && androidAccuracy && androidAccuracy !== 'fine') {
         setLocationError('정확한 위치 권한을 켠 뒤 다시 시도해주세요.');
-        Alert.alert(
+        showAlert(
           '정확한 위치가 필요해요',
           '현재 지역을 정확하게 설정하려면 앱 위치 권한에서 정확한 위치를 켜주세요.',
           [
@@ -154,7 +189,7 @@ export function SignupLocationScreen() {
 
       if (!servicesEnabled) {
         setLocationError('기기의 위치 서비스를 켠 뒤 다시 시도해주세요.');
-        Alert.alert('위치 서비스가 꺼져 있어요', '기기 설정에서 위치 서비스를 켜주세요.', [
+        showAlert('위치 서비스가 꺼져 있어요', '기기 설정에서 위치 서비스를 켜주세요.', [
           { text: '취소', style: 'cancel' },
           { text: '설정 열기', onPress: () => void openLocationSettings() },
         ]);
@@ -201,25 +236,198 @@ export function SignupLocationScreen() {
     }
   };
 
-  const handleSubmit = async () => {
-    if (submitting) return;
+  const handleSubmit = useCallback(async () => {
+    if (submittingRef.current) return;
 
+    submittingRef.current = true;
     setSubmitting(true);
+    const currentUserId = getSignupUserId(data.method, data.email, signupSessionId);
+    const transactionOwner: SignupTransactionOwner = committedSignupRecovery ?? {
+      email: data.email,
+      method: data.method,
+      sessionId: signupSessionId,
+      userId: currentUserId,
+    };
+    const userId = transactionOwner.userId;
+    let consentsFinalized = signupIdentityFinalized;
+    let ownsTransaction = false;
 
     try {
-      const userId = getSignupUserId(data.method, data.email, signupSessionId);
+      if (
+        getSignupUserId(
+          transactionOwner.method,
+          transactionOwner.email,
+          transactionOwner.sessionId,
+        ) !== userId
+      ) {
+        throw new Error('signup-owner-mismatch');
+      }
+
+      const storedTransaction = await loadSignupTransaction(userId);
+      const transaction = storedTransaction.transaction;
+      const ownsStoredTransaction = Boolean(
+        transaction && isSignupTransactionOwner(transaction, transactionOwner),
+      );
+      const [hasPetData, hasProfileData, consentHistory, hasCredentialData, currentTerms] =
+        await Promise.all([
+          hasStoredUserPetData(userId),
+          hasStoredUserProfileData(userId),
+          consentStore.getHistory(userId),
+          transactionOwner.method === 'local'
+            ? hasLocalCredential(userId)
+            : Promise.resolve(true),
+          termsRepository.getTerms(),
+        ]);
+      const hasCompleteAccount =
+        hasPetData &&
+        hasProfileData &&
+        hasCurrentRequiredSignupConsents(consentHistory, currentTerms) &&
+        hasCredentialData;
+
+      if (
+        ownsStoredTransaction &&
+        (transaction?.status === 'committed' ||
+          signupIdentityFinalized ||
+          hasCompleteAccount)
+      ) {
+        if (hasCompleteAccount) {
+          if (transaction?.status !== 'committed') {
+            await saveSignupTransaction(transactionOwner, 'committed');
+          }
+          if (transactionOwner.method === 'local') {
+            await activateLocalCredential(userId);
+          }
+          await activateSignupUser(
+            transactionOwner.method,
+            transactionOwner.email,
+            transactionOwner.sessionId,
+          );
+          markSignupCompleted();
+          await clearSignupTransaction(
+            userId,
+            transactionOwner.sessionId,
+          ).catch(() => undefined);
+          cancelLocationRequest();
+          router.push('/signup/complete');
+          return;
+        }
+        throw new Error('signup-committed-data-incomplete');
+      }
+
+      if (committedSignupRecovery) {
+        throw new Error('signup-committed-transaction-missing');
+      }
+
+      if (!signupIdentityFinalized) {
+        if (transaction?.status === 'pending' && ownsStoredTransaction) {
+          ownsTransaction = true;
+          const recoveryResults = await Promise.allSettled([
+            deleteUserPetData(userId),
+            deleteUserProfileData(userId),
+            consentStore.deleteHistory(userId),
+            transactionOwner.method === 'local'
+              ? deleteLocalCredential(userId)
+              : Promise.resolve(),
+          ]);
+          if (recoveryResults.some((result) => result.status === 'rejected')) {
+            throw new Error('signup-recovery-failed');
+          }
+          await clearSignupTransaction(userId, transactionOwner.sessionId);
+        } else if (
+          hasPetData ||
+          hasProfileData ||
+          consentHistory.length > 0 ||
+          (transactionOwner.method === 'local' && hasCredentialData)
+        ) {
+          showAlert('이미 가입된 계정이에요', '기존 계정으로 로그인해주세요.');
+          throw new Error('signup-account-exists');
+        }
+
+        if (storedTransaction.exists) {
+          await clearSignupTransaction(userId);
+        }
+        await saveSignupTransaction(transactionOwner, 'pending');
+        ownsTransaction = true;
+      }
+
       const initialPet = signupDataToPetEntity(data, userId);
       await registerSignupPet(userId, initialPet);
+      await registerSignupProfile(data, userId);
+      if (transactionOwner.method === 'local') {
+        await registerLocalCredential(userId, data.password);
+      }
       await finalizeSignupConsents(userId);
-      await activateSignupUser(data.method, data.email, signupSessionId);
+      consentsFinalized = true;
+      await saveSignupTransaction(transactionOwner, 'committed');
+      if (transactionOwner.method === 'local') {
+        await activateLocalCredential(userId);
+      }
+      await activateSignupUser(
+        transactionOwner.method,
+        transactionOwner.email,
+        transactionOwner.sessionId,
+      );
       markSignupCompleted();
+      await clearSignupTransaction(userId, transactionOwner.sessionId).catch(
+        () => undefined,
+      );
       cancelLocationRequest();
       router.push('/signup/complete');
-    } catch {
-      Alert.alert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
+    } catch (error) {
+      if (ownsTransaction && !consentsFinalized) {
+        const cleanupResults = await Promise.allSettled([
+          deleteUserPetData(userId),
+          deleteUserProfileData(userId),
+          consentStore.deleteHistory(userId),
+          transactionOwner.method === 'local'
+            ? deleteLocalCredential(userId)
+            : Promise.resolve(),
+        ]);
+        if (cleanupResults.every((result) => result.status === 'fulfilled')) {
+          await clearSignupTransaction(userId, transactionOwner.sessionId).catch(
+            () => undefined,
+          );
+        }
+      }
+      if (
+        !(error instanceof Error) ||
+        error.message !== 'signup-account-exists'
+      ) {
+        showAlert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
+      }
+      submittingRef.current = false;
       setSubmitting(false);
+      throw error;
     }
-  };
+  }, [
+    activateLocalCredential,
+    activateSignupUser,
+    cancelLocationRequest,
+    committedSignupRecovery,
+    data,
+    deleteLocalCredential,
+    deleteUserPetData,
+    deleteUserProfileData,
+    finalizeSignupConsents,
+    hasLocalCredential,
+    hasStoredUserPetData,
+    hasStoredUserProfileData,
+    markSignupCompleted,
+    registerSignupPet,
+    registerSignupProfile,
+    registerLocalCredential,
+    router,
+    showAlert,
+    signupIdentityFinalized,
+    signupSessionId,
+  ]);
+
+  useEffect(() => {
+    if (!committedSignupRecovery || recoveryAttemptedRef.current) return;
+
+    recoveryAttemptedRef.current = true;
+    void handleSubmit().catch(() => undefined);
+  }, [committedSignupRecovery, handleSubmit]);
 
   if (searching) {
     return (
@@ -241,10 +449,12 @@ export function SignupLocationScreen() {
 
   return (
     <SignupScaffold
+      backDisabled={signupIdentityFinalized || Boolean(committedSignupRecovery)}
       bodyStyle={styles.body}
       buttonTitle="회원가입 완료하기"
+      contentDisabled={signupIdentityFinalized || Boolean(committedSignupRecovery)}
       currentStep={5}
-      nextDisabled={!hasValidSignupLocation(data)}
+      nextDisabled={!committedSignupRecovery && !hasValidSignupLocation(data)}
       nextLoading={submitting}
       onNext={handleSubmit}
       title="위치 정보를 설정해주세요"

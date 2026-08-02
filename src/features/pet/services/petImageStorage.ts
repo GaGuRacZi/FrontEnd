@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { getFileExtension } from '@/src/utils/file';
+
 export type PetImageField = 'certificateImageUri' | 'profileImageUri';
 
 export type PendingPetImagePicker = {
@@ -14,11 +16,6 @@ const PENDING_PICKER_KEY = 'paw:pet-image-picker:pending';
 function getUserDirectory(userId: string) {
   const safeUserId = encodeURIComponent(userId);
   return new Directory(Paths.document, 'pet-images', safeUserId);
-}
-
-function getExtension(uri: string) {
-  const match = /\.([a-zA-Z0-9]+)(?:\?|$)/.exec(uri);
-  return match?.[1]?.toLowerCase() || 'jpg';
 }
 
 function parsePendingPicker(value: string | null): PendingPetImagePicker | null {
@@ -81,7 +78,7 @@ export async function persistPetImage(userId: string, sourceUri: string) {
 
   const destination = new File(
     directory,
-    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${getExtension(sourceUri)}`,
+    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${getFileExtension(sourceUri)}`,
   );
   new File(sourceUri).copy(destination);
   return destination.uri;
