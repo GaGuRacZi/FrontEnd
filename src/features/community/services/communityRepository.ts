@@ -41,7 +41,22 @@ const COMMUNITY_WRITE_DRAFT_PREFIX = 'paw:community-write-draft:';
 type TalkWriteDraft = Extract<CommunityWriteDraft, { tab: 'talk' }>;
 type MarketWriteDraft = Extract<CommunityWriteDraft, { tab: 'market' }>;
 type ReviewWriteDraft = Extract<CommunityWriteDraft, { tab: 'review' }>;
-let writeDraftQueue = Promise.resolve();
+
+function createOperationQueue() {
+  let queue = Promise.resolve();
+
+  return function enqueue<T>(operation: () => Promise<T>) {
+    const result = queue.then(operation, operation);
+    queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+}
+
+const enqueueStateOperation = createOperationQueue();
+const enqueueWriteDraftOperation = createOperationQueue();
 
 export function getDeletedComment(
   comment: CommunityComment,
@@ -71,15 +86,6 @@ function writeDraftKey(
 
 function writeDraftPrefix(userId: string) {
   return `${COMMUNITY_WRITE_DRAFT_PREFIX}${encodeURIComponent(userId)}:`;
-}
-
-function enqueueWriteDraftOperation<T>(operation: () => Promise<T>) {
-  const nextOperation = writeDraftQueue.then(operation, operation);
-  writeDraftQueue = nextOperation.then(
-    () => undefined,
-    () => undefined,
-  );
-  return nextOperation;
 }
 
 async function retryWriteDraftOperation<T>(operation: () => Promise<T>) {
@@ -182,15 +188,20 @@ function mergeSeedState(storedState: StoredCommunityState) {
   };
 }
 
-async function readCommunityState() {
-  const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
-  if (!stored) return createInitialCommunityState();
+async function writeCommunityState(serialized: string) {
+  await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, serialized);
+}
 
-  const nextState = mergeSeedState(readStoredState(stored));
-  if (JSON.stringify(nextState) !== stored) {
-    await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(nextState));
-  }
-  return nextState;
+function readCommunityState() {
+  return enqueueStateOperation(async () => {
+    const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
+    if (!stored) return createInitialCommunityState();
+
+    const nextState = mergeSeedState(readStoredState(stored));
+    const serialized = JSON.stringify(nextState);
+    if (serialized !== stored) await writeCommunityState(serialized);
+    return nextState;
+  });
 }
 
 function getDraftImages(draft: CommunityWriteDraft): CommunityImageAsset[] {
@@ -1096,7 +1107,8 @@ export const communityRepository = {
   },
 
   async saveState(state: StoredCommunityState) {
-    await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(state));
+    const serialized = JSON.stringify(state);
+    await enqueueStateOperation(() => writeCommunityState(serialized));
   },
 
   async saveWriteDraft(draft: CommunityWriteDraft) {

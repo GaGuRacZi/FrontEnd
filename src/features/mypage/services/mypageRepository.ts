@@ -161,7 +161,7 @@ export const mypageRepository = {
 
   async getStoredStateStatus(userId: string) {
     const stored = await AsyncStorage.getItem(getStorageKey(userId));
-    if (!stored) return 'missing' as const;
+    if (stored === null) return 'missing' as const;
 
     try {
       const parsed: unknown = JSON.parse(stored);

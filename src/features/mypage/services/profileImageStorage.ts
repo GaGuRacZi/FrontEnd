@@ -5,7 +5,11 @@ import { getFileExtension } from '@/src/utils/file';
 
 const PENDING_PICKER_KEY = 'paw:profile-image-picker:pending';
 const PENDING_REMOVAL_PREFIX = 'paw:profile-image-removal:';
-const fallbackRemovals = new Map<string, Set<string>>();
+type PendingProfileImageRemoval = {
+  removeDirectory: boolean;
+  uris: string[];
+};
+const fallbackRemovals = new Map<string, PendingProfileImageRemoval>();
 let removalQueue: Promise<void> = Promise.resolve();
 
 function getUserDirectory(userId: string) {
@@ -33,16 +37,42 @@ function enqueueRemoval<T>(operation: () => Promise<T>) {
 }
 
 function parseQueuedRemovals(stored: string | null) {
-  if (!stored) return [];
+  if (!stored) return { removeDirectory: false, uris: [] };
 
   try {
     const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === 'string')
+    const values = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === 'object' && 'uris' in parsed
+        ? (parsed as { uris?: unknown }).uris
+        : [];
+    const uris = Array.isArray(values)
+      ? [...new Set(values.filter((value): value is string => typeof value === 'string'))]
       : [];
+    return {
+      removeDirectory:
+        !Array.isArray(parsed) &&
+        Boolean(
+          parsed &&
+            typeof parsed === 'object' &&
+            'removeDirectory' in parsed &&
+            (parsed as { removeDirectory?: unknown }).removeDirectory === true,
+        ),
+      uris,
+    };
   } catch {
-    return [];
+    return { removeDirectory: false, uris: [] };
   }
+}
+
+function mergeQueuedRemovals(
+  first: PendingProfileImageRemoval,
+  second?: PendingProfileImageRemoval,
+): PendingProfileImageRemoval {
+  return {
+    removeDirectory: first.removeDirectory || second?.removeDirectory === true,
+    uris: [...new Set([...first.uris, ...(second?.uris ?? [])])],
+  };
 }
 
 export async function getPendingProfileImagePicker() {
@@ -85,15 +115,19 @@ export async function removeProfileImage(userId: string, uri: string | null) {
 export function queueProfileImageRemoval(userId: string, uri: string | null) {
   if (!isManagedProfileImage(userId, uri)) return Promise.resolve();
 
-  const fallback = fallbackRemovals.get(userId) ?? new Set<string>();
-  fallback.add(uri as string);
+  const fallback = mergeQueuedRemovals(
+    fallbackRemovals.get(userId) ?? { removeDirectory: false, uris: [] },
+    { removeDirectory: false, uris: [uri as string] },
+  );
   fallbackRemovals.set(userId, fallback);
 
   return enqueueRemoval(async () => {
     const key = getPendingRemovalKey(userId);
-    const queued = new Set(parseQueuedRemovals(await AsyncStorage.getItem(key)));
-    fallback.forEach((value) => queued.add(value));
-    await AsyncStorage.setItem(key, JSON.stringify([...queued]));
+    const queued = mergeQueuedRemovals(
+      parseQueuedRemovals(await AsyncStorage.getItem(key)),
+      fallback,
+    );
+    await AsyncStorage.setItem(key, JSON.stringify(queued));
   });
 }
 
@@ -103,14 +137,33 @@ export function flushQueuedProfileImageRemovals(
 ) {
   return enqueueRemoval(async () => {
     const key = getPendingRemovalKey(userId);
-    const queued = new Set(parseQueuedRemovals(await AsyncStorage.getItem(key)));
-    fallbackRemovals.get(userId)?.forEach((value) => queued.add(value));
-    if (queued.size === 0) return;
+    const queued = mergeQueuedRemovals(
+      parseQueuedRemovals(await AsyncStorage.getItem(key)),
+      fallbackRemovals.get(userId),
+    );
+    if (!queued.removeDirectory && queued.uris.length === 0) return;
 
     const retained = new Set(retainedUris.filter((uri): uri is string => Boolean(uri)));
     const pending: string[] = [];
 
-    for (const uri of queued) {
+    if (
+      queued.removeDirectory &&
+      ![...retained].some((uri) => isManagedProfileImage(userId, uri))
+    ) {
+      try {
+        const directory = getUserDirectory(userId);
+        if (directory.exists) directory.delete();
+        fallbackRemovals.delete(userId);
+        await AsyncStorage.removeItem(key);
+        return;
+      } catch (error) {
+        fallbackRemovals.set(userId, queued);
+        await AsyncStorage.setItem(key, JSON.stringify(queued)).catch(() => undefined);
+        throw error;
+      }
+    }
+
+    for (const uri of queued.uris) {
       if (retained.has(uri)) {
         pending.push(uri);
         continue;
@@ -123,9 +176,13 @@ export function flushQueuedProfileImageRemovals(
       }
     }
 
-    if (pending.length > 0) {
-      fallbackRemovals.set(userId, new Set(pending));
-      await AsyncStorage.setItem(key, JSON.stringify(pending));
+    if (queued.removeDirectory || pending.length > 0) {
+      const nextPending = {
+        removeDirectory: queued.removeDirectory,
+        uris: pending,
+      };
+      fallbackRemovals.set(userId, nextPending);
+      await AsyncStorage.setItem(key, JSON.stringify(nextPending));
     } else {
       fallbackRemovals.delete(userId);
       await AsyncStorage.removeItem(key);
@@ -135,22 +192,29 @@ export function flushQueuedProfileImageRemovals(
 
 export function removeUserProfileImages(userId: string) {
   return enqueueRemoval(async () => {
-    let directoryRemoved = false;
+    const key = getPendingRemovalKey(userId);
 
     try {
       const directory = getUserDirectory(userId);
       if (directory.exists) directory.delete();
-      directoryRemoved = true;
-    } catch {
-      directoryRemoved = false;
+    } catch (error) {
+      const queued = mergeQueuedRemovals(
+        parseQueuedRemovals(await AsyncStorage.getItem(key).catch(() => null)),
+        fallbackRemovals.get(userId),
+      );
+      const pending = { ...queued, removeDirectory: true };
+      fallbackRemovals.set(userId, pending);
+      await Promise.allSettled([
+        clearPendingProfileImagePicker(userId),
+        AsyncStorage.setItem(key, JSON.stringify(pending)),
+      ]);
+      throw error;
     }
 
-    if (directoryRemoved) fallbackRemovals.delete(userId);
+    fallbackRemovals.delete(userId);
     await Promise.allSettled([
       clearPendingProfileImagePicker(userId),
-      directoryRemoved
-        ? AsyncStorage.removeItem(getPendingRemovalKey(userId))
-        : Promise.resolve(),
+      AsyncStorage.removeItem(key),
     ]);
   });
 }
