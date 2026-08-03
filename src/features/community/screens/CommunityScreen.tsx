@@ -39,6 +39,7 @@ import {
 import { useCommunityStore } from '../CommunityStore';
 import { getCommunityImageUris } from '../services/communityImageStorage';
 import { createCommunityAuthor } from '../utils/author';
+import { getMarketTradeMethods } from '../utils/marketValidation';
 import { getReviewScoreLabels } from '../utils/reviewValidation';
 import type {
   CommunityAuthorSnapshot,
@@ -1801,6 +1802,13 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   const isMine = selectedPost.author.userId === viewerId;
   const canInquire = selectedPost.status !== '완료' && !isMine;
   const marketPhotoUris = getCommunityImageUris(selectedPost.images, selectedPost.photoUris);
+  const marketTradeMethods = getMarketTradeMethods(selectedPost.tags);
+  const marketTags = selectedPost.tags.filter(
+    (tag) =>
+      tag !== selectedPost.category &&
+      tag !== selectedPost.tradeType &&
+      !marketTradeMethods.some((method) => method === tag),
+  );
   const imageCount = selectedMarketImageCount;
   const marketImageIndex = Math.min(imageIndex, imageCount - 1);
   const tradeStyle = MARKET_TRADE_STYLES[selectedPost.tradeType];
@@ -2040,6 +2048,12 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
             <Text ellipsizeMode="tail" numberOfLines={1} style={styles.marketDetailMeta}>
               {selectedPost.category} · {formatCompactRegion(selectedPost.location)} · {getRelativeTime(selectedPost.createdAt)}
             </Text>
+            {marketTradeMethods.length > 0 ? (
+              <View style={styles.infoLine}>
+                <Text style={styles.infoLabel}>거래 방법</Text>
+                <Text style={styles.infoValue}>{marketTradeMethods.join(' · ')}</Text>
+              </View>
+            ) : null}
             {selectedPost.expiresAt ? (
               <View style={styles.infoLine}>
                 <Text style={styles.infoLabel}>유통기한</Text>
@@ -2051,9 +2065,9 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
               <Text style={styles.marketSectionTitle}>상세 설명</Text>
               <Text style={styles.marketDetailDescription}>{selectedPost.body}</Text>
             </View>
-            {selectedPost.tags.length > 0 ? (
+            {marketTags.length > 0 ? (
               <View style={[styles.tagRow, styles.marketDetailTags]}>
-                {selectedPost.tags.map((tag) => (
+                {marketTags.map((tag) => (
                   <Text key={tag} style={styles.tagText}>
                     #{tag}
                   </Text>
@@ -4080,6 +4094,9 @@ const styles = StyleSheet.create({
   infoValue: {
     ...TYPOGRAPHY.body2,
     color: COLORS.gray600,
+    flex: 1,
+    marginLeft: SPACING.md,
+    textAlign: 'right',
   },
   sellerCard: {
     alignItems: 'center',
