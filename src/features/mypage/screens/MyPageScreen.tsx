@@ -6,6 +6,7 @@ import { EmptyState, LoadingView } from '@/src/components/common';
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
+import { formatCompactRegion } from '@/src/utils/location';
 
 import { getPlan } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
@@ -21,7 +22,7 @@ import {
 export function MyPageScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { hasLoadError, isReady, profile, subscription } = useMyPageStore();
+  const { hasLoadError, isReady, profile, reloadMyPage, subscription } = useMyPageStore();
   const [comingSoonTitle, setComingSoonTitle] = useState<string | null>(null);
   const plan = subscription ? getPlan(subscription.currentPlanId) : null;
 
@@ -33,7 +34,21 @@ export function MyPageScreen() {
     );
   }
 
-  if (hasLoadError || !profile || !plan) {
+  if (hasLoadError) {
+    return (
+      <MyPageHeader variant="root">
+        <EmptyState
+          actionLabel="다시 시도"
+          description="잠시 후 다시 마이페이지를 열어주세요."
+          icon={<AppIcon color={COLORS.primary} name="person-circle-outline" size={32} />}
+          onActionPress={reloadMyPage}
+          title="마이페이지를 불러오지 못했어요."
+        />
+      </MyPageHeader>
+    );
+  }
+
+  if (!profile || !plan) {
     return (
       <MyPageHeader variant="root">
         <EmptyState
@@ -62,8 +77,8 @@ export function MyPageScreen() {
             <Text numberOfLines={1} style={styles.ownerName}>
               {profile.nickname}
             </Text>
-            <Text numberOfLines={1} style={styles.ownerMeta}>
-              {profile.location || '지역 미설정'}
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.ownerMeta}>
+              {formatCompactRegion(profile.location) || '지역 미설정'}
             </Text>
           </View>
           <AppIcon name="chevron-forward" size={22} />

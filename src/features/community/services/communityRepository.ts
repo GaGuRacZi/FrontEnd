@@ -9,11 +9,27 @@ import {
   TALK_CATEGORIES,
 } from '../communityData';
 import {
-  removeCommunityImages,
-  removeUserCommunityImages,
+  flushQueuedCommunityImageRemovals,
+  queueCommunityImageRemovals,
+  queueUserCommunityImageRemoval,
 } from './communityImageStorage';
-import type { CommunityImageAsset, CommunityWriteDraft, StoredCommunityState } from '../types';
+import type {
+  CommunityAuthorSnapshot,
+  CommunityComment,
+  CommunityImageAsset,
+  CommunityViewerState,
+  CommunityWriteDraft,
+  MarketPost,
+  PostKind,
+  ReactionKind,
+  ReviewPost,
+  StoredCommunityState,
+  TalkPost,
+} from '../types';
+import { isValidMarketPriceLabel } from '../utils/marketValidation';
 import {
+  getValidReviewInput,
+  getValidReviewTarget,
   isValidReviewScore,
   REVIEW_BODY_MAX_LENGTH,
   REVIEW_TARGET_MAX_LENGTH,
@@ -25,40 +41,75 @@ const COMMUNITY_WRITE_DRAFT_PREFIX = 'paw:community-write-draft:';
 type TalkWriteDraft = Extract<CommunityWriteDraft, { tab: 'talk' }>;
 type MarketWriteDraft = Extract<CommunityWriteDraft, { tab: 'market' }>;
 type ReviewWriteDraft = Extract<CommunityWriteDraft, { tab: 'review' }>;
-let writeDraftQueue = Promise.resolve();
 
-function writeDraftKey(userId: string, tab: CommunityWriteDraft['tab']) {
-  return `${COMMUNITY_WRITE_DRAFT_PREFIX}${encodeURIComponent(userId)}:${tab}`;
+function createOperationQueue() {
+  let queue = Promise.resolve();
+
+  return function enqueue<T>(operation: () => Promise<T>) {
+    const result = queue.then(operation, operation);
+    queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+}
+
+const enqueueStateOperation = createOperationQueue();
+const enqueueWriteDraftOperation = createOperationQueue();
+
+export function getDeletedComment(
+  comment: CommunityComment,
+  deletedAt = new Date().toISOString(),
+): CommunityComment {
+  return {
+    ...comment,
+    author: {
+      nickname: '',
+      profileImageUri: null,
+      userId: `deleted-${comment.id}`,
+    },
+    body: '삭제된 댓글입니다.',
+    deletedAt,
+    updatedAt: deletedAt,
+  };
+}
+
+function writeDraftKey(
+  userId: string,
+  tab: CommunityWriteDraft['tab'],
+  editPostId?: string,
+) {
+  const baseKey = `${COMMUNITY_WRITE_DRAFT_PREFIX}${encodeURIComponent(userId)}:${tab}`;
+  return editPostId ? `${baseKey}:edit:${encodeURIComponent(editPostId)}` : baseKey;
 }
 
 function writeDraftPrefix(userId: string) {
   return `${COMMUNITY_WRITE_DRAFT_PREFIX}${encodeURIComponent(userId)}:`;
 }
 
-function enqueueWriteDraftOperation<T>(operation: () => Promise<T>) {
-  const nextOperation = writeDraftQueue.then(operation, operation);
-  writeDraftQueue = nextOperation.then(
-    () => undefined,
-    () => undefined,
-  );
-  return nextOperation;
+async function retryWriteDraftOperation<T>(operation: () => Promise<T>) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 150 * (attempt + 1));
+        });
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 function readStoredState(stored: string) {
   try {
-    const parsed = JSON.parse(stored) as StoredCommunityState;
-    if (!Array.isArray(parsed.posts) || !Array.isArray(parsed.comments)) {
-      return createInitialCommunityState();
-    }
-
-    return {
-      comments: parsed.comments,
-      posts: parsed.posts,
-      reviewPosts: Array.isArray(parsed.reviewPosts)
-        ? parsed.reviewPosts
-        : createInitialCommunityState().reviewPosts,
-      viewerStates: parsed.viewerStates ?? {},
-    };
+    return normalizeStoredState(JSON.parse(stored));
   } catch {
     return createInitialCommunityState();
   }
@@ -69,28 +120,115 @@ function mergeSeedState(storedState: StoredCommunityState) {
   const storedPostIds = new Set(storedState.posts.map((post) => post.id));
   const storedCommentIds = new Set(storedState.comments.map((comment) => comment.id));
   const storedReviewPostIds = new Set(storedState.reviewPosts.map((post) => post.id));
+  const storedEntityIds = new Set([...storedPostIds, ...storedReviewPostIds]);
+  const posts = [
+    ...storedState.posts,
+    ...seedState.posts.filter((post) => !storedEntityIds.has(post.id)),
+  ];
+  const postIds = new Set(posts.map((post) => post.id));
+  const reviewPosts = [
+    ...storedState.reviewPosts,
+    ...seedState.reviewPosts.filter(
+      (post) => !storedEntityIds.has(post.id) && !postIds.has(post.id),
+    ),
+  ];
+  const talkPostIds = new Set(
+    posts.filter((post) => post.kind === 'talk').map((post) => post.id),
+  );
+  const marketPostIds = new Set(
+    posts.filter((post) => post.kind === 'market').map((post) => post.id),
+  );
+  const reviewAuthors = new Map(
+    reviewPosts.map((post) => [post.id, post.author.userId]),
+  );
+  const viewerStates = Object.fromEntries(
+    Object.entries(storedState.viewerStates ?? {}).map(([viewerId, viewerState]) => {
+      const uniqueIds = (values: string[] | undefined, validIds: ReadonlySet<string>) =>
+        [...new Set(values ?? [])].filter((id) => validIds.has(id));
+      const validReviewIds = new Set(
+        [...reviewAuthors]
+          .filter(([, authorId]) => authorId !== viewerId)
+          .map(([postId]) => postId),
+      );
+      const notHelpfulIds = uniqueIds(
+        viewerState.reactionPostIds?.notHelpful,
+        validReviewIds,
+      );
+      const notHelpfulSet = new Set(notHelpfulIds);
+
+      return [
+        viewerId,
+        {
+          ...viewerState,
+          bookmarkedPostIds: uniqueIds(
+            viewerState.bookmarkedPostIds,
+            marketPostIds,
+          ),
+          reactionPostIds: {
+            helpful: uniqueIds(
+              viewerState.reactionPostIds?.helpful,
+              validReviewIds,
+            ).filter((postId) => !notHelpfulSet.has(postId)),
+            like: uniqueIds(viewerState.reactionPostIds?.like, talkPostIds),
+            notHelpful: notHelpfulIds,
+          },
+        },
+      ];
+    }),
+  );
 
   return {
     comments: [
       ...storedState.comments,
       ...seedState.comments.filter((comment) => !storedCommentIds.has(comment.id)),
     ],
-    posts: [
-      ...storedState.posts,
-      ...seedState.posts.filter((post) => !storedPostIds.has(post.id)),
-    ],
-    reviewPosts: [
-      ...storedState.reviewPosts,
-      ...seedState.reviewPosts.filter((post) => !storedReviewPostIds.has(post.id)),
-    ],
-    viewerStates: storedState.viewerStates ?? {},
+    posts,
+    reviewPosts,
+    viewerStates,
   };
+}
+
+async function writeCommunityState(serialized: string) {
+  await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, serialized);
+}
+
+function readCommunityState() {
+  return enqueueStateOperation(async () => {
+    const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
+    if (!stored) return createInitialCommunityState();
+
+    const nextState = mergeSeedState(readStoredState(stored));
+    const serialized = JSON.stringify(nextState);
+    if (serialized !== stored) await writeCommunityState(serialized);
+    return nextState;
+  });
 }
 
 function getDraftImages(draft: CommunityWriteDraft): CommunityImageAsset[] {
   if (draft.tab === 'talk') return draft.talkPhotos;
   if (draft.tab === 'market') return draft.marketPhotos;
   return draft.reviewPhotos;
+}
+
+function getStoredImageIds(state: StoredCommunityState) {
+  return new Set(
+    [...state.posts, ...state.reviewPosts].flatMap((post) =>
+      (post.images ?? []).map((image) => image.assetId),
+    ),
+  );
+}
+
+function getStoredImageUris(state: StoredCommunityState) {
+  return [...state.posts, ...state.reviewPosts].flatMap((post) =>
+    (post.images ?? []).flatMap((image) => (image.localUri ? [image.localUri] : [])),
+  );
+}
+
+function getRemovableDraftImages(
+  draft: CommunityWriteDraft,
+  storedImageIds: ReadonlySet<string>,
+) {
+  return getDraftImages(draft).filter((image) => !storedImageIds.has(image.assetId));
 }
 
 function normalizeDraftImages(value: unknown): CommunityImageAsset[] {
@@ -165,6 +303,456 @@ function isValueIn<T extends string>(value: string, values: readonly T[]): value
   return values.some((item) => item === value);
 }
 
+const POST_KINDS: PostKind[] = ['talk', 'market', 'review'];
+const REACTION_KINDS: ReactionKind[] = ['helpful', 'like', 'notHelpful'];
+const MARKET_STATUSES: MarketPost['status'][] = ['진행 중', '예약 중', '완료'];
+
+function getTrimmedString(value: unknown) {
+  const parsed = getString(value)?.trim();
+  return parsed || null;
+}
+
+function getOptionalString(value: unknown) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return getString(value);
+}
+
+function getTimestamp(value: unknown) {
+  const parsed = getString(value);
+  return parsed && Number.isFinite(Date.parse(parsed)) ? parsed : null;
+}
+
+function getNonNegativeInteger(value: unknown, fallback = 0) {
+  const parsed = getNumber(value);
+  return parsed !== null && Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function normalizeStringList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function normalizeAuthor(
+  value: unknown,
+  allowEmptyNickname = false,
+): CommunityAuthorSnapshot | null {
+  if (!isRecord(value)) return null;
+  const userId = getTrimmedString(value.userId);
+  const nickname = getString(value.nickname);
+  if (!userId || nickname === null || (!allowEmptyNickname && !nickname.trim())) return null;
+
+  const introduction =
+    typeof value.introduction === 'string' ? value.introduction : undefined;
+  const location = typeof value.location === 'string' ? value.location : undefined;
+  const petName = typeof value.petName === 'string' ? value.petName : undefined;
+  const profileImageUri =
+    value.profileImageUri === null
+      ? null
+      : typeof value.profileImageUri === 'string'
+        ? value.profileImageUri
+        : undefined;
+
+  return {
+    ...(introduction !== undefined ? { introduction } : {}),
+    ...(location !== undefined ? { location } : {}),
+    nickname,
+    ...(petName !== undefined ? { petName } : {}),
+    ...(profileImageUri !== undefined ? { profileImageUri } : {}),
+    userId,
+  };
+}
+
+function normalizeReactionCounts(
+  value: unknown,
+  allowedKinds: readonly ReactionKind[],
+): Partial<Record<ReactionKind, number>> {
+  if (!isRecord(value)) return {};
+
+  return Object.fromEntries(
+    allowedKinds.flatMap((kind) => {
+      const count = getNumber(value[kind]);
+      return count !== null && Number.isInteger(count) && count >= 0
+        ? [[kind, count] as const]
+        : [];
+    }),
+  );
+}
+
+function normalizeStoredImages(value: unknown) {
+  const images = normalizeDraftImages(value);
+  return images.length ? images : undefined;
+}
+
+function normalizeLegacyPhotoUris(value: unknown) {
+  const uris = normalizeStringList(value);
+  return uris.length ? uris : undefined;
+}
+
+function normalizeTalkPost(value: unknown): TalkPost | null {
+  if (!isRecord(value) || value.kind !== 'talk') return null;
+  const author = normalizeAuthor(value.author);
+  const body = getTrimmedString(value.body);
+  const category = getString(value.category);
+  const createdAt = getTimestamp(value.createdAt);
+  const id = getTrimmedString(value.id);
+  const showNeighborhood = getBoolean(value.showNeighborhood) ?? false;
+  const title = getTrimmedString(value.title);
+  const updatedAt = getTimestamp(value.updatedAt);
+  if (
+    !author ||
+    !body ||
+    !category ||
+    !isTalkWriteCategory(category) ||
+    !createdAt ||
+    !id ||
+    !title ||
+    !updatedAt
+  ) {
+    return null;
+  }
+
+  const images = normalizeStoredImages(value.images);
+  const photoUris = normalizeLegacyPhotoUris(value.photoUris);
+
+  return {
+    author,
+    baseBookmarkCount: getNonNegativeInteger(value.baseBookmarkCount),
+    baseReactionCounts: normalizeReactionCounts(value.baseReactionCounts, ['like']),
+    body,
+    category,
+    createdAt,
+    id,
+    ...(images ? { images } : {}),
+    kind: 'talk',
+    ...(photoUris ? { photoUris } : {}),
+    showNeighborhood,
+    tags: normalizeStringList(value.tags),
+    title,
+    updatedAt,
+  };
+}
+
+function normalizeMarketPost(value: unknown): MarketPost | null {
+  if (!isRecord(value) || value.kind !== 'market') return null;
+  const author = normalizeAuthor(value.author);
+  const body = getTrimmedString(value.body);
+  const category = getString(value.category);
+  const createdAt = getTimestamp(value.createdAt);
+  const id = getTrimmedString(value.id);
+  const location = getString(value.location);
+  const priceLabel = getTrimmedString(value.priceLabel);
+  const status = getString(value.status);
+  const title = getTrimmedString(value.title);
+  const tradeType = getString(value.tradeType);
+  const updatedAt = getTimestamp(value.updatedAt);
+  if (
+    !author ||
+    !body ||
+    !category ||
+    !isMarketWriteCategory(category) ||
+    !createdAt ||
+    !id ||
+    location === null ||
+    !priceLabel ||
+    !status ||
+    !isValueIn(status, MARKET_STATUSES) ||
+    !title ||
+    !tradeType ||
+    !isValueIn(tradeType, MARKET_TRADE_TYPES) ||
+    !isValidMarketPriceLabel(tradeType, priceLabel) ||
+    !updatedAt
+  ) {
+    return null;
+  }
+
+  const expiresAt = getOptionalString(value.expiresAt);
+  if (expiresAt === null) return null;
+  const images = normalizeStoredImages(value.images);
+  const photoUris = normalizeLegacyPhotoUris(value.photoUris);
+
+  return {
+    author,
+    baseBookmarkCount: getNonNegativeInteger(value.baseBookmarkCount),
+    baseReactionCounts: normalizeReactionCounts(value.baseReactionCounts, []),
+    body,
+    category,
+    createdAt,
+    ...(expiresAt !== undefined ? { expiresAt } : {}),
+    id,
+    imageCount: getNonNegativeInteger(
+      value.imageCount,
+      images?.length ?? photoUris?.length ?? 0,
+    ),
+    ...(images ? { images } : {}),
+    kind: 'market',
+    location,
+    ...(photoUris ? { photoUris } : {}),
+    priceLabel,
+    status,
+    tags: normalizeStringList(value.tags),
+    title,
+    tradeType,
+    updatedAt,
+  };
+}
+
+function normalizeReviewPost(value: unknown): ReviewPost | null {
+  if (!isRecord(value)) return null;
+  const author = normalizeAuthor(value.author);
+  const body = getTrimmedString(value.body);
+  const category = getString(value.category);
+  const createdAt = getTimestamp(value.createdAt);
+  const id = getTrimmedString(value.id);
+  const rating = getNumber(value.rating);
+  const targetName = getTrimmedString(value.targetName);
+  const title = getTrimmedString(value.title);
+  const visitedAt = getTrimmedString(value.visitedAt);
+  if (
+    !author ||
+    !body ||
+    !category ||
+    !isReviewWriteCategory(category) ||
+    !createdAt ||
+    !id ||
+    rating === null ||
+    !isValidReviewScore(rating) ||
+    !targetName ||
+    !title ||
+    !visitedAt
+  ) {
+    return null;
+  }
+
+  if (!isRecord(value.detailScores)) return null;
+  const kindness = getNumber(value.detailScores.kindness);
+  const price = getNumber(value.detailScores.price);
+  const revisit = getNumber(value.detailScores.revisit);
+  if (
+    kindness === null ||
+    !isValidReviewScore(kindness) ||
+    price === null ||
+    !isValidReviewScore(price) ||
+    revisit === null ||
+    !isValidReviewScore(revisit)
+  ) {
+    return null;
+  }
+  const detailScores = { kindness, price, revisit };
+
+  const reviewInput = getValidReviewInput({
+    body,
+    detailScores,
+    rating,
+    title,
+    visitedAt,
+  });
+  const normalizedTargetName = getValidReviewTarget(targetName);
+  if (!reviewInput || !normalizedTargetName) return null;
+
+  const images = normalizeStoredImages(value.images);
+  const photoUris = normalizeLegacyPhotoUris(value.photoUris);
+  const placeholderPhotoCount = getNonNegativeInteger(value.placeholderPhotoCount);
+
+  return {
+    author,
+    baseReactionCounts: normalizeReactionCounts(value.baseReactionCounts, [
+      'helpful',
+      'notHelpful',
+    ]),
+    body: reviewInput.body,
+    category,
+    createdAt,
+    detailScores,
+    id,
+    ...(images ? { images } : {}),
+    ...(photoUris ? { photoUris } : {}),
+    ...(placeholderPhotoCount ? { placeholderPhotoCount } : {}),
+    rating,
+    targetName: normalizedTargetName,
+    title: reviewInput.title,
+    visitedAt: reviewInput.visitedAt,
+  };
+}
+
+function normalizeComment(value: unknown): CommunityComment | null {
+  if (!isRecord(value)) return null;
+  const deletedAt =
+    value.deletedAt === undefined ? undefined : getTimestamp(value.deletedAt);
+  const author = normalizeAuthor(value.author, deletedAt !== undefined);
+  const body = getTrimmedString(value.body);
+  const createdAt = getTimestamp(value.createdAt);
+  const id = getTrimmedString(value.id);
+  const parentId =
+    value.parentId === undefined ? undefined : getTrimmedString(value.parentId);
+  const postId = getTrimmedString(value.postId);
+  const updatedAt = getTimestamp(value.updatedAt);
+  if (
+    !author ||
+    !body ||
+    !createdAt ||
+    !id ||
+    (value.deletedAt !== undefined && !deletedAt) ||
+    (value.parentId !== undefined && !parentId) ||
+    !postId ||
+    !updatedAt
+  ) {
+    return null;
+  }
+
+  return {
+    author,
+    body,
+    createdAt,
+    ...(deletedAt ? { deletedAt } : {}),
+    id,
+    ...(parentId ? { parentId } : {}),
+    postId,
+    updatedAt,
+  };
+}
+
+function normalizeIdList(value: unknown) {
+  return normalizeStringList(value);
+}
+
+export function normalizeCommunityFilterSession(
+  value: unknown,
+): CommunityViewerState['filterSession'] {
+  const filter = isRecord(value) ? value : {};
+  const activeTab = getString(filter.activeTab);
+  const marketCategory = getString(filter.marketCategory);
+  const reviewCategory = getString(filter.reviewCategory);
+  const searchQuery = getString(filter.searchQuery);
+  const searchTab = getString(filter.searchTab);
+  const talkCategory = getString(filter.talkCategory);
+
+  return {
+    activeTab: activeTab && isValueIn(activeTab, POST_KINDS) ? activeTab : 'talk',
+    marketCategory:
+      marketCategory && isValueIn(marketCategory, MARKET_CATEGORIES)
+        ? marketCategory
+        : '전체',
+    marketStatuses: normalizeIdList(filter.marketStatuses).filter(
+      (status): status is MarketPost['status'] => isValueIn(status, MARKET_STATUSES),
+    ),
+    marketTradeTypes: normalizeIdList(filter.marketTradeTypes).filter(
+      (tradeType): tradeType is MarketPost['tradeType'] =>
+        isValueIn(tradeType, MARKET_TRADE_TYPES),
+    ),
+    reviewCategory:
+      reviewCategory && isValueIn(reviewCategory, REVIEW_CATEGORIES)
+        ? reviewCategory
+        : '전체',
+    searchQuery: searchQuery ?? '',
+    searchTab: searchTab && isValueIn(searchTab, POST_KINDS) ? searchTab : 'talk',
+    talkCategory:
+      talkCategory && isValueIn(talkCategory, TALK_CATEGORIES)
+        ? talkCategory
+        : '전체',
+  };
+}
+
+function normalizeViewerState(value: unknown): CommunityViewerState | null {
+  if (!isRecord(value)) return null;
+  const storedReactionPostIds = isRecord(value.reactionPostIds)
+    ? value.reactionPostIds
+    : null;
+  const reactionPostIds = storedReactionPostIds
+    ? Object.fromEntries(
+        REACTION_KINDS.flatMap((kind) => {
+          const ids = normalizeIdList(storedReactionPostIds[kind]);
+          return ids.length ? [[kind, ids] as const] : [];
+        }),
+      )
+    : {};
+
+  return {
+    bookmarkedPostIds: normalizeIdList(value.bookmarkedPostIds),
+    filterSession: normalizeCommunityFilterSession(value.filterSession),
+    reactionPostIds,
+  };
+}
+
+function uniqueById<T extends { id: string }>(values: T[]) {
+  const ids = new Set<string>();
+  return values.filter((value) => {
+    if (ids.has(value.id)) return false;
+    ids.add(value.id);
+    return true;
+  });
+}
+
+function normalizeStoredState(value: unknown): StoredCommunityState {
+  if (!isRecord(value)) return createInitialCommunityState();
+
+  const posts = uniqueById(
+    (Array.isArray(value.posts) ? value.posts : []).flatMap((post) => {
+      const normalized =
+        isRecord(post) && post.kind === 'talk'
+          ? normalizeTalkPost(post)
+          : normalizeMarketPost(post);
+      return normalized ? [normalized] : [];
+    }),
+  );
+  const postIds = new Set(posts.map((post) => post.id));
+  const reviewPosts = uniqueById(
+    (Array.isArray(value.reviewPosts) ? value.reviewPosts : []).flatMap((post) => {
+      const normalized = normalizeReviewPost(post);
+      return normalized && !postIds.has(normalized.id) ? [normalized] : [];
+    }),
+  );
+  const talkPostIds = new Set(
+    [...posts, ...createInitialCommunityState().posts]
+      .filter((post) => post.kind === 'talk')
+      .map((post) => post.id),
+  );
+  const normalizedComments = uniqueById(
+    (Array.isArray(value.comments) ? value.comments : []).flatMap((comment) => {
+      const normalized = normalizeComment(comment);
+      return normalized && talkPostIds.has(normalized.postId) ? [normalized] : [];
+    }),
+  );
+  const commentsById = new Map(
+    normalizedComments.map((comment) => [comment.id, comment]),
+  );
+  const structurallyValidComments = normalizedComments.filter((comment) => {
+    if (!comment.parentId) return true;
+    const parent = commentsById.get(comment.parentId);
+    return Boolean(parent && !parent.parentId && parent.postId === comment.postId);
+  });
+  const parentsWithReplies = new Set(
+    structurallyValidComments
+      .filter((comment) => comment.parentId && !comment.deletedAt)
+      .map((comment) => comment.parentId),
+  );
+  const comments = structurallyValidComments.filter(
+    (comment) => !comment.deletedAt || parentsWithReplies.has(comment.id),
+  );
+  const viewerStates = isRecord(value.viewerStates)
+    ? Object.fromEntries(
+        Object.entries(value.viewerStates).flatMap(([viewerId, viewerState]) => {
+          const normalized = viewerId.trim() ? normalizeViewerState(viewerState) : null;
+          return normalized ? [[viewerId, normalized]] : [];
+        }),
+      )
+    : {};
+
+  return {
+    comments,
+    posts,
+    reviewPosts,
+    viewerStates,
+  };
+}
+
 function isTalkWriteCategory(value: string): value is TalkWriteDraft['talkCategory'] {
   return isValueIn(value, TALK_CATEGORIES) && value !== '전체';
 }
@@ -180,12 +768,15 @@ function isReviewWriteCategory(value: string): value is ReviewWriteDraft['review
 function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
   if (!isRecord(value)) return null;
   const userId = getString(value.userId);
+  const rawEditPostId = value.editPostId;
+  const editPostId = rawEditPostId === undefined ? undefined : getString(rawEditPostId)?.trim();
   const id = getString(value.id);
   const tab = getString(value.tab);
   const updatedAt = getString(value.updatedAt);
 
   if (
     !userId ||
+    (rawEditPostId !== undefined && !editPostId) ||
     !id ||
     !updatedAt ||
     Number.isNaN(Date.parse(updatedAt)) ||
@@ -211,6 +802,7 @@ function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
     }
 
     return {
+      ...(editPostId ? { editPostId } : {}),
       id,
       tab,
       talkBody,
@@ -252,6 +844,7 @@ function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
     }
 
     return {
+      ...(editPostId ? { editPostId } : {}),
       expiresAt,
       id,
       marketBody,
@@ -304,6 +897,7 @@ function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
   }
 
   return {
+    ...(editPostId ? { editPostId } : {}),
     id,
     reviewBody,
     reviewCategory,
@@ -321,27 +915,42 @@ function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
   };
 }
 
-async function readWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
-  const stored = await AsyncStorage.getItem(writeDraftKey(userId, tab));
+async function readWriteDraft(
+  userId: string,
+  tab: CommunityWriteDraft['tab'],
+  editPostId?: string,
+) {
+  const key = writeDraftKey(userId, tab, editPostId);
+  const stored = await AsyncStorage.getItem(key);
   if (!stored) return null;
 
   try {
     const parsed = normalizeWriteDraft(JSON.parse(stored));
-    if (parsed?.userId === userId && parsed.tab === tab) return parsed;
+    if (
+      parsed?.userId === userId &&
+      parsed.tab === tab &&
+      parsed.editPostId === editPostId
+    ) {
+      return parsed;
+    }
   } catch {
-    await AsyncStorage.removeItem(writeDraftKey(userId, tab)).catch(() => undefined);
+    await AsyncStorage.removeItem(key).catch(() => undefined);
     return null;
   }
 
-  await AsyncStorage.removeItem(writeDraftKey(userId, tab)).catch(() => undefined);
+  await AsyncStorage.removeItem(key).catch(() => undefined);
   return null;
 }
 
 export const communityRepository = {
   async clearWriteDrafts(userId: string) {
     await enqueueWriteDraftOperation(async () => {
-      const keys = await AsyncStorage.getAllKeys();
+      const [keys, storedState] = await Promise.all([
+        AsyncStorage.getAllKeys(),
+        readCommunityState(),
+      ]);
       const draftKeys = keys.filter((key) => key.startsWith(writeDraftPrefix(userId)));
+      const storedImageIds = getStoredImageIds(storedState);
       const drafts = await Promise.all(
         draftKeys.map(async (key) => {
           try {
@@ -354,31 +963,54 @@ export const communityRepository = {
           }
         }),
       );
-      await Promise.all(
-        drafts
-          .filter((draft): draft is CommunityWriteDraft => Boolean(draft))
-          .map((draft) => removeCommunityImages(userId, getDraftImages(draft))),
-      ).catch(() => undefined);
+      const removableImages = drafts
+        .filter((draft): draft is CommunityWriteDraft => Boolean(draft))
+        .flatMap((draft) => getRemovableDraftImages(draft, storedImageIds));
+      await queueCommunityImageRemovals(userId, removableImages);
       if (draftKeys.length) await AsyncStorage.multiRemove(draftKeys);
+      await this.flushImageRemovals(storedState, userId);
     });
   },
 
-  async deleteWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
-    await enqueueWriteDraftOperation(() => AsyncStorage.removeItem(writeDraftKey(userId, tab)));
+  async deleteWriteDraft(
+    userId: string,
+    tab: CommunityWriteDraft['tab'],
+    editPostId?: string,
+  ) {
+    await enqueueWriteDraftOperation(async () => {
+      const key = writeDraftKey(userId, tab, editPostId);
+      await retryWriteDraftOperation(() => AsyncStorage.setItem(key, 'null'));
+      await retryWriteDraftOperation(() => AsyncStorage.removeItem(key)).catch(() => undefined);
+    });
   },
 
-  async discardWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
+  async discardWriteDraft(
+    userId: string,
+    tab: CommunityWriteDraft['tab'],
+    editPostId?: string,
+  ) {
     await enqueueWriteDraftOperation(async () => {
-      const draft = await readWriteDraft(userId, tab).catch(() => null);
+      const [draft, storedState] = await Promise.all([
+        readWriteDraft(userId, tab, editPostId).catch(() => null),
+        readCommunityState(),
+      ]);
       if (draft) {
-        await removeCommunityImages(userId, getDraftImages(draft)).catch(() => undefined);
+        await queueCommunityImageRemovals(
+          userId,
+          getRemovableDraftImages(draft, getStoredImageIds(storedState)),
+        );
       }
-      await AsyncStorage.removeItem(writeDraftKey(userId, tab));
+      await AsyncStorage.removeItem(writeDraftKey(userId, tab, editPostId));
+      await this.flushImageRemovals(storedState, userId).catch(() => undefined);
     });
   },
 
   async deleteUserState(userId: string) {
-    const state = await this.loadState();
+    const state = await readCommunityState();
+    const deletedAt = new Date().toISOString();
+    const removedImages = [...state.posts, ...state.reviewPosts]
+      .filter((post) => post.author.userId === userId)
+      .flatMap((post) => post.images ?? []);
     const removedPostIds = new Set(
       state.posts.filter((post) => post.author.userId === userId).map((post) => post.id),
     );
@@ -387,9 +1019,20 @@ export const communityRepository = {
     );
     const posts = state.posts.filter((post) => post.author.userId !== userId);
     const reviewPosts = state.reviewPosts.filter((post) => post.author.userId !== userId);
-    const comments = state.comments.filter(
-      (comment) => comment.author.userId !== userId && !removedPostIds.has(comment.postId),
+    const retainedComments = state.comments.filter(
+      (comment) => !removedPostIds.has(comment.postId),
     );
+    const retainedParentIds = new Set(
+      retainedComments
+        .filter((comment) => comment.author.userId !== userId)
+        .map((comment) => comment.parentId)
+        .filter((parentId): parentId is string => Boolean(parentId)),
+    );
+    const comments = retainedComments.flatMap((comment) => {
+      if (comment.author.userId !== userId) return [comment];
+      if (!retainedParentIds.has(comment.id)) return [];
+      return [getDeletedComment(comment, deletedAt)];
+    });
     const viewerStates = Object.fromEntries(
       Object.entries(state.viewerStates)
         .filter(([viewerId]) => viewerId !== userId)
@@ -398,7 +1041,7 @@ export const communityRepository = {
           {
             ...viewerState,
             bookmarkedPostIds: viewerState.bookmarkedPostIds.filter(
-              (postId) => !removedPostIds.has(postId),
+              (postId) => !removedPostIds.has(postId) && !removedReviewPostIds.has(postId),
             ),
             reactionPostIds: Object.fromEntries(
               Object.entries(viewerState.reactionPostIds).map(([kind, postIds]) => [
@@ -409,44 +1052,71 @@ export const communityRepository = {
           },
         ]),
     );
-    await Promise.all([
-      this.saveState({ comments, posts, reviewPosts, viewerStates }),
-      this.clearWriteDrafts(userId),
-      removeUserCommunityImages(userId),
-    ]);
+    const nextState = { comments, posts, reviewPosts, viewerStates };
+    await queueCommunityImageRemovals(userId, removedImages);
+    await this.saveState(nextState);
+    await this.clearWriteDrafts(userId);
+    await queueUserCommunityImageRemoval(userId);
+    await this.flushImageRemovals(nextState, userId);
   },
 
-  async loadWriteDraft(userId: string, tab: CommunityWriteDraft['tab']) {
+  async flushImageRemovals(state: StoredCommunityState, userId?: string) {
+    const draftKeys = (await AsyncStorage.getAllKeys()).filter((key) =>
+      key.startsWith(COMMUNITY_WRITE_DRAFT_PREFIX),
+    );
+    const drafts = await Promise.all(
+      draftKeys.map(async (key) => {
+        const stored = await AsyncStorage.getItem(key);
+        if (!stored) return null;
+        try {
+          return normalizeWriteDraft(JSON.parse(stored));
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const retainedUris = new Set([
+      ...getStoredImageUris(state),
+      ...drafts
+        .filter((draft): draft is CommunityWriteDraft => Boolean(draft))
+        .flatMap((draft) =>
+          getDraftImages(draft).flatMap((image) =>
+            image.localUri ? [image.localUri] : [],
+          ),
+        ),
+    ]);
+    await flushQueuedCommunityImageRemovals({ retainedUris, userId });
+  },
+
+  async loadWriteDraft(
+    userId: string,
+    tab: CommunityWriteDraft['tab'],
+    editPostId?: string,
+  ) {
     try {
-      return await enqueueWriteDraftOperation(() => readWriteDraft(userId, tab));
+      return await enqueueWriteDraftOperation(() => readWriteDraft(userId, tab, editPostId));
     } catch {
       return null;
     }
   },
 
   async loadState(): Promise<StoredCommunityState> {
-    const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
-    if (!stored) return createInitialCommunityState();
-
-    const restoredState = readStoredState(stored);
-    const nextState = mergeSeedState(restoredState);
-    if (
-      nextState.posts.length !== restoredState.posts.length ||
-      nextState.comments.length !== restoredState.comments.length ||
-      nextState.reviewPosts.length !== restoredState.reviewPosts.length
-    ) {
-      await this.saveState(nextState);
-    }
+    const nextState = await readCommunityState();
+    await this.flushImageRemovals(nextState).catch(() => undefined);
     return nextState;
   },
 
   async saveState(state: StoredCommunityState) {
-    await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(state));
+    const serialized = JSON.stringify(state);
+    await enqueueStateOperation(() => writeCommunityState(serialized));
   },
 
   async saveWriteDraft(draft: CommunityWriteDraft) {
     await enqueueWriteDraftOperation(() =>
-      AsyncStorage.setItem(writeDraftKey(draft.userId, draft.tab), JSON.stringify(draft)),
+      AsyncStorage.setItem(
+        writeDraftKey(draft.userId, draft.tab, draft.editPostId),
+        JSON.stringify(draft),
+      ),
     );
   },
 };

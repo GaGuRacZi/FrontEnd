@@ -14,14 +14,19 @@ export function MyPageSettingsScreen() {
   const navigateOnce = useNavigationLock();
   const { logOut } = useAccountLifecycle();
   const [logoutVisible, setLogoutVisible] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogOut = () => {
     navigateOnce(async () => {
       setLoggingOut(true);
+      setLogoutError(false);
       try {
         await logOut();
         router.replace('/');
+      } catch (error) {
+        setLogoutError(true);
+        throw error;
       } finally {
         setLoggingOut(false);
       }
@@ -67,7 +72,10 @@ export function MyPageSettingsScreen() {
           <MyPageRow
             description="현재 기기에서 계정 로그아웃"
             iconName="log-out-outline"
-            onPress={() => setLogoutVisible(true)}
+            onPress={() => {
+              setLogoutError(false);
+              setLogoutVisible(true);
+            }}
             title="로그아웃"
           />
           <MyPageDivider />
@@ -81,18 +89,34 @@ export function MyPageSettingsScreen() {
       </ScrollView>
 
       <AppModal
-        onClose={() => setLogoutVisible(false)}
+        closeOnBackdropPress={!loggingOut}
+        onClose={() => {
+          if (loggingOut) return;
+          setLogoutVisible(false);
+          setLogoutError(false);
+        }}
         primaryAction={{
-          label: '로그아웃',
+          label: logoutError ? '다시 시도' : '로그아웃',
           loading: loggingOut,
           onPress: handleLogOut,
         }}
-        secondaryAction={{ label: '취소', onPress: () => setLogoutVisible(false) }}
-        title="로그아웃할까요?"
+        secondaryAction={{
+          disabled: loggingOut,
+          label: '취소',
+          onPress: () => {
+            setLogoutVisible(false);
+            setLogoutError(false);
+          },
+        }}
+        title={logoutError ? '로그아웃하지 못했어요' : '로그아웃할까요?'}
         variant="center"
         visible={logoutVisible}
       >
-        <Text style={styles.modalDescription}>로그인 화면으로 되돌아갑니다.</Text>
+        <Text style={styles.modalDescription}>
+          {logoutError
+            ? '작성 중인 내용을 정리하지 못했어요. 잠시 후 다시 시도해주세요.'
+            : '로그인 화면으로 되돌아갑니다.'}
+        </Text>
       </AppModal>
     </MyPageHeader>
   );

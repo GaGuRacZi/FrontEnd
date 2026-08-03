@@ -12,8 +12,10 @@ import { COLORS, LAYOUT, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 type SignupScaffoldProps = PropsWithChildren<{
+  backDisabled?: boolean;
   bodyStyle?: StyleProp<ViewStyle>;
   buttonTitle?: string;
+  contentDisabled?: boolean;
   currentStep: number;
   nextDisabled?: boolean;
   nextLoading?: boolean;
@@ -22,9 +24,11 @@ type SignupScaffoldProps = PropsWithChildren<{
 }>;
 
 export function SignupScaffold({
+  backDisabled = false,
   bodyStyle,
   buttonTitle = '다음',
   children,
+  contentDisabled = false,
   currentStep,
   nextDisabled = false,
   nextLoading = false,
@@ -34,9 +38,11 @@ export function SignupScaffold({
   const navigation = useNavigation();
   const router = useRouter();
   const navigateOnce = useNavigationLock();
+  const navigationDisabled = backDisabled || nextLoading;
+  const bodyInteractionDisabled = nextLoading || contentDisabled;
 
   const handleBack = useCallback(() => {
-    if (nextLoading) return;
+    if (navigationDisabled) return;
 
     navigateOnce(() => {
       if (router.canGoBack()) {
@@ -46,7 +52,7 @@ export function SignupScaffold({
 
       router.replace('/login');
     });
-  }, [navigateOnce, nextLoading, router]);
+  }, [navigateOnce, navigationDisabled, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -62,10 +68,10 @@ export function SignupScaffold({
   );
 
   useEffect(() => {
-    navigation.setOptions({ gestureEnabled: !nextLoading });
+    navigation.setOptions({ gestureEnabled: !navigationDisabled });
 
     return () => navigation.setOptions({ gestureEnabled: true });
-  }, [navigation, nextLoading]);
+  }, [navigation, navigationDisabled]);
 
   return (
     <FormScreen
@@ -83,7 +89,7 @@ export function SignupScaffold({
       header={
         <TopHeader
           leftAccessibilityLabel="이전 단계로 이동"
-          leftDisabled={nextLoading}
+          leftDisabled={navigationDisabled}
           leftIcon="chevron-back"
           onLeftPress={handleBack}
           style={styles.header}
@@ -95,9 +101,11 @@ export function SignupScaffold({
         <SignupProgress currentStep={currentStep} />
       </View>
       <View
-        accessibilityElementsHidden={nextLoading}
-        importantForAccessibility={nextLoading ? 'no-hide-descendants' : 'auto'}
-        pointerEvents={nextLoading ? 'none' : 'auto'}
+        accessibilityElementsHidden={bodyInteractionDisabled}
+        importantForAccessibility={
+          bodyInteractionDisabled ? 'no-hide-descendants' : 'auto'
+        }
+        pointerEvents={bodyInteractionDisabled ? 'none' : 'auto'}
         style={[styles.body, bodyStyle]}
       >
         {children}

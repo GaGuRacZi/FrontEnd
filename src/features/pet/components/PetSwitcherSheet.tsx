@@ -1,9 +1,9 @@
 import { type Href, useRouter } from 'expo-router';
 import { useRef } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
-import { AppModal } from '@/src/components/modal/AppModal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
@@ -59,6 +59,7 @@ function PetRow({ onManage, onSelect, pet, selected }: PetRowProps) {
 export function PetSwitcherSheet({ onClose, visible }: PetSwitcherSheetProps) {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
+  const showAlert = useAppAlert();
   const { currentUserId } = useAuthSession();
   const {
     hasLoadError,
@@ -85,9 +86,9 @@ export function PetSwitcherSheet({ onClose, visible }: PetSwitcherSheetProps) {
         onClose();
         return;
       }
-      Alert.alert('선택하지 못했어요', '반려동물 목록을 다시 확인해주세요.');
+      showAlert('선택하지 못했어요', '반려동물 목록을 다시 확인해주세요.');
     } catch {
-      Alert.alert('선택하지 못했어요', '잠시 후 다시 시도해주세요.');
+      showAlert('선택하지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       selectingRef.current = false;
     }

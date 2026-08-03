@@ -1,16 +1,27 @@
+import { usePreventRemove } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, AppIcon, EmptyState } from '@/src/components/common';
-import { AppModal } from '@/src/components/modal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageCard, MyPageHeader, MyPageRow } from '../components';
-import { PLAN_DEFINITIONS, getPlan, getPlanRank, getUpgradePaymentAmount } from '../mypageData';
+import {
+  PLAN_DEFINITIONS,
+  getCheckoutPaymentMethod,
+  getPlan,
+  getPlanRank,
+  getUpgradePaymentAmount,
+} from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
-import type { PlanId } from '../types';
+import type { PaymentStatus, PlanId } from '../types';
+
+function getMockPaymentStatus(): PaymentStatus {
+  const status = process.env.EXPO_PUBLIC_MOCK_PAYMENT_STATUS;
+  return status === 'failed' || status === 'canceled' ? status : 'paid';
+}
 
 function isPlanId(value: string | string[] | undefined): value is PlanId {
   return typeof value === 'string' && PLAN_DEFINITIONS.some((plan) => plan.id === value);
@@ -22,11 +33,17 @@ function formatWon(amount: number) {
 
 export function MyPageCheckoutScreen() {
   const router = useRouter();
-  const navigateOnce = useNavigationLock();
+  const showAlert = useAppAlert();
   const { planId } = useLocalSearchParams();
   const { paymentMethods, subscription, switchPlan } = useMyPageStore();
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [paymentGuideVisible, setPaymentGuideVisible] = useState(false);
   const [resultVisible, setResultVisible] = useState(false);
+
+  usePreventRemove(submitting, () => {
+    showAlert('처리 중이에요', '완료 안내가 표시될 때까지 잠시 기다려주세요.');
+  });
 
   if (!isPlanId(planId)) {
     return (
@@ -38,13 +55,14 @@ export function MyPageCheckoutScreen() {
 
   const selectedPlan = getPlan(planId);
   const currentPlan = getPlan(subscription?.currentPlanId ?? 'baby-jelly');
-  const defaultMethod = paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0];
+  const defaultMethod = getCheckoutPaymentMethod(paymentMethods);
   const selectedRank = getPlanRank(selectedPlan.id);
   const currentRank = getPlanRank(currentPlan.id);
   const isSamePlan = selectedPlan.id === currentPlan.id;
   const isUpgrade = selectedRank > currentRank;
   const isCancel = !isSamePlan && selectedRank < currentRank && selectedPlan.id === 'baby-jelly';
   const paymentAmount = isUpgrade ? getUpgradePaymentAmount(currentPlan.id, selectedPlan.id) : 0;
+  const paymentStatus = isUpgrade ? getMockPaymentStatus() : 'paid';
   const buttonTitle = isSamePlan
     ? '현재 이용 중'
     : isUpgrade
@@ -52,21 +70,28 @@ export function MyPageCheckoutScreen() {
       : isCancel
         ? '해지 예약하기'
         : '변경 예약하기';
-  const paymentLabel = defaultMethod?.label ?? '간편페이';
-  const paymentMeta =
-    defaultMethod?.last4 && defaultMethod.last4 !== '등록 대기'
-      ? defaultMethod.last4
-      : '간편결제 연결 전';
-  const resultTitle = isUpgrade
-    ? '결제가 완료됐어요'
-    : isCancel
-      ? '구독 해지를 예약했어요'
-      : '요금제 변경을 예약했어요';
-  const resultDescription = isUpgrade
-    ? `${selectedPlan.name} 혜택을 바로 사용할 수 있어요.`
-    : isCancel
-      ? '다음 결제일부터 아기 젤리로 변경돼요.'
-      : '다음 결제일부터 선택한 요금제가 적용돼요.';
+  const paymentLabel = defaultMethod?.label ?? '결제 수단 등록';
+  const paymentMeta = defaultMethod?.last4 ?? '연결된 결제 수단이 없어요';
+  const resultTitle =
+    isUpgrade && paymentStatus === 'failed'
+      ? '결제에 실패했어요'
+      : isUpgrade && paymentStatus === 'canceled'
+        ? '결제가 취소됐어요'
+        : isUpgrade
+          ? '결제가 완료됐어요'
+          : isCancel
+            ? '구독 해지를 예약했어요'
+            : '요금제 변경을 예약했어요';
+  const resultDescription =
+    isUpgrade && paymentStatus === 'failed'
+      ? '결제 수단을 확인한 뒤 다시 시도해주세요.'
+      : isUpgrade && paymentStatus === 'canceled'
+        ? '결제가 진행되지 않았어요. 다시 결제할 수 있어요.'
+        : isUpgrade
+          ? `${selectedPlan.name} 혜택을 바로 사용할 수 있어요.`
+          : isCancel
+            ? '다음 결제일부터 아기 젤리로 변경돼요.'
+            : '다음 결제일부터 선택한 요금제가 적용돼요.';
   const checkoutNotice = isUpgrade
     ? `${formatWon(paymentAmount)} 결제 후 선택한 요금제로 바로 변경돼요.`
     : isSamePlan
@@ -74,23 +99,42 @@ export function MyPageCheckoutScreen() {
       : isCancel
         ? '다음 결제일에 무료 요금제로 변경돼요.'
         : '다음 결제일부터 낮은 요금제가 적용돼요.';
+  const closeResult = () => {
+    setResultVisible(false);
+    if (!isUpgrade || paymentStatus === 'paid') router.dismissTo('/mypage');
+  };
 
   const submit = () => {
-    navigateOnce(async () => {
+    if (submittingRef.current || isSamePlan) return;
+
+    if (isUpgrade && !defaultMethod) {
+      setPaymentGuideVisible(true);
+      return;
+    }
+
+    submittingRef.current = true;
+    void (async () => {
       setSubmitting(true);
       try {
-        const result = await switchPlan(selectedPlan.id);
+        const result = await switchPlan(selectedPlan.id, paymentStatus);
 
         if (!result.ok) {
-          Alert.alert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
+          if (result.reason === 'payment-method-required') {
+            setPaymentGuideVisible(true);
+          } else {
+            showAlert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
+          }
           return;
         }
 
         setResultVisible(true);
+      } catch {
+        showAlert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
       } finally {
+        submittingRef.current = false;
         setSubmitting(false);
       }
-    });
+    })();
   };
 
   return (
@@ -137,29 +181,66 @@ export function MyPageCheckoutScreen() {
           </Text>
         </View>
 
-        <AppButton disabled={isSamePlan} loading={submitting} onPress={submit} title={buttonTitle} />
+        <AppButton
+          disabled={isSamePlan || submitting}
+          loading={submitting}
+          onPress={submit}
+          title={isUpgrade && !defaultMethod ? '결제 수단 등록하기' : buttonTitle}
+        />
       </ScrollView>
 
       <AppModal
-        closeOnBackdropPress={false}
-        onClose={() => {
-          setResultVisible(false);
-          router.replace('/mypage/plan');
+        onClose={() => setPaymentGuideVisible(false)}
+        primaryAction={{
+          label: '결제 수단 관리',
+          onPress: () => {
+            setPaymentGuideVisible(false);
+            router.push('/mypage/payment-methods');
+          },
         }}
+        secondaryAction={{
+          label: '취소',
+          onPress: () => setPaymentGuideVisible(false),
+        }}
+        title="결제 수단이 필요해요"
+        variant="center"
+        visible={paymentGuideVisible}
+      >
+        <Text style={styles.modalDescription}>
+          요금제를 결제하려면{'\n'}간편결제 수단을 먼저 연결해주세요.
+        </Text>
+      </AppModal>
+
+      <AppModal
+        closeOnBackdropPress={false}
+        onClose={closeResult}
         primaryAction={{
           label: '확인',
-          onPress: () => {
-            setResultVisible(false);
-            router.replace('/mypage/plan');
-          },
+          onPress: closeResult,
         }}
         title={resultTitle}
         variant="center"
         visible={resultVisible}
       >
         <View style={styles.resultContent}>
-          <View style={styles.resultIcon}>
-            <AppIcon color={COLORS.primary} name="checkmark" size={26} />
+          <View
+            style={[
+              styles.resultIcon,
+              paymentStatus === 'failed' && styles.resultIconFailed,
+              paymentStatus === 'canceled' && styles.resultIconCanceled,
+            ]}
+          >
+            <AppIcon
+              color={
+                paymentStatus === 'failed'
+                  ? COLORS.danger
+                  : paymentStatus === 'canceled'
+                    ? COLORS.gray600
+                    : COLORS.primary
+              }
+              name={paymentStatus === 'paid' ? 'checkmark' : 'close'}
+              size={26}
+            />
           </View>
           <Text style={styles.resultDescription}>{resultDescription}</Text>
         </View>
@@ -229,6 +310,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xl,
   },
+  modalDescription: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.gray600,
+    textAlign: 'center',
+  },
   resultIcon: {
     alignItems: 'center',
     backgroundColor: COLORS.primarySoft,
@@ -236,6 +322,12 @@ const styles = StyleSheet.create({
     height: 54,
     justifyContent: 'center',
     width: 54,
+  },
+  resultIconCanceled: {
+    backgroundColor: COLORS.gray200,
+  },
+  resultIconFailed: {
+    backgroundColor: COLORS.errorBackground,
   },
   resultDescription: {
     ...TYPOGRAPHY.body2,

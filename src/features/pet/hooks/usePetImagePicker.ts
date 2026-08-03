@@ -1,7 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef } from 'react';
-import { Alert, Linking, Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
+import { useAppAlert } from '@/src/components/modal';
 import {
   clearPendingPetImagePicker,
   getPendingPetImagePicker,
@@ -22,6 +23,7 @@ export function usePetImagePicker({
   onSelect,
   userId,
 }: UsePetImagePickerOptions) {
+  const showAlert = useAppAlert();
   const pickerOpen = useRef(false);
 
   const handleResult = useCallback(
@@ -32,7 +34,7 @@ export function usePetImagePicker({
       if (!result) return;
 
       if ('code' in result) {
-        Alert.alert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
         return;
       }
 
@@ -42,10 +44,10 @@ export function usePetImagePicker({
       try {
         await onSelect(field, asset.uri);
       } catch {
-        Alert.alert('사진을 저장하지 못했어요', '사진을 다시 선택해주세요.');
+        showAlert('사진을 저장하지 못했어요', '사진을 다시 선택해주세요.');
       }
     },
-    [onSelect],
+    [onSelect, showAlert],
   );
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export function usePetImagePicker({
           await clearPendingPetImagePicker(userId, draftId, pending.field);
         }
       } catch {
-        if (active) Alert.alert('사진을 불러오지 못했어요', '사진을 다시 선택해주세요.');
+        if (active) showAlert('사진을 불러오지 못했어요', '사진을 다시 선택해주세요.');
       } finally {
         pickerOpen.current = false;
       }
@@ -78,7 +80,7 @@ export function usePetImagePicker({
     return () => {
       active = false;
     };
-  }, [draftId, enabled, handleResult, userId]);
+  }, [draftId, enabled, handleResult, showAlert, userId]);
 
   const pickImage = useCallback(
     async (field: PetImageField) => {
@@ -90,7 +92,7 @@ export function usePetImagePicker({
           const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
           if (!permission.granted) {
-            Alert.alert('사진 접근 권한이 필요해요', '설정에서 사진 접근 권한을 허용해주세요.', [
+            showAlert('사진 접근 권한이 필요해요', '설정에서 사진 접근 권한을 허용해주세요.', [
               { text: '취소', style: 'cancel' },
               { text: '설정 열기', onPress: () => void Linking.openSettings() },
             ]);
@@ -111,13 +113,13 @@ export function usePetImagePicker({
 
         await handleResult(field, result);
       } catch {
-        Alert.alert('사진첩을 열지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('사진첩을 열지 못했어요', '잠시 후 다시 시도해주세요.');
       } finally {
         await clearPendingPetImagePicker(userId, draftId, field).catch(() => undefined);
         pickerOpen.current = false;
       }
     },
-    [draftId, enabled, handleResult, userId],
+    [draftId, enabled, handleResult, showAlert, userId],
   );
 
   return { pickImage };

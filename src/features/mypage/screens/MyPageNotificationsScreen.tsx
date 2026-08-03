@@ -1,12 +1,15 @@
 import Constants from 'expo-constants';
 import { useRef, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppSwitch, EmptyState, LoadingView } from '@/src/components/common';
-import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { AppIcon, AppSwitch, EmptyState, LoadingView } from '@/src/components/common';
+import { AppInput } from '@/src/components/form';
+import { AppModal, useAppAlert } from '@/src/components/modal';
+import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useTerms } from '@/src/features/auth/terms';
 
 import { MyPageHeader } from '../components';
+import { isValidClockTime } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
 import type { NotificationSettings } from '../types';
 
@@ -38,11 +41,31 @@ const NOTIFICATION_ROWS: {
 
 const isExpoGo = Constants.appOwnership === 'expo';
 
+function formatClockInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 4);
+  if (digits.length <= 2) return digits;
+  if (digits.length === 3 && Number(digits.slice(0, 2)) > 23) {
+    return `0${digits[0]}:${digits.slice(1)}`;
+  }
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+function getClockTimeError(value: string) {
+  if (!value) return '시간을 입력해주세요.';
+  if (!isValidClockTime(value)) return '00:00부터 23:59 사이로 입력해주세요.';
+  return undefined;
+}
+
 export function MyPageNotificationsScreen() {
+  const showAlert = useAppAlert();
   const { isReady, notificationSettings, updateNotificationSettings } = useMyPageStore();
   const { marketingConsent, updateMarketingConsent } = useTerms();
   const permissionRequestRef = useRef(false);
   const [checkingPermissionKey, setCheckingPermissionKey] = useState<PermissionCheckKey | null>(null);
+  const [doNotDisturbModalVisible, setDoNotDisturbModalVisible] = useState(false);
+  const [doNotDisturbStart, setDoNotDisturbStart] = useState('');
+  const [doNotDisturbEnd, setDoNotDisturbEnd] = useState('');
+  const [savingDoNotDisturbTime, setSavingDoNotDisturbTime] = useState(false);
 
   if (!isReady) {
     return (
@@ -61,7 +84,7 @@ export function MyPageNotificationsScreen() {
   }
 
   const showSaveError = () => {
-    Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+    showAlert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
   };
 
   const ensureNotificationPermission = async () => {
@@ -107,8 +130,7 @@ export function MyPageNotificationsScreen() {
       if (!hasPermission) return;
     }
 
-    const nextSettings = { ...notificationSettings, [key]: value };
-    const result = await updateNotificationSettings(nextSettings);
+    const result = await updateNotificationSettings({ [key]: value });
 
     if (!result.ok) showSaveError();
   };
@@ -123,6 +145,42 @@ export function MyPageNotificationsScreen() {
       await updateMarketingConsent(value);
     } catch {
       showSaveError();
+    }
+  };
+
+  const openDoNotDisturbTimeModal = () => {
+    setDoNotDisturbStart(notificationSettings.doNotDisturbStart);
+    setDoNotDisturbEnd(notificationSettings.doNotDisturbEnd);
+    setDoNotDisturbModalVisible(true);
+  };
+
+  const closeDoNotDisturbTimeModal = () => {
+    if (!savingDoNotDisturbTime) setDoNotDisturbModalVisible(false);
+  };
+
+  const validDoNotDisturbTime =
+    isValidClockTime(doNotDisturbStart) &&
+    isValidClockTime(doNotDisturbEnd) &&
+    doNotDisturbStart !== doNotDisturbEnd;
+
+  const saveDoNotDisturbTime = async () => {
+    if (!validDoNotDisturbTime || savingDoNotDisturbTime) return;
+
+    setSavingDoNotDisturbTime(true);
+    try {
+      const result = await updateNotificationSettings({
+        doNotDisturbEnd,
+        doNotDisturbStart,
+      });
+      if (!result.ok) {
+        showSaveError();
+        return;
+      }
+      setDoNotDisturbModalVisible(false);
+    } catch {
+      showSaveError();
+    } finally {
+      setSavingDoNotDisturbTime(false);
     }
   };
 
@@ -144,54 +202,113 @@ export function MyPageNotificationsScreen() {
   );
 
   return (
-    <MyPageHeader title="알림 설정">
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.intro}>
-          <Text style={styles.title}>알림을 원하는 방식으로 받아요</Text>
-          <Text style={styles.description}>할 일, 건강, 커뮤니티 알림을 세분화했어요.</Text>
-        </View>
-
-        {NOTIFICATION_ROWS.map((row) =>
-          renderNotificationCard(
-            row.title,
-            row.description,
-            notificationSettings[row.key],
-            (value) => void updateSetting(row.key, value),
-            row.key,
-            Boolean(checkingPermissionKey),
-          ),
-        )}
-
-        {renderNotificationCard(
-          '혜택·이벤트 알림',
-          'PAW 혜택과 이벤트 소식을 받아요',
-          marketingConsent,
-          (value) => void updateMarketingSetting(value),
-          'marketing',
-          Boolean(checkingPermissionKey),
-        )}
-
-        <View style={styles.doNotDisturbCard}>
-          <View style={styles.cardText}>
-            <Text style={styles.cardTitle}>방해 금지 시간</Text>
-            <Text style={styles.cardDescription}>
-              건강 이상 알림은 받을 수 있어요.
-            </Text>
-            <View style={styles.timePill}>
-              <Text style={styles.timeText}>
-                {notificationSettings.doNotDisturbStart} - {notificationSettings.doNotDisturbEnd}
-              </Text>
-            </View>
+    <>
+      <MyPageHeader title="알림 설정">
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.intro}>
+            <Text style={styles.title}>알림을 원하는 방식으로 받아요</Text>
+            <Text style={styles.description}>할 일, 건강, 커뮤니티 알림을 세분화했어요.</Text>
           </View>
-          <AppSwitch
-            accessibilityLabel="방해 금지 시간"
-            onChange={(value) => void updateSetting('doNotDisturbEnabled', value)}
-            value={notificationSettings.doNotDisturbEnabled}
-          />
-        </View>
 
-      </ScrollView>
-    </MyPageHeader>
+          {NOTIFICATION_ROWS.map((row) =>
+            renderNotificationCard(
+              row.title,
+              row.description,
+              notificationSettings[row.key],
+              (value) => void updateSetting(row.key, value),
+              row.key,
+              Boolean(checkingPermissionKey),
+            ),
+          )}
+
+          {renderNotificationCard(
+            '혜택·이벤트 알림',
+            'PAW 혜택과 이벤트 소식을 받아요',
+            marketingConsent,
+            (value) => void updateMarketingSetting(value),
+            'marketing',
+            Boolean(checkingPermissionKey),
+          )}
+
+          <View style={styles.doNotDisturbCard}>
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>방해 금지 시간</Text>
+              <Text style={styles.cardDescription}>건강 이상 알림은 받을 수 있어요.</Text>
+              <Pressable
+                accessibilityHint="방해 금지 시작 시간과 종료 시간을 변경합니다."
+                accessibilityLabel={`방해 금지 시간 변경, 현재 ${notificationSettings.doNotDisturbStart}부터 ${notificationSettings.doNotDisturbEnd}까지`}
+                accessibilityRole="button"
+                hitSlop={SPACING.sm}
+                onPress={openDoNotDisturbTimeModal}
+                style={({ pressed }) => [styles.timePill, pressed && styles.timePillPressed]}
+              >
+                <Text style={styles.timeText}>
+                  {notificationSettings.doNotDisturbStart} -{' '}
+                  {notificationSettings.doNotDisturbEnd}
+                </Text>
+                <AppIcon color={COLORS.primary} name="pencil-outline" size={14} />
+              </Pressable>
+            </View>
+            <AppSwitch
+              accessibilityLabel="방해 금지 시간"
+              onChange={(value) => void updateSetting('doNotDisturbEnabled', value)}
+              value={notificationSettings.doNotDisturbEnabled}
+            />
+          </View>
+        </ScrollView>
+      </MyPageHeader>
+      <AppModal
+        closeOnBackdropPress={!savingDoNotDisturbTime}
+        onClose={closeDoNotDisturbTimeModal}
+        primaryAction={{
+          disabled: !validDoNotDisturbTime,
+          label: '저장',
+          loading: savingDoNotDisturbTime,
+          onPress: () => void saveDoNotDisturbTime(),
+        }}
+        secondaryAction={{
+          disabled: savingDoNotDisturbTime,
+          label: '취소',
+          onPress: closeDoNotDisturbTimeModal,
+        }}
+        title="방해 금지 시간"
+        variant="center"
+        visible={doNotDisturbModalVisible}
+      >
+        <View style={styles.timeModalContent}>
+          <Text style={styles.timeModalDescription}>
+            알림을 받지 않을 시작 시간과 종료 시간을 입력해주세요.
+          </Text>
+          <View style={styles.timeInputs}>
+            <AppInput
+              accessibilityLabel="방해 금지 시작 시간"
+              error={getClockTimeError(doNotDisturbStart)}
+              inputMode="numeric"
+              label="시작"
+              maxLength={5}
+              onChangeText={(value) => setDoNotDisturbStart(formatClockInput(value))}
+              placeholder="22:00"
+              value={doNotDisturbStart}
+            />
+            <AppInput
+              accessibilityLabel="방해 금지 종료 시간"
+              error={
+                getClockTimeError(doNotDisturbEnd) ??
+                (doNotDisturbStart === doNotDisturbEnd
+                    ? '시작 시간과 다른 시간을 입력해주세요.'
+                    : undefined)
+              }
+              inputMode="numeric"
+              label="종료"
+              maxLength={5}
+              onChangeText={(value) => setDoNotDisturbEnd(formatClockInput(value))}
+              placeholder="07:00"
+              value={doNotDisturbEnd}
+            />
+          </View>
+        </View>
+      </AppModal>
+    </>
   );
 }
 
@@ -250,13 +367,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.background,
     borderRadius: 20,
+    flexDirection: 'row',
+    gap: SPACING.sm,
     height: 34,
     justifyContent: 'center',
     marginTop: SPACING.sm,
-    width: 132,
+    minWidth: 142,
+    paddingHorizontal: SPACING.lg,
+  },
+  timePillPressed: {
+    opacity: 0.72,
   },
   timeText: {
     ...TYPOGRAPHY.smallButton,
     color: COLORS.primary,
+  },
+  timeModalContent: {
+    gap: SPACING.xxl,
+  },
+  timeModalDescription: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.gray600,
+    textAlign: 'center',
+  },
+  timeInputs: {
+    backgroundColor: COLORS.gray100,
+    borderRadius: RADIUS.lg,
+    gap: SPACING.xl,
+    padding: SPACING.xl,
   },
 });

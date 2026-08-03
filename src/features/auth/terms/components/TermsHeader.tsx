@@ -1,4 +1,4 @@
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { type Href, useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect } from 'react';
 import { BackHandler, Platform, StyleSheet } from 'react-native';
 
@@ -8,11 +8,17 @@ import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 type TermsHeaderProps = {
   disabled?: boolean;
-  fallbackRoute: '/' | '/login' | '/signup/terms';
+  fallbackRoute: Href;
+  onBack?: () => void;
   title?: string;
 };
 
-export function TermsHeader({ disabled = false, fallbackRoute, title }: TermsHeaderProps) {
+export function TermsHeader({
+  disabled = false,
+  fallbackRoute,
+  onBack,
+  title,
+}: TermsHeaderProps) {
   const navigation = useNavigation();
   const router = useRouter();
   const navigateOnce = useNavigationLock();
@@ -21,6 +27,11 @@ export function TermsHeader({ disabled = false, fallbackRoute, title }: TermsHea
     if (disabled) return;
 
     navigateOnce(() => {
+      if (onBack) {
+        onBack();
+        return;
+      }
+
       if (router.canGoBack()) {
         router.back();
         return;
@@ -28,7 +39,7 @@ export function TermsHeader({ disabled = false, fallbackRoute, title }: TermsHea
 
       router.replace(fallbackRoute);
     });
-  }, [disabled, fallbackRoute, navigateOnce, router]);
+  }, [disabled, fallbackRoute, navigateOnce, onBack, router]);
 
   useEffect(() => {
     navigation.setOptions({ gestureEnabled: !disabled });

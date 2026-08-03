@@ -34,6 +34,7 @@ type PetStoreContextValue = {
   deletePet: (petId: string) => Promise<PetMutationResult>;
   deleteUserPetData: (userId?: string) => Promise<void>;
   hasLoadError: boolean;
+  hasStoredUserPetData: (userId: string) => Promise<boolean>;
   isReady: boolean;
   pets: PetEntity[];
   registerSignupPet: (userId: string, pet: PetEntity) => Promise<void>;
@@ -363,40 +364,46 @@ export function PetProvider({ children }: PropsWithChildren) {
     [applyState, enqueueMutation],
   );
 
+  const hasStoredUserPetData = useCallback(
+    (userId: string) => enqueueMutation(() => petRepository.hasStoredState(userId)),
+    [enqueueMutation],
+  );
+
   const clearDrafts = useCallback(
-    async (userId = currentUserId ?? undefined) => {
-      if (!userId) return;
+    (userId = currentUserId ?? undefined) => {
+      if (!userId) return Promise.resolve();
 
-      const [draftsResult, stateResult] = await Promise.allSettled([
-        petRepository.loadDrafts(userId),
-        petRepository.loadState(userId),
-      ]);
+      return enqueueMutation(async () => {
+        const [draftsResult, stateResult, pendingPickerResult] = await Promise.allSettled([
+          petRepository.loadDrafts(userId),
+          petRepository.loadState(userId),
+          clearPendingPetImagePicker(userId),
+        ]);
 
-      await petRepository.clearDrafts(userId);
+        if (draftsResult.status === 'rejected') throw draftsResult.reason;
+        if (stateResult.status === 'rejected') throw stateResult.reason;
 
-      if (draftsResult.status === 'fulfilled' && stateResult.status === 'fulfilled') {
-        const savedImages = new Set(
-          stateResult.value.pets.flatMap((pet) =>
-            [pet.profileImageUri, pet.certificateImageUri].filter(
-              (uri): uri is string => Boolean(uri),
-            ),
-          ),
-        );
+        await petRepository.clearDrafts(userId);
+
+        const savedImages = collectImageUris(stateResult.value.pets);
         const draftImages = draftsResult.value.flatMap((draft) => [
           draft.profileImageUri,
           draft.certificateImageUri,
         ]);
-
-        await Promise.allSettled(
+        const imageResults = await Promise.allSettled(
           draftImages.map((uri) =>
-            uri && !savedImages.has(uri) ? removePetImage(userId, uri) : Promise.resolve(),
+            uri && !savedImages.has(uri)
+              ? removePetImage(userId, uri)
+              : Promise.resolve(),
           ),
         );
-      }
-
-      await clearPendingPetImagePicker(userId).catch(() => undefined);
+        const cleanupFailure = [pendingPickerResult, ...imageResults].find(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        if (cleanupFailure) throw cleanupFailure.reason;
+      });
     },
-    [currentUserId],
+    [currentUserId, enqueueMutation],
   );
 
   const deleteUserPetData = useCallback(
@@ -409,7 +416,7 @@ export function PetProvider({ children }: PropsWithChildren) {
         invalidateActiveState(userId);
         try {
           await petRepository.deleteUser(userId);
-          await Promise.allSettled([
+          await Promise.all([
             removeUserPetImages(userId),
             clearPendingPetImagePicker(userId),
           ]);
@@ -464,6 +471,7 @@ export function PetProvider({ children }: PropsWithChildren) {
       deletePet,
       deleteUserPetData,
       hasLoadError,
+      hasStoredUserPetData,
       isReady: storeReady,
       pets: visiblePets,
       registerSignupPet,
@@ -479,6 +487,7 @@ export function PetProvider({ children }: PropsWithChildren) {
       deletePet,
       deleteUserPetData,
       hasLoadError,
+      hasStoredUserPetData,
       registerSignupPet,
       reloadPets,
       selectedPet,

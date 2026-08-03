@@ -1,6 +1,6 @@
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   AppButton,
@@ -10,7 +10,7 @@ import {
   LoadingView,
 } from '@/src/components/common';
 import { AppScreen, TopHeader } from '@/src/components/layout';
-import { AppModal } from '@/src/components/modal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, LAYOUT, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
@@ -106,6 +106,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
   const params = useLocalSearchParams<{ petId?: string | string[] }>();
   const router = useRouter();
   const navigateOnce = useNavigationLock();
+  const showAlert = useAppAlert();
   const { deletePet, hasLoadError, isReady, pets, reloadPets } = usePetStore();
   const petId = petIdProp ?? readParam(params.petId);
   const pet = useMemo(() => pets.find((item) => item.id === petId), [petId, pets]);
@@ -136,12 +137,12 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
     }
 
     missingAlertShown.current = true;
-    Alert.alert(
+    showAlert(
       '반려동물을 찾을 수 없어요',
       '삭제되었거나 존재하지 않는 반려동물이에요.',
       [{ text: '확인', onPress: goBack }],
     );
-  }, [goBack, hasLoadError, isReady, pet]);
+  }, [goBack, hasLoadError, isReady, pet, showAlert]);
 
   const handleDelete = async () => {
     if (!pet || deleteLock.current) return;
@@ -161,13 +162,13 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
 
       if (result.reason !== 'last-pet') {
         setDeleteModalVisible(false);
-        Alert.alert('삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
       }
       missingAlertShown.current = false;
     } catch {
       missingAlertShown.current = false;
       setDeleteModalVisible(false);
-      Alert.alert('삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
+      showAlert('삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       deleteLock.current = false;
       setIsDeleting(false);

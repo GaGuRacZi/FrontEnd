@@ -15,19 +15,12 @@ import type { TermsRepository } from './TermsRepository';
 import { termsRepository as defaultTermsRepository } from './TermsRepository';
 import {
   changeMarketingConsent,
-  getLatestConsent,
+  hasCurrentRequiredSignupConsents,
   hasCurrentTermConsent,
   recordTermDecision,
 } from './termsCommands';
 import type { ConsentRecord, TermDefinition, TermId } from './types';
-import { TERM_IDS } from './types';
-
-const REQUIRED_SIGNUP_TERM_IDS = [
-  TERM_IDS.age,
-  TERM_IDS.service,
-  TERM_IDS.privacy,
-  TERM_IDS.profilePrivacy,
-];
+import { REQUIRED_SIGNUP_TERM_IDS, TERM_IDS } from './types';
 const EMPTY_CONSENT_HISTORY: ConsentRecord[] = [];
 const EMPTY_SIGNUP_SELECTIONS: Partial<Record<TermId, boolean>> = {};
 
@@ -227,13 +220,13 @@ export function TermsProvider({
     requiredSignupTerms.every(({ id }) => currentSignupSelections[id] === true);
   const hasRequiredSignupConsents =
     requiredSignupTermsReady &&
-    requiredSignupTerms.every((term) => hasCurrentTermConsent(currentConsentHistory, term));
+    hasCurrentRequiredSignupConsents(currentConsentHistory, signupTerms);
   const requiredReconsentTerms = useMemo(
     () =>
       terms.filter(
         (term) =>
           term.required &&
-          getLatestConsent(currentConsentHistory, term.id)?.agreed === true &&
+          term.scope === 'signup' &&
           !hasCurrentTermConsent(currentConsentHistory, term),
       ),
     [currentConsentHistory, terms],

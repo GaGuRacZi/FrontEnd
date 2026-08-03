@@ -6,7 +6,6 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   BackHandler,
   Platform,
   Pressable,
@@ -19,6 +18,7 @@ import {
 
 import { AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { AppScreen, TopHeader } from '@/src/components/layout';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, FONT_FAMILY, LAYOUT, RADIUS, SPACING } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
@@ -56,6 +56,7 @@ export function PetSelectionScreen() {
   }>();
   const router = useRouter();
   const navigation = useNavigation();
+  const showAlert = useAppAlert();
   const { currentUserId, isReady: sessionReady } = useAuthSession();
   const field = readSelectionField(readParam(params.field));
   const mode = readParam(params.mode);
@@ -138,12 +139,12 @@ export function PetSelectionScreen() {
     if (isLoading || draft || invalidAlertShown.current) return;
 
     invalidAlertShown.current = true;
-    Alert.alert(
+    showAlert(
       '작성 중인 정보를 찾을 수 없어요',
       '반려동물 정보 입력 화면으로 돌아가 다시 시도해주세요.',
       [{ text: '확인', onPress: goBack }],
     );
-  }, [draft, goBack, isLoading]);
+  }, [draft, goBack, isLoading, showAlert]);
 
   const allOptions = useMemo(() => {
     if (!draft || !field) return [];
@@ -191,9 +192,9 @@ export function PetSelectionScreen() {
       leavingRef.current = false;
       allowNavigation.current = false;
       setIsSaving(false);
-      Alert.alert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+      showAlert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
     }
-  }, [currentUserId, field, goBack, navigation]);
+  }, [currentUserId, field, goBack, navigation, showAlert]);
 
   usePreventRemove(Boolean(currentUserId && draft && field), ({ data }) => {
     if (allowNavigation.current) {

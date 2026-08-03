@@ -11,11 +11,20 @@ import {
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
-import { getPlan, getPlanRank, getUpgradePaymentAmount } from './mypageData';
+import {
+  getCheckoutPaymentMethod,
+  getLocalCalendarDate,
+  getNextBillingDate,
+  getPlan,
+  getPlanRank,
+  getUpgradePaymentAmount,
+  normalizePaymentMethods,
+} from './mypageData';
 import { createDefaultMyPageState, signupDataToProfile } from './mypageMappers';
 import { mypageRepository } from './services/mypageRepository';
 import {
   persistProfileImage,
+  queueProfileImageRemoval,
   removeProfileImage,
   removeUserProfileImages,
 } from './services/profileImageStorage';
@@ -23,6 +32,7 @@ import type {
   NotificationSettings,
   PaymentHistoryItem,
   PaymentMethod,
+  PaymentStatus,
   PlanId,
   StoredMyPageState,
   SubscriptionState,
@@ -31,12 +41,18 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'error' | 'invalid' | 'not-ready' };
+  | {
+      ok: false;
+      reason: 'error' | 'invalid' | 'not-ready' | 'payment-method-required';
+    };
+
+export type StoredProfileStatus = 'missing' | 'recoverable' | 'valid';
 
 type MyPageStoreContextValue = {
   clearScreenSession: () => void;
   deleteUserProfileData: (userId?: string) => Promise<void>;
   hasLoadError: boolean;
+  hasStoredUserProfileData: (userId: string) => Promise<StoredProfileStatus>;
   isReady: boolean;
   notificationSettings: NotificationSettings | null;
   paymentHistory: PaymentHistoryItem[];
@@ -46,10 +62,11 @@ type MyPageStoreContextValue = {
     data: Parameters<typeof signupDataToProfile>[0],
     userId: string,
   ) => Promise<void>;
+  reloadMyPage: () => void;
   scheduleCancelSubscription: () => Promise<MutationResult>;
   subscription: SubscriptionState | null;
-  switchPlan: (planId: PlanId) => Promise<MutationResult>;
-  updateNotificationSettings: (settings: NotificationSettings) => Promise<MutationResult>;
+  switchPlan: (planId: PlanId, paymentStatus?: PaymentStatus) => Promise<MutationResult>;
+  updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<MutationResult>;
   updatePaymentMethods: (methods: PaymentMethod[]) => Promise<MutationResult>;
   updateProfile: (profile: UserProfile) => Promise<MutationResult>;
 };
@@ -59,10 +76,14 @@ const MyPageStoreContext = createContext<MyPageStoreContextValue | null>(null);
 const EMPTY_PAYMENT_METHODS: PaymentMethod[] = [];
 const EMPTY_PAYMENT_HISTORY: PaymentHistoryItem[] = [];
 
-function createPaymentHistoryItem(currentPlanId: PlanId, nextPlanId: PlanId): PaymentHistoryItem {
+function createPaymentHistoryItem(
+  currentPlanId: PlanId,
+  nextPlanId: PlanId,
+  status: PaymentStatus,
+): PaymentHistoryItem {
   const paidPlan = getPlan(nextPlanId);
   const amount = getUpgradePaymentAmount(currentPlanId, nextPlanId);
-  const date = new Date().toISOString().slice(0, 10);
+  const date = getLocalCalendarDate();
   const isDifferencePayment = currentPlanId !== 'baby-jelly';
 
   return {
@@ -70,15 +91,9 @@ function createPaymentHistoryItem(currentPlanId: PlanId, nextPlanId: PlanId): Pa
     date,
     id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     methodLabel: '간편페이',
-    status: 'paid',
+    status,
     title: isDifferencePayment ? `${paidPlan.name} 차액 결제` : `${paidPlan.name} 결제`,
   };
-}
-
-function getNextBillingDate() {
-  const date = new Date();
-  date.setMonth(date.getMonth() + 1);
-  return date.toISOString().slice(0, 10);
 }
 
 export function MyPageProvider({ children }: PropsWithChildren) {
@@ -86,6 +101,7 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<StoredMyPageState | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [loadRequest, setLoadRequest] = useState(0);
   const activeUserRef = useRef<string | null>(null);
   const readyUserRef = useRef<string | null>(null);
   const stateRef = useRef<StoredMyPageState | null>(null);
@@ -132,10 +148,19 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applyState, currentUserId, sessionReady]);
+  }, [applyState, currentUserId, loadRequest, sessionReady]);
 
-  const persist = useCallback(async (userId: string, nextState: StoredMyPageState) => {
+  const reloadMyPage = useCallback(() => {
+    setLoadRequest((current) => current + 1);
+  }, []);
+
+  const persist = useCallback(async (
+    userId: string,
+    nextState: StoredMyPageState,
+    afterSave?: () => Promise<void>,
+  ) => {
     await mypageRepository.saveState(userId, nextState);
+    if (afterSave) await afterSave();
 
     if (activeUserRef.current === userId && readyUserRef.current === userId) {
       stateRef.current = nextState;
@@ -165,8 +190,14 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           const nextState = await updater(stateRef.current);
           await persist(userId, nextState);
           return { ok: true };
-        } catch {
-          return { ok: false, reason: 'error' };
+        } catch (error) {
+          return {
+            ok: false,
+            reason:
+              error instanceof Error && error.message === 'payment-method-required'
+                ? 'payment-method-required'
+                : 'error',
+          };
         }
       });
     },
@@ -180,32 +211,49 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           createDefaultMyPageState(userId),
         );
         const profile = signupDataToProfile(data, userId);
-        const profileImageUri = profile.profileImageUri
-          ? await persistProfileImage(userId, profile.profileImageUri).catch(
-              () => null,
-            )
-          : null;
-        const nextState = { ...previous, profile };
-        nextState.profile = { ...profile, profileImageUri };
-        await mypageRepository.saveState(userId, nextState);
+        let profileImageUri: string | null = null;
 
-        if (
-          previous.profile.profileImageUri &&
-          previous.profile.profileImageUri !== profileImageUri
-        ) {
-          await removeProfileImage(userId, previous.profile.profileImageUri).catch(
-            () => undefined,
-          );
-        }
+        try {
+          profileImageUri = profile.profileImageUri
+            ? await persistProfileImage(userId, profile.profileImageUri)
+            : null;
+          const nextState = {
+            ...previous,
+            profile: { ...profile, profileImageUri },
+          };
 
-        if (activeUserRef.current === userId) {
-          readyUserRef.current = userId;
-          applyState(nextState);
-          setHasLoadError(false);
-          setIsReady(true);
+          await mypageRepository.saveState(userId, nextState);
+
+          if (
+            previous.profile.profileImageUri &&
+            previous.profile.profileImageUri !== profileImageUri
+          ) {
+            await queueProfileImageRemoval(
+              userId,
+              previous.profile.profileImageUri,
+            ).catch(() => undefined);
+          }
+
+          if (activeUserRef.current === userId) {
+            readyUserRef.current = userId;
+            applyState(nextState);
+            setHasLoadError(false);
+            setIsReady(true);
+          }
+        } catch (error) {
+          if (profileImageUri && profileImageUri !== previous.profile.profileImageUri) {
+            await removeProfileImage(userId, profileImageUri).catch(() => undefined);
+          }
+          throw error;
         }
       }),
     [applyState, enqueueMutation],
+  );
+
+  const hasStoredUserProfileData = useCallback(
+    (userId: string) =>
+      enqueueMutation(() => mypageRepository.getStoredStateStatus(userId)),
+    [enqueueMutation],
   );
 
   const updateProfile = useCallback(
@@ -230,11 +278,16 @@ export function MyPageProvider({ children }: PropsWithChildren) {
         const nextState = { ...current, profile: nextProfile };
 
         try {
-          await persist(userId, nextState);
-
-          if (previousUri && previousUri !== nextProfile.profileImageUri) {
-            await removeProfileImage(userId, previousUri).catch(() => undefined);
-          }
+          await persist(
+            userId,
+            nextState,
+            previousUri && previousUri !== nextProfile.profileImageUri
+              ? () =>
+                  queueProfileImageRemoval(userId, previousUri).catch(
+                    () => undefined,
+                  )
+              : undefined,
+          );
 
           return { ok: true };
         } catch {
@@ -245,25 +298,47 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   );
 
   const updateNotificationSettings = useCallback(
-    (settings: NotificationSettings) =>
-      mutateState((current) => ({ ...current, notificationSettings: settings })),
+    (settings: Partial<NotificationSettings>) =>
+      mutateState((current) => ({
+        ...current,
+        notificationSettings: { ...current.notificationSettings, ...settings },
+      })),
     [mutateState],
   );
 
   const updatePaymentMethods = useCallback(
     (methods: PaymentMethod[]) =>
-      mutateState((current) => ({ ...current, paymentMethods: methods })),
+      mutateState((current) => ({
+        ...current,
+        paymentMethods: normalizePaymentMethods(methods),
+      })),
     [mutateState],
   );
 
   const switchPlan = useCallback(
-    (planId: PlanId) =>
+    (planId: PlanId, paymentStatus: PaymentStatus = 'paid') =>
       mutateState((current) => {
         const currentRank = getPlanRank(current.subscription.currentPlanId);
         const nextRank = getPlanRank(planId);
         if (nextRank === currentRank) return current;
 
         const isUpgrade = nextRank > currentRank;
+        if (isUpgrade && !getCheckoutPaymentMethod(current.paymentMethods)) {
+          throw new Error('payment-method-required');
+        }
+        const paymentHistoryItem = isUpgrade
+          ? createPaymentHistoryItem(
+              current.subscription.currentPlanId,
+              planId,
+              paymentStatus,
+            )
+          : null;
+        if (paymentHistoryItem && paymentStatus !== 'paid') {
+          return {
+            ...current,
+            paymentHistory: [paymentHistoryItem, ...current.paymentHistory],
+          };
+        }
         const nextBillingDate = current.subscription.nextBillingDate ?? getNextBillingDate();
         const nextSubscription: SubscriptionState = isUpgrade
           ? {
@@ -282,11 +357,8 @@ export function MyPageProvider({ children }: PropsWithChildren) {
         return {
           ...current,
           paymentHistory:
-            isUpgrade && planId !== 'baby-jelly'
-              ? [
-                  createPaymentHistoryItem(current.subscription.currentPlanId, planId),
-                  ...current.paymentHistory,
-                ]
+            paymentHistoryItem
+              ? [paymentHistoryItem, ...current.paymentHistory]
               : current.paymentHistory,
           subscription: nextSubscription,
         };
@@ -313,15 +385,8 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       enqueueMutation(async () => {
         if (!userId) return;
 
-        if (activeUserRef.current === userId) {
-          readyUserRef.current = null;
-          stateRef.current = null;
-          setState(null);
-          setIsReady(false);
-        }
-
         await mypageRepository.deleteUser(userId);
-        await removeUserProfileImages(userId).catch(() => undefined);
+        await removeUserProfileImages(userId);
       }),
     [currentUserId, enqueueMutation],
   );
@@ -339,12 +404,14 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       clearScreenSession,
       deleteUserProfileData,
       hasLoadError,
+      hasStoredUserProfileData,
       isReady: storeReady,
       notificationSettings: visibleState?.notificationSettings ?? null,
       paymentHistory: visibleState?.paymentHistory ?? EMPTY_PAYMENT_HISTORY,
       paymentMethods: visibleState?.paymentMethods ?? EMPTY_PAYMENT_METHODS,
       profile: visibleState?.profile ?? null,
       registerSignupProfile,
+      reloadMyPage,
       scheduleCancelSubscription,
       subscription: visibleState?.subscription ?? null,
       switchPlan,
@@ -356,7 +423,9 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       clearScreenSession,
       deleteUserProfileData,
       hasLoadError,
+      hasStoredUserProfileData,
       registerSignupProfile,
+      reloadMyPage,
       scheduleCancelSubscription,
       storeReady,
       switchPlan,

@@ -14,6 +14,7 @@ export const COLORS = {
   toastBackground: 'rgba(245, 245, 245, 0.96)',
   success: '#3EAC7A',
   danger: '#FF6B5A',
+  like: '#FF2D2D',
   error: '#B23A3A',
   errorBackground: '#FDEAEA',
   borderSoft: '#EDEFF5',
