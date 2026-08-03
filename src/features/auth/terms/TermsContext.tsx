@@ -15,7 +15,6 @@ import type { TermsRepository } from './TermsRepository';
 import { termsRepository as defaultTermsRepository } from './TermsRepository';
 import {
   changeMarketingConsent,
-  getLatestConsent,
   hasCurrentRequiredSignupConsents,
   hasCurrentTermConsent,
   recordTermDecision,
@@ -227,7 +226,7 @@ export function TermsProvider({
       terms.filter(
         (term) =>
           term.required &&
-          getLatestConsent(currentConsentHistory, term.id)?.agreed === true &&
+          term.scope === 'signup' &&
           !hasCurrentTermConsent(currentConsentHistory, term),
       ),
     [currentConsentHistory, terms],

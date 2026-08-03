@@ -12,6 +12,7 @@ import {
   useAuthSession,
 } from '@/src/features/auth/session/AuthSessionStore';
 import { TermsProvider } from '@/src/features/auth/terms';
+import { RequiredTermsGuard } from '@/src/features/auth/terms/components/RequiredTermsGuard';
 import { CommunityProvider } from '@/src/features/community/CommunityStore';
 import {
   MyPageProvider,
@@ -102,7 +103,11 @@ function SessionProviders({ children }: PropsWithChildren) {
       <PetProvider>
         <MyPageProvider>
           <CommunityProvider>
-            <AccountDataGuard>{children}</AccountDataGuard>
+            <AccountDataGuard>
+              <RequiredTermsGuard userId={termsUserId}>
+                {children}
+              </RequiredTermsGuard>
+            </AccountDataGuard>
           </CommunityProvider>
         </MyPageProvider>
       </PetProvider>
