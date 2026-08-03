@@ -11,6 +11,8 @@ type GuestSessionGuardProps = PropsWithChildren<{
   authenticatedPathExceptions?: readonly string[];
 }>;
 
+export const SIGNUP_COMPLETION_PATHS = ['/signup/pet-info', '/signup/complete'] as const;
+
 export function AuthSessionStateScreen({ loadingLabel }: { loadingLabel: string }) {
   const { isReady, retrySessionLoad, sessionLoadError } = useAuthSession();
 

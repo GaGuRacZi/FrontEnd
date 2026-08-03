@@ -86,7 +86,9 @@ export function SignupProfileScreen() {
     <SignupScaffold
       bodyStyle={styles.body}
       currentStep={2}
-      onNext={() => router.push('/signup/user-info')}
+      onNext={() =>
+        router.push(data.method === 'local' ? '/signup/credentials' : '/signup/user-info')
+      }
       title="프로필을 설정해주세요"
     >
       <Pressable

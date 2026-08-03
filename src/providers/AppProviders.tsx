@@ -1,3 +1,4 @@
+import { usePathname } from 'expo-router';
 import type { PropsWithChildren } from 'react';
 import { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
@@ -5,6 +6,7 @@ import { StyleSheet } from 'react-native';
 import { EmptyState, LoadingView } from '@/src/components/common';
 import { AppScreen } from '@/src/components/layout';
 import { AppAlertProvider } from '@/src/components/modal';
+import { SIGNUP_COMPLETION_PATHS } from '@/src/features/auth/session/AuthSessionGuard';
 import {
   AuthSessionProvider,
   useAuthSession,
@@ -19,6 +21,7 @@ import { PetProvider } from '@/src/features/pet/PetStore';
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 
 function AccountDataGuard({ children }: PropsWithChildren) {
+  const pathname = usePathname();
   const { clearSession, currentUserId, isReady } = useAuthSession();
   const { hasStoredUserProfileData } = useMyPageStore();
   const { resumePendingWithdrawal } = useAccountLifecycle();
@@ -66,7 +69,13 @@ function AccountDataGuard({ children }: PropsWithChildren) {
     resumePendingWithdrawal,
   ]);
 
-  if (!currentUserId || checkedUserId === currentUserId) return children;
+  const isSignupCompletionPath = SIGNUP_COMPLETION_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+
+  if (!currentUserId || checkedUserId === currentUserId || isSignupCompletionPath) {
+    return children;
+  }
 
   return (
     <AppScreen contentContainerStyle={styles.centered}>

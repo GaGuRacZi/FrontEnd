@@ -18,6 +18,7 @@ export {
 
 type SignupFlowRoute =
   | '/signup/complete'
+  | '/signup/credentials'
   | '/signup/location'
   | '/signup/pet-info'
   | '/signup/pet-type'
@@ -43,19 +44,21 @@ export function getRequiredError(value: string, message: string) {
   return value.trim() ? undefined : message;
 }
 
-export function hasValidSignupUserInfo(data: SignupData) {
-  const hasRequiredProfile =
-    !getRequiredError(data.name, '이름을 입력해주세요.') &&
-    !getRequiredError(data.nickname, '닉네임을 입력해주세요.');
-
-  if (data.method === 'kakao') return false;
+export function hasValidSignupCredentials(data: SignupData) {
+  if (data.method !== 'local') return true;
 
   return (
-    hasRequiredProfile &&
     !getEmailError(data.email) &&
     Boolean(data.emailVerificationToken) &&
     !getPasswordError(data.password) &&
     !getPasswordConfirmError(data.password, data.passwordConfirm)
+  );
+}
+
+export function hasValidSignupProfileInfo(data: SignupData) {
+  return (
+    !getRequiredError(data.name, '이름을 입력해주세요.') &&
+    !getRequiredError(data.nickname, '닉네임을 입력해주세요.')
   );
 }
 
@@ -78,10 +81,11 @@ export function hasValidSignupLocation(data: SignupData) {
 }
 
 export function getNextSignupRoute(data: SignupData): SignupFlowRoute {
-  if (!hasValidSignupUserInfo(data)) return '/signup/user-info';
+  if (!hasValidSignupCredentials(data)) return '/signup/credentials';
+  if (!hasValidSignupProfileInfo(data)) return '/signup/user-info';
+  if (!hasValidSignupLocation(data)) return '/signup/location';
   if (!hasValidSignupPetType(data)) return '/signup/pet-type';
   if (!hasValidSignupPetInfo(data)) return '/signup/pet-info';
-  if (!hasValidSignupLocation(data)) return '/signup/location';
 
   return '/signup/complete';
 }

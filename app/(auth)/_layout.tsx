@@ -1,8 +1,9 @@
 import { Stack } from 'expo-router';
 
-import { GuestSessionGuard } from '@/src/features/auth/session/AuthSessionGuard';
-
-const SIGNUP_COMPLETION_PATHS = ['/signup/location', '/signup/complete'];
+import {
+  GuestSessionGuard,
+  SIGNUP_COMPLETION_PATHS,
+} from '@/src/features/auth/session/AuthSessionGuard';
 
 export default function AuthLayout() {
   return (
