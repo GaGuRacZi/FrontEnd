@@ -48,6 +48,7 @@ export function HomeScreen() {
 
   return (
     <ScreenLayout
+      headerFullWidth
       leftContent={<BrandLogoButton />}
       onRightPress={() => router.push('/notifications' as Href)}
       rightAccessibilityLabel="알림 열기"
@@ -61,6 +62,7 @@ export function HomeScreen() {
           onPressAddDiagnosis={() => router.push('/dashboard/record' as Href)}
           onPressDetail={() => router.push(`/pet/${selectedPet.id}` as Href)}
           pet={activePet}
+          rawPet={selectedPet}
         />
 
         <TodaySummaryCard
