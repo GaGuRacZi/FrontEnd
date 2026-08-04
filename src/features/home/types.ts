@@ -41,7 +41,7 @@ export type MonthlyHealthMetric = {
   valueLabel: string;  // "3.4kg"
 };
 
-export type NotificationCategory = 'ai' | 'blood-donation' | 'community' | 'schedule';
+export type NotificationCategory = 'ai' | 'community' | 'schedule';
 export type NotificationFilterValue = 'all' | NotificationCategory;
 
 export type NotificationItem = {

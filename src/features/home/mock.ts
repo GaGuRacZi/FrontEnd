@@ -82,17 +82,6 @@ export const MOCK_NOTIFICATIONS: NotificationItem[] = [
   },
   {
     id: 'noti-4',
-    category: 'blood-donation',
-    categoryLabel: '긴급 헌혈',
-    title: '근처에서 B형 헌혈 요청이 있어요',
-    description: '체중·건강 조건이 맞는지 확인해보세요',
-    timeLabel: '2시간 전',
-    actionLabel: '지도 보기',
-    isRead: true,
-    dateGroupLabel: '어제',
-  },
-  {
-    id: 'noti-5',
     category: 'community',
     categoryLabel: '커뮤니티',
     title: '나눔 장터 문의에 답글이 왔어요',

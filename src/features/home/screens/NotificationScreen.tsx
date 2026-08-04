@@ -14,7 +14,6 @@ const FILTER_OPTIONS: { label: string; value: NotificationFilterValue }[] = [
   { value: 'schedule', label: '할 일' },
   { value: 'ai', label: 'AI' },
   { value: 'community', label: '커뮤니티' },
-  { value: 'blood-donation', label: '긴급' },
 ];
 
 export function NotificationScreen() {    // TODO: 알림 읽음 상태가 로컬 state라 화면 이탈 시 초기화됨.
