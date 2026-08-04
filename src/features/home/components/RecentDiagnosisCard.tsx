@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
   },
   pressed: { opacity: 0.7 },
-  headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.sm },
   headerLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
   iconContainer: {
     alignItems: 'center',
@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
   },
   Icon: { height: 18, width: 18 },
   label: { ...TYPOGRAPHY.checkboxLabel, color: COLORS.black },
-  title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
+  title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily, paddingHorizontal: 4 },
   badge: {
     alignSelf: 'flex-start',
     backgroundColor: COLORS.cream,
@@ -74,6 +74,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 2,
   },
-  badgeText: { ...TYPOGRAPHY.caption, color: COLORS.black },
-  nextVisit: { ...TYPOGRAPHY.small, color: COLORS.gray500, marginTop: SPACING.xs },
+  badgeText: { ...TYPOGRAPHY.caption, color: COLORS.black, paddingHorizontal: 4 },
+  nextVisit: { ...TYPOGRAPHY.small, color: COLORS.gray500, marginTop: SPACING.xs, paddingHorizontal: 4 },
 });

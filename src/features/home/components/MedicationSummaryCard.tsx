@@ -33,9 +33,10 @@ export function MedicationSummaryCard({ medications, onPress }: MedicationSummar
 
       <View style={styles.list}>
         {medications.map((medication) => (
-          <Text key={medication.id} numberOfLines={1} style={styles.item}>
-            {medication.name}      {medication.doseLabel}
-          </Text>
+          <View key={medication.id} style={styles.itemRow}>
+            <Text numberOfLines={1} style={styles.itemName}>{medication.name}</Text>
+            <Text style={styles.itemDose}>{medication.doseLabel}</Text>
+          </View>
         ))}
       </View>
     </Pressable>
@@ -53,7 +54,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
   },
   pressed: { opacity: 0.7 },
-  headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between',  },
   headerLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
   iconContainer: {
     alignItems: 'center',
@@ -65,6 +66,8 @@ const styles = StyleSheet.create({
   },
   Icon: { height: 14, width: 14 },
   label: { ...TYPOGRAPHY.checkboxLabel, color: COLORS.black },
-  list: { gap: 2 },
-  item: { ...TYPOGRAPHY.caption, color: COLORS.black },
+  list: { gap: 2, paddingHorizontal: 4 },
+  itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  itemName: { ...TYPOGRAPHY.body2, color: COLORS.black, flex: 1 },
+  itemDose: { ...TYPOGRAPHY.body2, color: COLORS.gray600 },
 });
