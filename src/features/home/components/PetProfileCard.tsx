@@ -2,13 +2,17 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {AppIcon} from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { PetAvatar } from '@/src/features/pet/components/PetAvatar';
 
+import type { PetEntity } from '@/src/features/pet/types';
 import type { PetSummary } from '../types';
 
 type PetProfuleCardProps = {
     onPressAddDiagnosis: () => void;
     onPressDetail: () => void;
     pet: PetSummary;
+    rawPet: PetEntity;
+
 };
 
 const styles = StyleSheet.create({
@@ -43,20 +47,10 @@ const styles = StyleSheet.create({
     dot: { backgroundColor: COLORS.green, borderRadius: 4, height: 8, width: 8 },
 });
 
-export function PetProfileCard( { onPressAddDiagnosis, onPressDetail, pet } : PetProfuleCardProps ) {
+export function PetProfileCard( { onPressAddDiagnosis, onPressDetail, pet, rawPet } : PetProfuleCardProps ) {
     return (
         <View style = {styles.container}>
-            {pet.photoUrl ? (
-                <Image source={ {uri: pet.photoUrl} } style={styles.photo} />
-            ) : (
-                <View style={styles.photoPlaceholder}>
-                    <Image
-                        accessibilityIgnoresInvertColors
-                        source={require('../../../../assets/images/paw-logo.png')}
-                        style={styles.placeholderLogo}
-                    />
-                </View>
-            )}
+            <PetAvatar pet={rawPet} size={64} />
 
             <View style={styles.info}>
                 <Text style={styles.name}>{pet.name}</Text>
