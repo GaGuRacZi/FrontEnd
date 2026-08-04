@@ -20,8 +20,8 @@ export function EmergencyBanner({ onPress }: EmergencyBannerProps) {
       </View>
 
       <View style={styles.textGroup}>
-        <Text style={styles.title}>긴급 수혈 · 헌혈 연결</Text>
-        <Text style={styles.subtitle}>혈액형과 체중 기준으로 헌혈 히어로를 찾아요</Text>
+        <Text style={styles.title}>헌혈 정보 사이트 바로가기</Text>
+        <Text style={styles.subtitle}>사이트에서 헌혈 히어로를 찾아보세요</Text>
       </View>
 
       <AppIcon color={COLORS.background} name="chevron-forward" size={20} />
