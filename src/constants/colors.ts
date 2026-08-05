@@ -10,6 +10,10 @@ export const COLORS = {
   starWarm: '#FF8A5C',
 
   background: '#FFFFFF',
+  white10: 'rgba(255, 255, 255, 0.1)', 
+	white20: 'rgba(255, 255, 255, 0.2)', 
+	white30: 'rgba(255, 255, 255, 0.3)', 
+	white70: 'rgba(255, 255, 255, 0.7)', 
   overlay: 'rgba(26, 26, 26, 0.42)',
   toastBackground: 'rgba(245, 245, 245, 0.96)',
   success: '#3EAC7A',
