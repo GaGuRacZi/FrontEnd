@@ -38,13 +38,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: SPACING.sm,
     height: 42,
+    maxWidth: 176,
     paddingHorizontal: SPACING.sm,
-    width: 176,
   },
   name: {
     ...TYPOGRAPHY.title2,
     color: COLORS.black,
-    flex: 1,
+    flexShrink: 1,
+    maxWidth: 96,
   },
   pressed: {
     opacity: 0.58,

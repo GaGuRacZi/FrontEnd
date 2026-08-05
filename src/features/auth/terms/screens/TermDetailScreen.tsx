@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -10,34 +10,90 @@ import { COLORS, LAYOUT, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import { TermsHeader } from '../components/TermsHeader';
 import { useTerms } from '../TermsContext';
-import { getTermDateLabel, getTermLabel, isTermId, TERM_IDS } from '../types';
+import {
+  getTermDateLabel,
+  getTermLabel,
+  isTermId,
+  TERM_IDS,
+  type TermId,
+} from '../types';
 
-export function TermDetailScreen() {
+type TermDetailScreenProps = {
+  action?: 'acknowledge' | 'consent';
+  fallbackRoute?: Href;
+  headerTitle?: string;
+  onBack?: () => void;
+  onConsentComplete?: () => void;
+  termId?: TermId;
+};
+
+export function TermDetailScreen({
+  action: actionOverride,
+  fallbackRoute = '/signup/terms',
+  headerTitle = '약관 상세',
+  onBack,
+  onConsentComplete,
+  termId: termIdOverride,
+}: TermDetailScreenProps = {}) {
   const router = useRouter();
-  const { action, termId } = useLocalSearchParams<{ action?: string; termId?: string }>();
-  const { error, getTerm, recordConsent, reload, status } = useTerms();
+  const {
+    action: actionParam,
+    termId: termIdParam,
+  } = useLocalSearchParams<{ action?: string; termId?: string }>();
+  const {
+    error,
+    getTerm,
+    hasCurrentConsent,
+    recordConsent,
+    reload,
+    status,
+  } = useTerms();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
-  const term = termId && isTermId(termId) ? getTerm(termId) : undefined;
+  const resolvedTermId =
+    termIdOverride ?? (termIdParam && isTermId(termIdParam) ? termIdParam : undefined);
+  const action = actionOverride ?? actionParam;
+  const term = resolvedTermId ? getTerm(resolvedTermId) : undefined;
   const isLocationConsent = action === 'consent' && term?.id === TERM_IDS.location;
+  const isCommunityPolicyAcknowledgement =
+    action === 'acknowledge' && term?.id === TERM_IDS.communityPolicy;
+  const communityPolicyAcknowledged =
+    isCommunityPolicyAcknowledgement && hasCurrentConsent(TERM_IDS.communityPolicy);
 
-  const handleLocationConsent = async () => {
+  const close = () => {
+    if (onConsentComplete) {
+      onConsentComplete();
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace(fallbackRoute);
+  };
+
+  const handleTermAction = async () => {
     if (!term || saving) return;
+
+    if (communityPolicyAcknowledged) {
+      close();
+      return;
+    }
 
     setSaving(true);
     setSaveError(undefined);
 
     try {
       await recordConsent(term.id, true);
-
-      if (router.canGoBack()) {
-        router.back();
-        return;
-      }
-
-      router.replace('/signup/location');
+      close();
     } catch {
-      setSaveError('동의 내용을 저장하지 못했어요. 다시 시도해주세요.');
+      setSaveError(
+        isCommunityPolicyAcknowledgement
+          ? '확인 상태를 저장하지 못했어요. 다시 시도해주세요.'
+          : '동의 내용을 저장하지 못했어요. 다시 시도해주세요.',
+      );
       setSaving(false);
     }
   };
@@ -46,7 +102,7 @@ export function TermDetailScreen() {
     <FormScreen
       contentContainerStyle={styles.content}
       footer={
-        isLocationConsent ? (
+        isLocationConsent || isCommunityPolicyAcknowledgement ? (
           <View style={styles.footer}>
             {saveError ? (
               <Text accessibilityLiveRegion="polite" style={styles.error}>
@@ -54,16 +110,33 @@ export function TermDetailScreen() {
               </Text>
             ) : null}
             <AppButton
-              accessibilityLabel="위치 약관에 동의하고 위치 설정으로 돌아가기"
+              accessibilityLabel={
+                isCommunityPolicyAcknowledgement
+                  ? communityPolicyAcknowledged
+                    ? '커뮤니티 운영정책 확인 완료'
+                    : '커뮤니티 운영정책 확인하기'
+                  : '위치 약관에 동의하고 위치 설정으로 돌아가기'
+              }
               loading={saving}
-              onPress={() => void handleLocationConsent()}
-              title="동의하고 계속하기"
+              onPress={() => void handleTermAction()}
+              title={
+                isCommunityPolicyAcknowledgement
+                  ? communityPolicyAcknowledged
+                    ? '확인 완료'
+                    : '운영정책 확인하기'
+                  : '동의하고 계속하기'
+              }
             />
           </View>
         ) : undefined
       }
       header={
-        <TermsHeader disabled={saving} fallbackRoute="/signup/terms" title="약관 상세" />
+        <TermsHeader
+          disabled={saving}
+          fallbackRoute={fallbackRoute}
+          onBack={onBack}
+          title={headerTitle}
+        />
       }
     >
       {status === 'loading' ? <LoadingView label="약관을 불러오는 중이에요" /> : null}

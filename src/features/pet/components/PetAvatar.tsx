@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Image, StyleSheet, View } from 'react-native';
 
-import { AppIcon } from '@/src/components/common/AppIcon';
+import { BrandPawLogo } from '@/src/components/common';
 import { COLORS } from '@/src/constants';
 
 import type { PetFormValues } from '../types';
@@ -57,7 +57,7 @@ export function PetAvatar({ pet, size = 40, style }: PetAvatarProps) {
           }}
         />
       ) : (
-        <AppIcon color={COLORS.primary} name="paw" size={size * 0.5} />
+        <BrandPawLogo size={size * 0.58} />
       )}
     </View>
   );

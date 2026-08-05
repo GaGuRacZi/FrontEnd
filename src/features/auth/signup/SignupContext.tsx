@@ -9,9 +9,20 @@ import {
   useState,
 } from 'react';
 
-import type { AuthMethod } from '@/src/features/auth/session/AuthSessionStore';
+import { LoadingView } from '@/src/components/common';
+import { AppScreen } from '@/src/components/layout';
+import {
+  getSignupUserId,
+  type AuthMethod,
+} from '@/src/features/auth/session/AuthSessionStore';
 import { getSignupConsentUserId, TermsProvider } from '@/src/features/auth/terms';
 import type { PetGender, PetType } from '@/src/features/pet/types';
+
+import {
+  clearActiveSignupTransaction,
+  loadActiveSignupTransaction,
+  type SignupTransaction,
+} from './services/signupTransactionStore';
 
 export type SignupMethod = AuthMethod;
 export type { PetGender, PetType } from '@/src/features/pet/types';
@@ -50,6 +61,7 @@ export type SignupData = {
 };
 
 type SignupContextValue = {
+  committedSignupRecovery: SignupTransaction | null;
   data: SignupData;
   emailVerification: EmailVerificationState;
   markSignupCompleted: () => void;
@@ -92,22 +104,68 @@ type SignupProviderProps = PropsWithChildren<{
 }>;
 
 export function SignupProvider({ children, initialMethod }: SignupProviderProps) {
-  const methodInitialized = useRef(Boolean(initialMethod));
-  const [signupSessionId] = useState(
+  const restorationStarted = useRef(false);
+  const [signupSessionId, setSignupSessionId] = useState(
     () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`,
   );
   const [data, setData] = useState<SignupData>(() => createInitialData(initialMethod ?? 'local'));
+  const [committedSignupRecovery, setCommittedSignupRecovery] =
+    useState<SignupTransaction | null>(null);
   const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
     error: null,
     status: 'idle',
   });
+  const [signupReady, setSignupReady] = useState(false);
   const [signupCompleted, setSignupCompleted] = useState(false);
 
   useEffect(() => {
-    if (!initialMethod || methodInitialized.current) return;
+    if (restorationStarted.current) return;
 
-    methodInitialized.current = true;
-    setData((current) => ({ ...current, method: initialMethod }));
+    restorationStarted.current = true;
+    let active = true;
+
+    void loadActiveSignupTransaction(initialMethod)
+      .then(async (transaction) => {
+        if (!active) return;
+
+        if (
+          transaction &&
+          getSignupUserId(
+            transaction.method,
+            transaction.email,
+            transaction.sessionId,
+          ) === transaction.userId
+        ) {
+          setSignupSessionId(transaction.sessionId);
+          setData({
+            ...createInitialData(transaction.method),
+            email: transaction.email,
+          });
+          if (transaction.status === 'committed') {
+            setCommittedSignupRecovery(transaction);
+          }
+          return;
+        }
+
+        if (transaction) {
+          await clearActiveSignupTransaction();
+        }
+        if (initialMethod) {
+          setData((current) => ({ ...current, method: initialMethod }));
+        }
+      })
+      .catch(() => {
+        if (active && initialMethod) {
+          setData((current) => ({ ...current, method: initialMethod }));
+        }
+      })
+      .finally(() => {
+        if (active) setSignupReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [initialMethod]);
 
   const updateField = useCallback(
@@ -131,6 +189,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
 
   const value = useMemo<SignupContextValue>(
     () => ({
+      committedSignupRecovery,
       data,
       emailVerification,
       markSignupCompleted,
@@ -141,6 +200,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
       updateFields,
     }),
     [
+      committedSignupRecovery,
       data,
       emailVerification,
       markSignupCompleted,
@@ -154,9 +214,15 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
 
   return (
     <SignupContext.Provider value={value}>
-      <TermsProvider scope="signup" userId={getSignupConsentUserId(signupSessionId)}>
-        {children}
-      </TermsProvider>
+      {signupReady ? (
+        <TermsProvider scope="signup" userId={getSignupConsentUserId(signupSessionId)}>
+          {children}
+        </TermsProvider>
+      ) : (
+        <AppScreen>
+          <LoadingView label="회원가입 정보를 확인하고 있어요." />
+        </AppScreen>
+      )}
     </SignupContext.Provider>
   );
 }

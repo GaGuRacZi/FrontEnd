@@ -1,9 +1,9 @@
-import { Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 
 import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { AppModal } from '@/src/components/modal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 
 import { MyPageCard, MyPageDivider, MyPageHeader, MyPageRow } from '../components';
 import { getPlan } from '../mypageData';
@@ -14,21 +14,25 @@ const CANCEL_ERROR_MESSAGE = '잠시 후 다시 시도해주세요.';
 
 export function MyPagePlanScreen() {
   const router = useRouter();
+  const showAlert = useAppAlert();
   const { scheduleCancelSubscription, subscription } = useMyPageStore();
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const plan = getPlan(subscription?.currentPlanId ?? 'baby-jelly');
   const canCancel = Boolean(subscription && subscription.currentPlanId !== 'baby-jelly');
   const nextBillingDate = subscription?.nextBillingDate ?? '다음 결제일';
+  const closeCancelModal = () => {
+    if (!canceling) setCancelModalVisible(false);
+  };
 
   const confirmCancel = async () => {
     setCanceling(true);
     try {
       const result = await scheduleCancelSubscription();
       if (result.ok) setCancelModalVisible(false);
-      else Alert.alert(CANCEL_ERROR_TITLE, CANCEL_ERROR_MESSAGE);
+      else showAlert(CANCEL_ERROR_TITLE, CANCEL_ERROR_MESSAGE);
     } catch {
-      Alert.alert(CANCEL_ERROR_TITLE, CANCEL_ERROR_MESSAGE);
+      showAlert(CANCEL_ERROR_TITLE, CANCEL_ERROR_MESSAGE);
     } finally {
       setCanceling(false);
     }
@@ -82,14 +86,19 @@ export function MyPagePlanScreen() {
       </ScrollView>
 
       <AppModal
-        onClose={() => setCancelModalVisible(false)}
+        closeOnBackdropPress={!canceling}
+        onClose={closeCancelModal}
         primaryAction={{
           label: '해지 예약하기',
           loading: canceling,
           onPress: confirmCancel,
           variant: 'danger',
         }}
-        secondaryAction={{ label: '계속 이용하기', onPress: () => setCancelModalVisible(false) }}
+        secondaryAction={{
+          disabled: canceling,
+          label: '계속 이용하기',
+          onPress: closeCancelModal,
+        }}
         title="구독을 해지할까요?"
         variant="center"
         visible={cancelModalVisible}

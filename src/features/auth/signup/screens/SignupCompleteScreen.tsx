@@ -1,25 +1,16 @@
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert, BackHandler, Image, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Image, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/common/AppButton';
 import { AppScreen } from '@/src/components/layout/AppScreen';
 import { COLORS, LAYOUT, RADIUS, TYPOGRAPHY } from '@/src/constants';
-import {
-  getSignupUserId,
-  useAuthSession,
-} from '@/src/features/auth/session/AuthSessionStore';
-import { useSignup } from '@/src/features/auth/signup/SignupContext';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
-import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 
 const PAW_LOGO = require('@/assets/images/paw-logo.png');
 
 export function SignupCompleteScreen() {
   const router = useRouter();
-  const { currentUserId } = useAuthSession();
-  const { data, signupSessionId } = useSignup();
-  const { registerSignupProfile } = useMyPageStore();
   const navigateOnce = useNavigationLock();
 
   useEffect(() => {
@@ -48,18 +39,7 @@ export function SignupCompleteScreen() {
 
       <AppButton
         accessibilityHint="홈 화면으로 이동합니다"
-        onPress={() =>
-          navigateOnce(async () => {
-            const userId =
-              currentUserId ?? getSignupUserId(data.method, data.email, signupSessionId);
-            try {
-              await registerSignupProfile(data, userId);
-            } catch {
-              Alert.alert('프로필 저장을 다시 확인해주세요', '홈으로 이동한 뒤 마이페이지에서 수정할 수 있어요.');
-            }
-            router.replace('/home');
-          })
-        }
+        onPress={() => navigateOnce(() => router.replace('/home'))}
         style={styles.button}
         title="PAW 시작하기"
       />

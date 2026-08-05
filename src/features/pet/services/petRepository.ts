@@ -9,6 +9,7 @@ export interface PetRepository {
   clearDrafts(userId: string): Promise<void>;
   deleteDraft(userId: string, draftId: string): Promise<void>;
   deleteUser(userId: string): Promise<void>;
+  hasStoredState(userId: string): Promise<boolean>;
   loadDraft(userId: string, draftId: string): Promise<PetDraft | null>;
   loadDrafts(userId: string): Promise<PetDraft[]>;
   loadState(userId: string): Promise<StoredPetState>;
@@ -187,6 +188,11 @@ function adaptStoredState(value: unknown, userId: string): StoredPetState | null
 }
 
 class LocalPetRepository implements PetRepository {
+  async hasStoredState(userId: string) {
+    const state = await this.loadState(userId);
+    return state.pets.length > 0;
+  }
+
   async loadState(userId: string) {
     const stored = await AsyncStorage.getItem(stateKey(userId));
 

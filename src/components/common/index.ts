@@ -5,6 +5,7 @@ export * from './AppIcon';
 export * from './AppSwitch';
 export * from './AppToast';
 export * from './BrandLogoButton';
+export * from './BrandPawLogo';
 export * from './EmptyState';
 export * from './LoadingView';
 export * from './NotFoundScreen';

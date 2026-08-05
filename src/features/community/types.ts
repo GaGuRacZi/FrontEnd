@@ -52,7 +52,7 @@ export type TalkPost = CommunityPostBase & {
 
 export type MarketPost = CommunityPostBase & {
   baseBookmarkCount: number;
-  baseReactionCounts: Partial<Record<ReactionKind, number>>;
+  baseReactionCounts?: Partial<Record<ReactionKind, number>>;
   category: Exclude<MarketCategory, '전체'>;
   expiresAt?: string;
   imageCount: number;
@@ -71,7 +71,7 @@ export type ReviewPost = {
   body: string;
   category: Exclude<ReviewCategory, '전체'>;
   createdAt: string;
-  detailScores?: {
+  detailScores: {
     kindness: number;
     price: number;
     revisit: number;
@@ -112,21 +112,24 @@ export type CommunityViewerState = {
   reactionPostIds: Partial<Record<ReactionKind, string[]>>;
 };
 
-export type CommunityWriteDraft =
+type CommunityWriteDraftBase = {
+  editPostId?: string;
+  id: string;
+  updatedAt: string;
+  userId: string;
+};
+
+export type CommunityWriteDraft = CommunityWriteDraftBase & (
   | {
-      id: string;
       tab: 'talk';
       talkBody: string;
       talkCategory: Exclude<TalkCategory, '전체'>;
       talkPhotos: CommunityImageAsset[];
       talkTags: string[];
       talkTitle: string;
-      updatedAt: string;
-      userId: string;
     }
   | {
       expiresAt: string;
-      id: string;
       marketBody: string;
       marketCategory: Exclude<MarketCategory, '전체'>;
       marketPhotos: CommunityImageAsset[];
@@ -137,11 +140,8 @@ export type CommunityWriteDraft =
       tradeLocation: string;
       tradeMethods: MarketTradeMethod[];
       tradeType: MarketTradeType;
-      updatedAt: string;
-      userId: string;
     }
   | {
-      id: string;
       reviewBody: string;
       reviewCategory: Exclude<ReviewCategory, '전체'>;
       reviewKindness: number;
@@ -153,9 +153,8 @@ export type CommunityWriteDraft =
       reviewTitle: string;
       reviewVisitedAt: string;
       tab: 'review';
-      updatedAt: string;
-      userId: string;
-    };
+    }
+);
 
 export type StoredCommunityState = {
   comments: CommunityComment[];

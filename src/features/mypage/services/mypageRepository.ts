@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { isValidClockTime, normalizePaymentMethods } from '../mypageData';
 import { createDefaultMyPageState } from '../mypageMappers';
 import type {
   LoginConnection,
@@ -75,18 +76,34 @@ function isSubscriptionState(value: unknown): value is SubscriptionState {
   );
 }
 
-function isNotificationSettings(value: unknown): value is Partial<NotificationSettings> {
-  if (!isRecord(value)) return false;
-  return (
-    (value.aiAnalysis === undefined || isBoolean(value.aiAnalysis)) &&
-    (value.chat === undefined || isBoolean(value.chat)) &&
-    (value.community === undefined || isBoolean(value.community)) &&
-    (value.doNotDisturbEnabled === undefined || isBoolean(value.doNotDisturbEnabled)) &&
-    (value.doNotDisturbEnd === undefined || isString(value.doNotDisturbEnd)) &&
-    (value.doNotDisturbStart === undefined || isString(value.doNotDisturbStart)) &&
-    (value.healthAlert === undefined || isBoolean(value.healthAlert)) &&
-    (value.schedule === undefined || isBoolean(value.schedule))
-  );
+function createNotificationSettings(
+  value: unknown,
+  defaults: NotificationSettings,
+): NotificationSettings {
+  if (!isRecord(value)) return defaults;
+
+  const start =
+    isString(value.doNotDisturbStart) && isValidClockTime(value.doNotDisturbStart)
+      ? value.doNotDisturbStart
+      : defaults.doNotDisturbStart;
+  const end =
+    isString(value.doNotDisturbEnd) && isValidClockTime(value.doNotDisturbEnd)
+      ? value.doNotDisturbEnd
+      : defaults.doNotDisturbEnd;
+  const hasValidTimeRange = start !== end;
+
+  return {
+    aiAnalysis: isBoolean(value.aiAnalysis) ? value.aiAnalysis : defaults.aiAnalysis,
+    chat: isBoolean(value.chat) ? value.chat : defaults.chat,
+    community: isBoolean(value.community) ? value.community : defaults.community,
+    doNotDisturbEnabled: isBoolean(value.doNotDisturbEnabled)
+      ? value.doNotDisturbEnabled
+      : defaults.doNotDisturbEnabled,
+    doNotDisturbEnd: hasValidTimeRange ? end : defaults.doNotDisturbEnd,
+    doNotDisturbStart: hasValidTimeRange ? start : defaults.doNotDisturbStart,
+    healthAlert: isBoolean(value.healthAlert) ? value.healthAlert : defaults.healthAlert,
+    schedule: isBoolean(value.schedule) ? value.schedule : defaults.schedule,
+  };
 }
 
 function isPaymentMethod(value: unknown): value is PaymentMethod {
@@ -118,31 +135,17 @@ function createStateFromStoredValue(userId: string, value: unknown): StoredMyPag
   const storedNotifications = value.notificationSettings;
 
   return {
-    notificationSettings: isNotificationSettings(storedNotifications)
-      ? {
-          aiAnalysis: storedNotifications.aiAnalysis ?? defaults.notificationSettings.aiAnalysis,
-          chat: storedNotifications.chat ?? defaults.notificationSettings.chat,
-          community: storedNotifications.community ?? defaults.notificationSettings.community,
-          doNotDisturbEnabled:
-            storedNotifications.doNotDisturbEnabled ??
-            defaults.notificationSettings.doNotDisturbEnabled,
-          doNotDisturbEnd:
-            storedNotifications.doNotDisturbEnd ??
-            defaults.notificationSettings.doNotDisturbEnd,
-          doNotDisturbStart:
-            storedNotifications.doNotDisturbStart ??
-            defaults.notificationSettings.doNotDisturbStart,
-          healthAlert: storedNotifications.healthAlert ?? defaults.notificationSettings.healthAlert,
-          schedule: storedNotifications.schedule ?? defaults.notificationSettings.schedule,
-        }
-      : defaults.notificationSettings,
+    notificationSettings: createNotificationSettings(
+      storedNotifications,
+      defaults.notificationSettings,
+    ),
     paymentHistory:
       Array.isArray(value.paymentHistory) && value.paymentHistory.every(isPaymentHistoryItem)
         ? value.paymentHistory
         : defaults.paymentHistory,
     paymentMethods:
       Array.isArray(value.paymentMethods) && value.paymentMethods.every(isPaymentMethod)
-        ? value.paymentMethods
+        ? normalizePaymentMethods(value.paymentMethods)
         : defaults.paymentMethods,
     profile: isUserProfile(value.profile, userId) ? value.profile : defaults.profile,
     subscription: isSubscriptionState(value.subscription)
@@ -154,6 +157,20 @@ function createStateFromStoredValue(userId: string, value: unknown): StoredMyPag
 export const mypageRepository = {
   async deleteUser(userId: string) {
     await AsyncStorage.removeItem(getStorageKey(userId));
+  },
+
+  async getStoredStateStatus(userId: string) {
+    const stored = await AsyncStorage.getItem(getStorageKey(userId));
+    if (stored === null) return 'missing' as const;
+
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      return isRecord(parsed) && isUserProfile(parsed.profile, userId)
+        ? 'valid' as const
+        : 'recoverable' as const;
+    } catch {
+      return 'recoverable' as const;
+    }
   },
 
   async loadState(userId: string): Promise<StoredMyPageState> {

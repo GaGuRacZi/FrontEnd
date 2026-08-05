@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -21,10 +21,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppButton, AppIcon, EmptyState, LoadingView } from '@/src/components/common';
+import {
+  AppButton,
+  AppIcon,
+  BrandPawLogo,
+  EmptyState,
+  LoadingView,
+} from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { KeyboardAwareScrollView, ScreenLayout } from '@/src/components/layout';
-import { AppModal } from '@/src/components/modal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
@@ -39,12 +45,11 @@ import { useCommunityStore } from '../CommunityStore';
 import {
   getCommunityImageUri,
   persistCommunityImage,
-  removeCommunityImage,
+  queueCommunityImageRemovals,
   removeCommunityImages,
 } from '../services/communityImageStorage';
 import { communityRepository } from '../services/communityRepository';
 import type {
-  CommunityAuthorSnapshot,
   CommunityImageAsset,
   CommunityPost,
   CommunityWriteDraft,
@@ -56,17 +61,27 @@ import type {
   TalkCategory,
   TalkPost,
 } from '../types';
+import { createCommunityAuthor } from '../utils/author';
 import {
   formatDateValue,
   isFutureDateValue,
-  isPastOrTodayDateValue,
   parseDateValue,
 } from '../utils/date';
 import {
+  createMarketPriceLabel,
+  getMarketTradeMethods,
+  getPositiveMarketPrice,
+  isValidMarketTradeMethodSelection,
+} from '../utils/marketValidation';
+import {
   REVIEW_BODY_MAX_LENGTH,
-  REVIEW_BODY_MIN_LENGTH,
   REVIEW_TARGET_MAX_LENGTH,
   REVIEW_TITLE_MAX_LENGTH,
+  getReviewInputValidationMessage,
+  getReviewScoreLabels,
+  getReviewTargetValidationMessage,
+  getValidReviewInput,
+  getValidReviewTarget,
 } from '../utils/reviewValidation';
 
 const TALK_WRITE_CATEGORIES = TALK_CATEGORIES.filter(
@@ -92,8 +107,6 @@ const REVIEW_STAR_COLOR = COLORS.starWarm;
 const PHOTO_SLOT_SIZE = 62;
 
 type WriteTab = 'market' | 'review' | 'talk';
-type UserProfileState = ReturnType<typeof useMyPageStore>['profile'];
-type SelectedPetState = ReturnType<typeof usePetStore>['selectedPet'];
 type ReviewWriteCategory = Exclude<ReviewCategory, '전체'>;
 
 function getReviewTargetPlaceholder(category: ReviewWriteCategory) {
@@ -102,12 +115,6 @@ function getReviewTargetPlaceholder(category: ReviewWriteCategory) {
   if (category === '용품샵') return '용품샵 이름을 입력해주세요';
   if (category === '미용실') return '미용실 이름을 입력해주세요';
   return '자유롭게 입력해주세요';
-}
-
-function getReviewScoreLabels(category: ReviewWriteCategory) {
-  return category === '산책 장소'
-    ? ['쾌적도', '접근성', '재방문'] as const
-    : ['친절도', '가격', '재방문'] as const;
 }
 
 function resolveWriteTab(value?: string): WriteTab {
@@ -133,31 +140,10 @@ function getTomorrow() {
   return date;
 }
 
-function getAuthor(
-  profile: UserProfileState,
-  selectedPet: SelectedPetState,
-  viewerId: string,
-): CommunityAuthorSnapshot {
-  return {
-    introduction: profile?.introduction.trim() || undefined,
-    location: profile?.location || undefined,
-    nickname: profile?.nickname || '파우 보호자',
-    petName: selectedPet?.name,
-    profileImageUri: profile?.profileImageUri ?? null,
-    userId: viewerId,
-  };
-}
-
 function toggleValue<T extends string>(values: T[], value: T) {
   return values.includes(value)
     ? values.filter((current) => current !== value)
     : [...values, value];
-}
-
-function formatPrice(value: string) {
-  const number = Number(value.replace(/[^0-9]/g, ''));
-  if (!number) return '';
-  return `${number.toLocaleString('ko-KR')}원`;
 }
 
 function parsePriceValue(value: string) {
@@ -172,23 +158,16 @@ function normalizeTag(value: string) {
   return value.trim().replace(/^#+/, '').replace(/\s+/g, '');
 }
 
-function normalizeInlineText(value: string) {
-  return value.trim().replace(/\s+/g, ' ');
-}
-
-function normalizeMultilineText(value: string) {
-  return value.trim().replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n');
-}
-
 function sameStringList(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function getMarketTradeMethods(post: MarketPost): MarketTradeMethod[] {
-  const methods = post.tags.filter((tag): tag is MarketTradeMethod =>
-    MARKET_TRADE_METHODS.includes(tag as MarketTradeMethod),
-  );
-  if (methods.length) return methods;
+function getEditableMarketTradeMethods(post: MarketPost): MarketTradeMethod[] {
+  const methods = getMarketTradeMethods(post.tags);
+  const compatibleMethods = post.tradeType === '나눔'
+    ? methods
+    : methods.filter((method) => method !== '비대면 나눔');
+  if (compatibleMethods.length) return compatibleMethods;
   if (post.tradeType === '나눔') return ['직거래', '비대면 나눔'];
   return ['직거래'];
 }
@@ -234,12 +213,14 @@ function hasWriteDraftContent(draft: CommunityWriteDraft, defaultMarketLocation 
 }
 
 function FieldCard({
+  brandPaw,
   children,
   icon,
   required,
   subtitle,
   title,
 }: {
+  brandPaw?: boolean;
   children: ReactNode;
   icon?: Parameters<typeof AppIcon>[0]['name'];
   required?: boolean;
@@ -249,9 +230,13 @@ function FieldCard({
   return (
     <View style={styles.card}>
       <View style={styles.cardTitleRow}>
-        {icon ? (
+        {brandPaw || icon ? (
           <View style={styles.cardIcon}>
-            <AppIcon color={COLORS.primary} name={icon} size={18} />
+            {brandPaw ? (
+              <BrandPawLogo size={20} />
+            ) : icon ? (
+              <AppIcon color={COLORS.primary} name={icon} size={18} />
+            ) : null}
           </View>
         ) : null}
         <View style={styles.cardTitleText}>
@@ -515,12 +500,14 @@ function StarRating({
               <Pressable
                 accessibilityLabel={`${score - 0.5}점`}
                 accessibilityRole="button"
+                accessibilityState={{ selected: value === score - 0.5 }}
                 onPress={() => onChange(score - 0.5)}
                 style={({ pressed }) => [styles.starHitArea, styles.starHitAreaLeft, pressed && styles.pressed]}
               />
               <Pressable
                 accessibilityLabel={`${score}점`}
                 accessibilityRole="button"
+                accessibilityState={{ selected: value === score }}
                 onPress={() => onChange(score)}
                 style={({ pressed }) => [styles.starHitArea, styles.starHitAreaRight, pressed && styles.pressed]}
               />
@@ -544,14 +531,23 @@ export function CommunityWriteScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { postId, type } = useLocalSearchParams<{ postId?: string; type?: string }>();
+  const showAlert = useAppAlert();
+  const { origin, postId, type } = useLocalSearchParams<{
+    origin?: string;
+    postId?: string;
+    type?: string;
+  }>();
   const initialTab = resolveWriteTab(type);
   const {
     addMarketPost,
     addReviewPost,
     addTalkPost,
+    getPostById,
+    getReviewPostById,
+    hasLoadError,
     isReady,
     posts,
+    reloadCommunity,
     reviewPosts,
     updateMarketPost,
     updateReviewPost,
@@ -561,7 +557,7 @@ export function CommunityWriteScreen() {
   const { profile } = useMyPageStore();
   const { selectedPet } = usePetStore();
   const author = useMemo(
-    () => getAuthor(profile, selectedPet, viewerId),
+    () => createCommunityAuthor(profile, selectedPet, viewerId),
     [profile, selectedPet, viewerId],
   );
   const reviewPostToEdit = useMemo(
@@ -629,8 +625,11 @@ export function CommunityWriteScreen() {
   }, [marketPostToEdit?.images, reviewPostToEdit?.images, talkPostToEdit?.images]);
   const [isDraftReady, setIsDraftReady] = useState(false);
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
+  const [manualExitPending, setManualExitPending] = useState(false);
+  const [pendingSubmittedPostId, setPendingSubmittedPostId] = useState<string | null>(null);
   const draftCompleted = useRef(false);
   const allowNavigation = useRef(false);
+  const submitLock = useRef(false);
   const appliedEditRequestKey = useRef<string | null>(null);
   const defaultMarketLocation = profile?.location ?? '';
   const editRequestKey =
@@ -641,8 +640,9 @@ export function CommunityWriteScreen() {
 
     if (initialTab === 'market') {
       return {
+        ...(isMarketEditMode && postId ? { editPostId: postId } : {}),
         expiresAt,
-        id: `write-${initialTab}`,
+        id: isMarketEditMode && postId ? `edit-${initialTab}-${postId}` : `write-${initialTab}`,
         marketBody,
         marketCategory,
         marketPhotos,
@@ -660,7 +660,8 @@ export function CommunityWriteScreen() {
 
     if (initialTab === 'review') {
       return {
-        id: `write-${initialTab}`,
+        ...(isReviewEditMode && postId ? { editPostId: postId } : {}),
+        id: isReviewEditMode && postId ? `edit-${initialTab}-${postId}` : `write-${initialTab}`,
         reviewBody,
         reviewCategory,
         reviewKindness,
@@ -678,7 +679,8 @@ export function CommunityWriteScreen() {
     }
 
     return {
-      id: `write-${initialTab}`,
+      ...(isTalkEditMode && postId ? { editPostId: postId } : {}),
+      id: isTalkEditMode && postId ? `edit-${initialTab}-${postId}` : `write-${initialTab}`,
       tab: 'talk',
       talkBody,
       talkCategory,
@@ -691,12 +693,16 @@ export function CommunityWriteScreen() {
   }, [
     expiresAt,
     initialTab,
+    isMarketEditMode,
+    isReviewEditMode,
+    isTalkEditMode,
     marketBody,
     marketCategory,
     marketPhotos,
     price,
     priceOffer,
     productName,
+    postId,
     reviewBody,
     reviewCategory,
     reviewKindness,
@@ -756,7 +762,7 @@ export function CommunityWriteScreen() {
         expiresAt !== (marketPostToEdit.expiresAt ?? '') ||
         marketBody !== marketPostToEdit.body ||
         tradeLocation !== marketPostToEdit.location ||
-        !sameStringList(tradeMethods, getMarketTradeMethods(marketPostToEdit)) ||
+        !sameStringList(tradeMethods, getEditableMarketTradeMethods(marketPostToEdit)) ||
         marketPhotos.map((image) => image.assetId).join('|') !==
           (marketPostToEdit.images ?? []).map((image) => image.assetId).join('|')
       ),
@@ -765,6 +771,28 @@ export function CommunityWriteScreen() {
     (isEditMode
       ? isTalkEditDirty || isMarketEditDirty || isReviewEditDirty
       : hasWriteDraftContent(currentDraft, defaultMarketLocation));
+  const performBack = useCallback(() => {
+    if ((origin === 'community' || origin === 'detail') && router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace({ pathname: '/community', params: { tab: initialTab } });
+  }, [initialTab, origin, router]);
+  const goBack = useCallback(() => {
+    if (submitLock.current || submitting) return;
+    if (pendingSubmittedPostId) {
+      showAlert('게시글은 저장됐어요', '작성 화면 정리가 끝난 뒤 이동할 수 있어요. 등록 버튼을 다시 눌러주세요.');
+      return;
+    }
+
+    if (isDirty) {
+      setManualExitPending(true);
+      return;
+    }
+
+    performBack();
+  }, [isDirty, pendingSubmittedPostId, performBack, showAlert, submitting]);
 
   const applyDraft = useCallback((draft: CommunityWriteDraft) => {
     if (draft.tab === 'talk') {
@@ -786,7 +814,8 @@ export function CommunityWriteScreen() {
       setExpiresAt(draft.expiresAt);
       setMarketBody(draft.marketBody);
       setTradeMethods(draft.tradeMethods.filter((method): method is MarketTradeMethod =>
-        MARKET_TRADE_METHODS.includes(method),
+        MARKET_TRADE_METHODS.includes(method) &&
+        (draft.tradeType === '나눔' || method !== '비대면 나눔'),
       ));
       setTradeLocation(draft.tradeLocation);
       return;
@@ -821,7 +850,7 @@ export function CommunityWriteScreen() {
     setPriceOffer(hasPriceOffer(post.priceLabel));
     setExpiresAt(post.expiresAt ?? '');
     setMarketBody(post.body);
-    setTradeMethods(getMarketTradeMethods(post));
+    setTradeMethods(getEditableMarketTradeMethods(post));
     setTradeLocation(post.location);
   }, []);
 
@@ -842,39 +871,60 @@ export function CommunityWriteScreen() {
     let active = true;
     if (editRequestKey && appliedEditRequestKey.current === editRequestKey) return undefined;
     if (!editRequestKey) appliedEditRequestKey.current = null;
+    if (!isReady || hasLoadError) return undefined;
 
     setIsDraftReady(false);
     draftCompleted.current = false;
     allowNavigation.current = false;
 
+    const requestedPost = postId ? getPostById(postId) : null;
+    const requestedReviewPost = postId ? getReviewPostById(postId) : null;
+    let ownsRequestedPost = false;
     if (isTalkEditRequested) {
-      if (talkPostToEdit && talkPostToEdit.author.userId === viewerId) {
-        applyTalkPost(talkPostToEdit);
-        appliedEditRequestKey.current = editRequestKey;
+      if (requestedPost?.kind === 'talk' && requestedPost.author.userId === viewerId) {
+        applyTalkPost(requestedPost);
+        ownsRequestedPost = true;
       }
-      setIsDraftReady(true);
-      return () => {
-        active = false;
-      };
+    } else if (isMarketEditRequested) {
+      if (requestedPost?.kind === 'market' && requestedPost.author.userId === viewerId) {
+        applyMarketPost(requestedPost);
+        ownsRequestedPost = true;
+      }
+    } else if (isReviewEditRequested) {
+      if (requestedReviewPost?.author.userId === viewerId) {
+        applyReviewPost(requestedReviewPost);
+        ownsRequestedPost = true;
+      }
     }
 
-    if (isMarketEditRequested) {
-      if (marketPostToEdit && marketPostToEdit.author.userId === viewerId) {
-        applyMarketPost(marketPostToEdit);
-        appliedEditRequestKey.current = editRequestKey;
+    if (isEditRequested) {
+      if (!ownsRequestedPost || !postId) {
+        if (postId) {
+          void communityRepository
+            .discardWriteDraft(viewerId, initialTab, postId)
+            .catch(() => undefined);
+        }
+        setIsDraftReady(true);
+        return () => {
+          active = false;
+        };
       }
-      setIsDraftReady(true);
-      return () => {
-        active = false;
-      };
-    }
 
-    if (isReviewEditRequested) {
-      if (reviewPostToEdit && reviewPostToEdit.author.userId === viewerId) {
-        applyReviewPost(reviewPostToEdit);
-        appliedEditRequestKey.current = editRequestKey;
-      }
-      setIsDraftReady(true);
+      appliedEditRequestKey.current = editRequestKey;
+      communityRepository
+        .loadWriteDraft(viewerId, initialTab, postId)
+        .then((draft) => {
+          if (!active || !draft) return;
+          applyDraft(draft);
+          if (isReviewEditRequested && requestedReviewPost) {
+            setReviewCategory(requestedReviewPost.category);
+            setReviewTarget(requestedReviewPost.targetName ?? '');
+          }
+        })
+        .finally(() => {
+          if (active) setIsDraftReady(true);
+        });
+
       return () => {
         active = false;
       };
@@ -899,77 +949,144 @@ export function CommunityWriteScreen() {
     applyReviewPost,
     applyTalkPost,
     editRequestKey,
+    getPostById,
+    getReviewPostById,
+    hasLoadError,
     initialTab,
     isEditRequested,
+    isReady,
     isMarketEditRequested,
     isReviewEditRequested,
     isTalkEditRequested,
-    marketPostToEdit,
-    reviewPostToEdit,
-    talkPostToEdit,
+    postId,
     viewerId,
   ]);
 
   useEffect(() => {
-    if (!isDraftReady || draftCompleted.current || isEditMode || isEditRequested) return undefined;
+    if (
+      !isDraftReady ||
+      draftCompleted.current ||
+      (isEditRequested && !isEditMode)
+    ) {
+      return undefined;
+    }
 
     const timeout = setTimeout(() => {
       if (draftCompleted.current) return;
 
-      if (hasWriteDraftContent(currentDraft, defaultMarketLocation)) {
+      const shouldSave = isEditMode
+        ? isDirty
+        : hasWriteDraftContent(currentDraft, defaultMarketLocation);
+
+      if (shouldSave) {
         void communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
         return;
       }
 
-      void communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
+      void communityRepository
+        .deleteWriteDraft(viewerId, initialTab, isEditMode ? postId : undefined)
+        .catch(() => undefined);
     }, 220);
 
     return () => clearTimeout(timeout);
-  }, [currentDraft, defaultMarketLocation, initialTab, isDraftReady, isEditMode, isEditRequested, viewerId]);
+  }, [
+    currentDraft,
+    defaultMarketLocation,
+    initialTab,
+    isDirty,
+    isDraftReady,
+    isEditMode,
+    isEditRequested,
+    postId,
+    viewerId,
+  ]);
 
-  usePreventRemove(isDirty && !submitting, ({ data }) => {
+  usePreventRemove(isDirty || submitting || Boolean(pendingSubmittedPostId), ({ data }) => {
     if (allowNavigation.current) {
       navigation.dispatch(data.action);
       return;
     }
 
+    if (submitting) return;
+    if (pendingSubmittedPostId) {
+      showAlert('게시글은 저장됐어요', '작성 화면 정리가 끝난 뒤 이동할 수 있어요. 등록 버튼을 다시 눌러주세요.');
+      return;
+    }
+
+    setManualExitPending(false);
     setPendingExitAction(data.action);
   });
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      goBack();
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [goBack]);
+
   const discardDraftAndLeave = useCallback(() => {
+    if (pendingSubmittedPostId) {
+      showAlert('게시글은 저장됐어요', '작성 화면 정리가 끝난 뒤 이동할 수 있어요. 등록 버튼을 다시 눌러주세요.');
+      return;
+    }
+
     const exitAction = pendingExitAction;
-    if (!exitAction) return;
+    const shouldPerformManualExit = manualExitPending;
+    if (!exitAction && !shouldPerformManualExit) return;
 
     setPendingExitAction(null);
+    setManualExitPending(false);
     void (async () => {
       draftCompleted.current = true;
-      if (isEditMode) {
+      try {
         const photos = initialTab === 'talk'
           ? talkPhotos
           : initialTab === 'market'
             ? marketPhotos
             : reviewPhotos;
+        await communityRepository.discardWriteDraft(
+          viewerId,
+          initialTab,
+          isEditMode ? postId : undefined,
+        );
         await removeCommunityImages(
           viewerId,
-          photos.filter((image) => !originalImageIds.has(image.assetId)),
-        ).catch(() => undefined);
-      } else {
-        await communityRepository.discardWriteDraft(viewerId, initialTab).catch(() => undefined);
-        if (initialTab === 'talk') await removeCommunityImages(viewerId, talkPhotos).catch(() => undefined);
-        if (initialTab === 'market') await removeCommunityImages(viewerId, marketPhotos).catch(() => undefined);
-        if (initialTab === 'review') await removeCommunityImages(viewerId, reviewPhotos).catch(() => undefined);
+          isEditMode
+            ? photos.filter((image) => !originalImageIds.has(image.assetId))
+            : photos,
+        );
+      } catch {
+        draftCompleted.current = false;
+        setPendingExitAction(exitAction);
+        setManualExitPending(shouldPerformManualExit);
+        showAlert('작성 내용을 정리하지 못했어요', '잠시 후 다시 시도해주세요.');
+        return;
       }
       allowNavigation.current = true;
-      navigation.dispatch(exitAction);
+      setIsDraftReady(false);
+      setTimeout(() => {
+        if (exitAction) {
+          navigation.dispatch(exitAction);
+          return;
+        }
+        performBack();
+      }, 0);
     })();
   }, [
     initialTab,
     isEditMode,
+    manualExitPending,
     marketPhotos,
     navigation,
     originalImageIds,
     pendingExitAction,
+    pendingSubmittedPostId,
+    performBack,
+    postId,
     reviewPhotos,
+    showAlert,
     talkPhotos,
     viewerId,
   ]);
@@ -984,7 +1101,7 @@ export function CommunityWriteScreen() {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('사진 접근 권한이 필요해요', '설정에서 사진 접근 권한을 허용해주세요.', [
+        showAlert('사진 접근 권한이 필요해요', '설정에서 사진 접근 권한을 허용해주세요.', [
           { text: '취소', style: 'cancel' },
           { text: '설정 열기', onPress: () => void Linking.openSettings() },
         ]);
@@ -1015,7 +1132,7 @@ export function CommunityWriteScreen() {
       ].slice(0, maxCount);
       setPhotos(nextPhotos);
     } catch {
-      Alert.alert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
+      showAlert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
     }
   };
 
@@ -1026,7 +1143,7 @@ export function CommunityWriteScreen() {
   ) => {
     const target = photos.find((photo) => getCommunityImageUri(photo) === uri);
     if (target && (!isEditMode || !originalImageIds.has(target.assetId))) {
-      void removeCommunityImage(viewerId, target).catch(() => undefined);
+      void queueCommunityImageRemovals(viewerId, [target]).catch(() => undefined);
     }
     setPhotos(photos.filter((photo) => getCommunityImageUri(photo) !== uri));
   };
@@ -1121,31 +1238,48 @@ export function CommunityWriteScreen() {
   const canSubmitTalk = Boolean(talkTitle.trim() && talkBody.trim());
   const marketNeedsPhoto = tradeType !== '구해요';
   const marketNeedsPrice = tradeType === '판매';
+  const availableTradeMethods = tradeType === '나눔'
+    ? MARKET_TRADE_METHODS
+    : MARKET_TRADE_METHODS.filter((method) => method !== '비대면 나눔');
+  const hasValidTradeMethods = isValidMarketTradeMethodSelection(tradeType, tradeMethods);
+  const marketPrice = getPositiveMarketPrice(price);
   const marketNeedsLocation = tradeMethods.includes('직거래') || tradeMethods.includes('비대면 나눔');
   const hasInvalidExpiry = Boolean(expiresAt.trim() && !isFutureDateValue(expiresAt));
-  const normalizedReviewBody = normalizeMultilineText(reviewBody);
-  const normalizedReviewTarget = normalizeInlineText(reviewTarget);
-  const normalizedReviewTitle = normalizeInlineText(reviewTitle);
-  const reviewVisitedDate = parseDateValue(reviewVisitedAt);
-  const hasInvalidReviewDate = Boolean(reviewVisitedAt.trim() && !isPastOrTodayDateValue(reviewVisitedAt));
+  const reviewInput = getValidReviewInput({
+    body: reviewBody,
+    detailScores: {
+      kindness: reviewKindness,
+      price: reviewPriceScore,
+      revisit: reviewRevisit,
+    },
+    rating: reviewRating,
+    title: reviewTitle,
+    visitedAt: reviewVisitedAt,
+  });
+  const normalizedReviewTarget = getValidReviewTarget(reviewTarget);
+  const reviewValidationMessage =
+    getReviewTargetValidationMessage(reviewTarget) ??
+    getReviewInputValidationMessage({
+      body: reviewBody,
+      detailScores: {
+        kindness: reviewKindness,
+        price: reviewPriceScore,
+        revisit: reviewRevisit,
+      },
+      rating: reviewRating,
+      title: reviewTitle,
+      visitedAt: reviewVisitedAt,
+    });
   const canSubmitMarket = Boolean(
     productName.trim() &&
       marketBody.trim() &&
       (!marketNeedsPhoto || marketPhotos.length > 0) &&
-      (!marketNeedsPrice || price.replace(/[^0-9]/g, '')) &&
+      (!marketNeedsPrice || marketPrice) &&
+      hasValidTradeMethods &&
       !hasInvalidExpiry &&
       (!marketNeedsLocation || tradeLocation.trim()),
   );
-  const canSubmitReview = Boolean(
-    normalizedReviewTarget &&
-      normalizedReviewTarget.length <= REVIEW_TARGET_MAX_LENGTH &&
-      normalizedReviewTitle &&
-      normalizedReviewTitle.length <= REVIEW_TITLE_MAX_LENGTH &&
-      normalizedReviewBody.length >= REVIEW_BODY_MIN_LENGTH &&
-      normalizedReviewBody.length <= REVIEW_BODY_MAX_LENGTH &&
-      reviewVisitedDate &&
-      !hasInvalidReviewDate,
-  );
+  const canSubmitReview = reviewValidationMessage === null;
   const canSubmit =
     initialTab === 'talk'
       ? canSubmitTalk
@@ -1163,39 +1297,93 @@ export function CommunityWriteScreen() {
     if (initialTab === 'market') {
       if (marketNeedsPhoto && marketPhotos.length === 0) return '상품 사진을 1개 이상 등록해주세요.';
       if (!productName.trim()) return '상품명을 입력해주세요.';
-      if (marketNeedsPrice && !price.replace(/[^0-9]/g, '')) return '가격을 입력해주세요.';
+      if (marketNeedsPrice && !marketPrice) return '가격은 0원보다 크게 입력해주세요.';
       if (hasInvalidExpiry) {
         return '유통기한은 오늘 이후 날짜로 입력해주세요.';
       }
       if (!marketBody.trim()) return '상세 설명을 입력해주세요.';
+      if (!hasValidTradeMethods) return '거래 방법을 1개 이상 선택해주세요.';
       if (marketNeedsLocation && !tradeLocation.trim()) return '거래 지역을 입력해주세요.';
       return null;
     }
 
-    if (!normalizedReviewTarget) return '리뷰 대상을 입력해주세요.';
-    if (normalizedReviewTarget.length > REVIEW_TARGET_MAX_LENGTH) return '리뷰 대상은 50자 이하로 입력해주세요.';
-    if (!normalizedReviewTitle) return '제목을 입력해주세요.';
-    if (normalizedReviewTitle.length > REVIEW_TITLE_MAX_LENGTH) return '제목은 40자 이하로 입력해주세요.';
-    if (!reviewVisitedAt.trim()) return '이용 날짜를 입력해주세요.';
-    if (hasInvalidReviewDate || !reviewVisitedDate) return '이용 날짜는 오늘 또는 이전 날짜로 입력해주세요.';
-    if (!normalizedReviewBody) return '후기 내용을 입력해주세요.';
-    if (normalizedReviewBody.length < REVIEW_BODY_MIN_LENGTH) return '후기 내용은 10자 이상 입력해주세요.';
-    if (normalizedReviewBody.length > REVIEW_BODY_MAX_LENGTH) return '후기 내용은 700자 이하로 입력해주세요.';
-    return null;
+    return reviewValidationMessage;
+  };
+
+  const openSubmittedPost = (savedPostId: string) => {
+    allowNavigation.current = true;
+
+    if (isEditMode && origin === 'detail' && router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace({
+      pathname: '/community/[postId]',
+      params: {
+        ...(origin === 'community' ? { origin: 'community' } : {}),
+        ...(origin === 'community' && !isEditMode ? { focusOnReturn: '1' } : {}),
+        postId: savedPostId,
+      },
+    });
+  };
+
+  const finalizeSubmittedPost = async (savedPostId: string) => {
+    setPendingSubmittedPostId(savedPostId);
+    draftCompleted.current = true;
+
+    try {
+      await communityRepository.deleteWriteDraft(
+        viewerId,
+        initialTab,
+        isEditMode ? postId : undefined,
+      );
+      setPendingSubmittedPostId(null);
+      openSubmittedPost(savedPostId);
+      return true;
+    } catch {
+      showAlert(
+        '게시글은 저장됐어요',
+        '작성 화면을 정리하지 못했어요. 등록 버튼을 눌러 다시 시도해주세요.',
+      );
+      return false;
+    }
   };
 
   const submit = async () => {
-    if (submitting) return;
+    if (submitLock.current) return;
+    submitLock.current = true;
+
+    if (pendingSubmittedPostId) {
+      setSubmitting(true);
+      try {
+        await finalizeSubmittedPost(pendingSubmittedPostId);
+      } finally {
+        submitLock.current = false;
+        setSubmitting(false);
+      }
+      return;
+    }
 
     const blockMessage = getSubmitBlockMessage();
     if (blockMessage) {
-      Alert.alert('필수 항목을 확인해주세요', blockMessage);
+      showAlert('필수 항목을 확인해주세요', blockMessage);
+      submitLock.current = false;
       return;
     }
 
     setSubmitting(true);
 
     try {
+      if (isEditMode) {
+        try {
+          await communityRepository.saveWriteDraft(currentDraft);
+        } catch {
+          showAlert('작성 내용을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+          return;
+        }
+      }
+
       if (initialTab === 'talk') {
         if (isTalkEditMode && postId) {
           const result = await updateTalkPost(postId, {
@@ -1207,13 +1395,12 @@ export function CommunityWriteScreen() {
             title: talkTitle,
           });
           if (result.ok) {
-            draftCompleted.current = true;
-            allowNavigation.current = true;
-            router.replace({ pathname: '/community/[postId]', params: { postId } });
+            await finalizeSubmittedPost(postId);
             return;
           }
 
-          Alert.alert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+          await communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
+          showAlert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
           return;
         }
 
@@ -1229,37 +1416,30 @@ export function CommunityWriteScreen() {
           title: talkTitle,
         });
         if (result.ok && result.postId) {
-          draftCompleted.current = true;
-          allowNavigation.current = true;
-          await communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
-          router.replace({ pathname: '/community/[postId]', params: { postId: result.postId } });
+          await finalizeSubmittedPost(result.postId);
           return;
         }
 
-        Alert.alert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
+        showAlert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
         return;
       }
 
       if (initialTab === 'market') {
-        const resolvedPrice =
-          tradeType === '나눔'
-            ? '나눔'
-            : tradeType === '교환'
-              ? '교환'
-              : tradeType === '구해요' && !price.replace(/[^0-9]/g, '')
-                ? '가격 협의'
-                : formatPrice(price);
+        const resolvedPrice = createMarketPriceLabel(tradeType, price, priceOffer);
+        if (!resolvedPrice) {
+          showAlert('필수 항목을 확인해주세요', '가격은 0원보다 크게 입력해주세요.');
+          return;
+        }
         const marketPayload = {
           body: marketBody,
           category: marketCategory,
           expiresAt: expiresAt.trim() || undefined,
           images: marketPhotos,
           imageCount: marketPhotos.length,
-          location: tradeLocation.trim() || profile?.location || '지역 미설정',
-          priceLabel:
-            tradeType === '판매' && priceOffer && resolvedPrice
-              ? `${resolvedPrice} · 가격 제안 가능`
-              : resolvedPrice,
+          location: marketNeedsLocation
+            ? tradeLocation.trim() || profile?.location || '지역 미설정'
+            : '지역 미설정',
+          priceLabel: resolvedPrice,
           tags: [marketCategory, tradeType, ...tradeMethods],
           title: productName,
           tradeType,
@@ -1267,13 +1447,12 @@ export function CommunityWriteScreen() {
         if (isMarketEditMode && postId) {
           const result = await updateMarketPost(postId, marketPayload);
           if (result.ok) {
-            draftCompleted.current = true;
-            allowNavigation.current = true;
-            router.replace({ pathname: '/community/[postId]', params: { postId } });
+            await finalizeSubmittedPost(postId);
             return;
           }
 
-          Alert.alert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+          await communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
+          showAlert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
           return;
         }
 
@@ -1281,23 +1460,24 @@ export function CommunityWriteScreen() {
           ...marketPayload,
           author,
           baseBookmarkCount: 0,
-          baseReactionCounts: { helpful: 0, notHelpful: 0 },
           status: '진행 중',
         });
         if (result.ok && result.postId) {
-          draftCompleted.current = true;
-          allowNavigation.current = true;
-          await communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
-          router.replace({ pathname: '/community/[postId]', params: { postId: result.postId } });
+          await finalizeSubmittedPost(result.postId);
           return;
         }
 
-        Alert.alert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
+        showAlert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
+        return;
+      }
+
+      if (!reviewInput || !normalizedReviewTarget) {
+        showAlert('필수 항목을 확인해주세요', '리뷰 입력 내용을 다시 확인해주세요.');
         return;
       }
 
       const reviewPayload = {
-        body: normalizedReviewBody,
+        body: reviewInput.body,
         detailScores: {
           kindness: reviewKindness,
           price: reviewPriceScore,
@@ -1305,19 +1485,18 @@ export function CommunityWriteScreen() {
         },
         images: reviewPhotos,
         rating: reviewRating,
-        title: normalizedReviewTitle,
-        visitedAt: reviewVisitedDate ? formatDateValue(reviewVisitedDate) : undefined,
+        title: reviewInput.title,
+        visitedAt: reviewInput.visitedAt,
       };
       if (isReviewEditMode && postId) {
         const result = await updateReviewPost(postId, reviewPayload);
         if (result.ok) {
-          draftCompleted.current = true;
-          allowNavigation.current = true;
-          router.replace({ pathname: '/community/[postId]', params: { postId } });
+          await finalizeSubmittedPost(postId);
           return;
         }
 
-        Alert.alert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+        await communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
+        showAlert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
         return;
       }
 
@@ -1329,15 +1508,13 @@ export function CommunityWriteScreen() {
         targetName: normalizedReviewTarget,
       });
       if (result.ok && result.postId) {
-        draftCompleted.current = true;
-        allowNavigation.current = true;
-        await communityRepository.deleteWriteDraft(viewerId, initialTab).catch(() => undefined);
-        router.replace({ pathname: '/community/[postId]', params: { postId: result.postId } });
+        await finalizeSubmittedPost(result.postId);
         return;
       }
 
-      Alert.alert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
+      showAlert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
@@ -1354,10 +1531,41 @@ export function CommunityWriteScreen() {
       : initialTab === 'review'
         ? '리뷰 글쓰기'
         : '소통 글쓰기';
-  const submitLabel = isEditMode ? '저장' : '등록';
+  const submitLabel = pendingSubmittedPostId ? '정리 재시도' : isEditMode ? '저장' : '등록';
+  const submitReady = canSubmit || Boolean(pendingSubmittedPostId);
 
-  if (isEditRequested && !isReady) {
-    return <LoadingView label="게시글을 불러오고 있어요" />;
+  if (!isReady) {
+    return (
+      <ScreenLayout
+        headerFullWidth
+        headerVariant="auth"
+        leftAccessibilityLabel="커뮤니티로 돌아가기"
+        onLeftPress={goBack}
+        title="커뮤니티"
+      >
+        <LoadingView label="게시글을 불러오고 있어요" />
+      </ScreenLayout>
+    );
+  }
+
+  if (hasLoadError) {
+    return (
+      <ScreenLayout
+        headerFullWidth
+        headerVariant="auth"
+        leftAccessibilityLabel="커뮤니티로 돌아가기"
+        onLeftPress={goBack}
+        title="커뮤니티"
+      >
+        <EmptyState
+          actionLabel="다시 시도"
+          description="잠시 후 다시 글쓰기를 열어주세요."
+          icon={<AppIcon color={COLORS.primary} name="chatbubbles-outline" size={32} />}
+          onActionPress={() => void reloadCommunity()}
+          title="게시글을 불러오지 못했어요."
+        />
+      </ScreenLayout>
+    );
   }
 
   if (isEditRequested && !isEditMode && isDraftReady) {
@@ -1365,6 +1573,8 @@ export function CommunityWriteScreen() {
       <ScreenLayout
         headerFullWidth
         headerVariant="auth"
+        leftAccessibilityLabel="커뮤니티로 돌아가기"
+        onLeftPress={goBack}
         title="커뮤니티"
       >
         <EmptyState
@@ -1381,6 +1591,8 @@ export function CommunityWriteScreen() {
       <ScreenLayout
       headerFullWidth
       headerVariant="auth"
+      leftAccessibilityLabel="커뮤니티로 돌아가기"
+      onLeftPress={goBack}
       rightContent={
         <Pressable
           accessibilityLabel={submitLabel}
@@ -1390,11 +1602,11 @@ export function CommunityWriteScreen() {
           onPress={submit}
           style={({ pressed }) => [
             styles.submitPill,
-            canSubmit && styles.submitPillActive,
-            pressed && canSubmit && styles.pressed,
+            submitReady && styles.submitPillActive,
+            pressed && submitReady && styles.pressed,
           ]}
         >
-          <Text style={[styles.submitPillText, canSubmit && styles.submitPillTextActive]}>
+          <Text style={[styles.submitPillText, submitReady && styles.submitPillTextActive]}>
             {submitLabel}
           </Text>
         </Pressable>
@@ -1523,11 +1735,17 @@ export function CommunityWriteScreen() {
 
           {initialTab === 'market' ? (
             <>
-              <FieldCard title="거래 방식" subtitle="나눔, 판매, 구해요 중 목적에 맞게 골라주세요">
+              <FieldCard title="거래 방식" subtitle="나눔, 판매, 교환, 구해요 중 목적에 맞게 골라주세요">
                 <ChipGroup
                   onChange={(value) => {
                     setTradeType(value);
                     setPriceOffer(false);
+                    setTradeMethods((current) => {
+                      const compatible = value === '나눔'
+                        ? current
+                        : current.filter((method) => method !== '비대면 나눔');
+                      return compatible.length ? compatible : ['직거래'];
+                    });
                   }}
                   value={tradeType}
                   values={MARKET_TRADE_TYPES}
@@ -1622,9 +1840,9 @@ export function CommunityWriteScreen() {
                 <Text style={styles.counter}>{marketBody.length} / {MAX_BODY_LENGTH}</Text>
               </FieldCard>
 
-              <FieldCard title="거래 방법" subtitle="여러 개를 함께 선택할 수 있어요">
+              <FieldCard required title="거래 방법" subtitle="여러 개를 함께 선택할 수 있어요">
                 <View style={styles.chipGroup}>
-                  {MARKET_TRADE_METHODS.map((method) => {
+                  {availableTradeMethods.map((method) => {
                     const selected = tradeMethods.includes(method);
                     return (
                       <ChoiceChip
@@ -1636,6 +1854,9 @@ export function CommunityWriteScreen() {
                     );
                   })}
                 </View>
+                {!hasValidTradeMethods ? (
+                  <Text style={styles.errorText}>거래 방법을 1개 이상 선택해주세요.</Text>
+                ) : null}
                 {marketNeedsLocation ? (
                   <View style={styles.locationField}>
                     <Text style={styles.inlineLabel}>
@@ -1701,7 +1922,7 @@ export function CommunityWriteScreen() {
                 </View>
               </FieldCard>
 
-              <FieldCard icon="paw" title="리뷰 정보">
+              <FieldCard brandPaw title="리뷰 정보">
                 <View style={styles.formRow}>
                   <FormLabel required title="제목" />
                   <AppInput
@@ -1756,6 +1977,10 @@ export function CommunityWriteScreen() {
                   photos={reviewPhotos}
                 />
               </FieldCard>
+              <Text style={styles.photoGuide}>
+                사진에 개인정보가 노출되지 않았는지 확인해주세요.{'\n'}
+                사실과 다른 내용이나 과도한 비방은 삼가주세요.
+              </Text>
             </>
           ) : null}
         </KeyboardAwareScrollView>
@@ -1824,7 +2049,10 @@ export function CommunityWriteScreen() {
       ) : null}
 
       <AppModal
-        onClose={() => setPendingExitAction(null)}
+        onClose={() => {
+          setManualExitPending(false);
+          setPendingExitAction(null);
+        }}
         primaryAction={{
           label: '나가기',
           onPress: discardDraftAndLeave,
@@ -1832,11 +2060,14 @@ export function CommunityWriteScreen() {
         }}
         secondaryAction={{
           label: '계속 작성',
-          onPress: () => setPendingExitAction(null),
+          onPress: () => {
+            setManualExitPending(false);
+            setPendingExitAction(null);
+          },
         }}
         title="글쓰기를 그만할까요?"
         variant="center"
-        visible={Boolean(pendingExitAction)}
+        visible={manualExitPending || Boolean(pendingExitAction)}
       >
         <Text style={styles.exitModalDescription}>작성 중인 내용이 삭제돼요.</Text>
       </AppModal>

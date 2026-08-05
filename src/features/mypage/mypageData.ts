@@ -1,4 +1,4 @@
-import type { PlanId } from './types';
+import type { PaymentMethod, PlanId } from './types';
 
 export type PlanDefinition = {
   aiSummary: string;
@@ -60,4 +60,68 @@ export function getPlanPrice(planId: PlanId) {
 
 export function getUpgradePaymentAmount(currentPlanId: PlanId, nextPlanId: PlanId) {
   return Math.max(getPlanPrice(nextPlanId) - getPlanPrice(currentPlanId), 0);
+}
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, '0');
+}
+
+export function getLocalCalendarDate(date = new Date()) {
+  return [
+    date.getFullYear(),
+    padDatePart(date.getMonth() + 1),
+    padDatePart(date.getDate()),
+  ].join('-');
+}
+
+export function getNextBillingDate(date = new Date()) {
+  const targetYear = date.getMonth() === 11 ? date.getFullYear() + 1 : date.getFullYear();
+  const targetMonth = (date.getMonth() + 1) % 12;
+  const lastTargetDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const targetDate = new Date(
+    targetYear,
+    targetMonth,
+    Math.min(date.getDate(), lastTargetDay),
+  );
+
+  return getLocalCalendarDate(targetDate);
+}
+
+export function isValidClockTime(value: string) {
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function isConnectedPaymentMethod(
+  method: PaymentMethod | null | undefined,
+) {
+  return Boolean(
+    method?.last4.trim() && method.last4.trim() !== '등록 대기',
+  );
+}
+
+export function normalizePaymentMethods(methods: PaymentMethod[]) {
+  const connectedMethods = methods
+    .filter(isConnectedPaymentMethod)
+    .filter(
+      (method, index, values) =>
+        values.findIndex((candidate) => candidate.id === method.id) === index,
+    )
+    .slice(0, 3);
+  const defaultMethod =
+    connectedMethods.find((method) => method.isDefault) ?? connectedMethods[0];
+
+  return connectedMethods.map((method) => ({
+    ...method,
+    isDefault: method.id === defaultMethod?.id,
+  }));
+}
+
+export function getCheckoutPaymentMethod(methods: PaymentMethod[]) {
+  const connectedMethods = normalizePaymentMethods(methods);
+
+  return (
+    connectedMethods.find((method) => method.isDefault) ??
+    connectedMethods[0] ??
+    null
+  );
 }

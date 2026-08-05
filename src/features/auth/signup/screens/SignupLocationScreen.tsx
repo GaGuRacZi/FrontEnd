@@ -3,7 +3,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Platform,
   Pressable,
@@ -13,13 +12,8 @@ import {
 } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
-import {
-  getSignupUserId,
-  useAuthSession,
-} from '@/src/features/auth/session/AuthSessionStore';
-import { signupDataToPetEntity } from '@/src/features/pet/petMappers';
-import { usePetStore } from '@/src/features/pet/PetStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { TERM_IDS, useTerms } from '../../terms';
@@ -50,22 +44,15 @@ async function openLocationSettings() {
 export function SignupLocationScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { data, markSignupCompleted, signupSessionId, updateField } = useSignup();
-  const { activateSignupUser } = useAuthSession();
-  const { registerSignupPet } = usePetStore();
+  const showAlert = useAppAlert();
+  const { data, updateField } = useSignup();
   const [searching, setSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string>();
-  const [submitting, setSubmitting] = useState(false);
   const locating = useRef(false);
   const locationRequestId = useRef(0);
   const currentLocationSelected = data.regionSource === 'current';
-  const {
-    finalizeSignupConsents,
-    getTerm,
-    hasCurrentConsent,
-    status: termsStatus,
-  } = useTerms();
+  const { getTerm, hasCurrentConsent, status: termsStatus } = useTerms();
 
   const invalidateLocationRequest = useCallback(() => {
     locationRequestId.current += 1;
@@ -122,7 +109,7 @@ export function SignupLocationScreen() {
 
       if (!permission.granted) {
         setLocationError('현재 위치를 사용하려면 위치 권한을 허용해주세요.');
-        Alert.alert(
+        showAlert(
           '위치 권한이 필요해요',
           '현재 위치로 설정하려면 앱 설정에서 위치 권한을 허용해주세요.',
           [
@@ -137,7 +124,7 @@ export function SignupLocationScreen() {
 
       if (Platform.OS === 'android' && androidAccuracy && androidAccuracy !== 'fine') {
         setLocationError('정확한 위치 권한을 켠 뒤 다시 시도해주세요.');
-        Alert.alert(
+        showAlert(
           '정확한 위치가 필요해요',
           '현재 지역을 정확하게 설정하려면 앱 위치 권한에서 정확한 위치를 켜주세요.',
           [
@@ -154,7 +141,7 @@ export function SignupLocationScreen() {
 
       if (!servicesEnabled) {
         setLocationError('기기의 위치 서비스를 켠 뒤 다시 시도해주세요.');
-        Alert.alert('위치 서비스가 꺼져 있어요', '기기 설정에서 위치 서비스를 켜주세요.', [
+        showAlert('위치 서비스가 꺼져 있어요', '기기 설정에서 위치 서비스를 켜주세요.', [
           { text: '취소', style: 'cancel' },
           { text: '설정 열기', onPress: () => void openLocationSettings() },
         ]);
@@ -201,26 +188,6 @@ export function SignupLocationScreen() {
     }
   };
 
-  const handleSubmit = async () => {
-    if (submitting) return;
-
-    setSubmitting(true);
-
-    try {
-      const userId = getSignupUserId(data.method, data.email, signupSessionId);
-      const initialPet = signupDataToPetEntity(data, userId);
-      await registerSignupPet(userId, initialPet);
-      await finalizeSignupConsents(userId);
-      await activateSignupUser(data.method, data.email, signupSessionId);
-      markSignupCompleted();
-      cancelLocationRequest();
-      router.push('/signup/complete');
-    } catch {
-      Alert.alert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
-      setSubmitting(false);
-    }
-  };
-
   if (searching) {
     return (
       <AddressSearchScreen
@@ -242,11 +209,12 @@ export function SignupLocationScreen() {
   return (
     <SignupScaffold
       bodyStyle={styles.body}
-      buttonTitle="회원가입 완료하기"
-      currentStep={5}
+      currentStep={3}
       nextDisabled={!hasValidSignupLocation(data)}
-      nextLoading={submitting}
-      onNext={handleSubmit}
+      onNext={() => {
+        cancelLocationRequest();
+        router.push('/signup/pet-type');
+      }}
       title="위치 정보를 설정해주세요"
     >
       <Text style={styles.description}>

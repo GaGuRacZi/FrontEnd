@@ -57,7 +57,7 @@ export function SignupPetTypeScreen() {
     <>
       <SignupScaffold
         bodyStyle={styles.body}
-        currentStep={3}
+        currentStep={4}
         nextDisabled={!hasValidSignupPetType(data)}
         onNext={() => router.push('/signup/pet-info')}
         title={'반려동물의 정보를\n입력해주세요'}

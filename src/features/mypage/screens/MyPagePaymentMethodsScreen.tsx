@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, AppIcon, EmptyState } from '@/src/components/common';
-import { AppModal } from '@/src/components/modal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import { MyPageHeader } from '../components';
+import { normalizePaymentMethods } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
 import type { PaymentMethod } from '../types';
 
@@ -23,11 +24,13 @@ function createEasyPayMethod(): PaymentMethod {
 }
 
 export function MyPagePaymentMethodsScreen() {
+  const showAlert = useAppAlert();
   const { paymentMethods, updatePaymentMethods } = useMyPageStore();
   const [updating, setUpdating] = useState(false);
   const [methodToDelete, setMethodToDelete] = useState<PaymentMethod | null>(null);
   const [limitModalVisible, setLimitModalVisible] = useState(false);
-  const sortedPaymentMethods = [...paymentMethods].sort((left, right) =>
+  const registeredPaymentMethods = normalizePaymentMethods(paymentMethods);
+  const sortedPaymentMethods = [...registeredPaymentMethods].sort((left, right) =>
     Number(right.isDefault) - Number(left.isDefault),
   );
 
@@ -35,14 +38,14 @@ export function MyPagePaymentMethodsScreen() {
     if (updating) return;
     setUpdating(true);
     try {
-      const nextMethods = [...paymentMethods, createEasyPayMethod()].map((method, index) => ({
-        ...method,
-        isDefault: index === 0,
-      }));
+      const nextMethods = normalizePaymentMethods([
+        ...registeredPaymentMethods,
+        createEasyPayMethod(),
+      ]);
       const result = await updatePaymentMethods(nextMethods);
-      if (!result.ok) Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+      if (!result.ok) showAlert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
     } catch {
-      Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+      showAlert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
     } finally {
       setUpdating(false);
     }
@@ -53,14 +56,14 @@ export function MyPagePaymentMethodsScreen() {
     if (updating) return;
     setUpdating(true);
     try {
-      const nextMethods = paymentMethods
-        .filter((method) => method.id !== methodToDelete.id)
-        .map((method, index) => ({ ...method, isDefault: index === 0 }));
+      const nextMethods = normalizePaymentMethods(
+        registeredPaymentMethods.filter((method) => method.id !== methodToDelete.id),
+      );
       const result = await updatePaymentMethods(nextMethods);
-      if (!result.ok) Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+      if (!result.ok) showAlert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
       if (result.ok) setMethodToDelete(null);
     } catch {
-      Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+      showAlert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
     } finally {
       setUpdating(false);
     }
@@ -70,18 +73,18 @@ export function MyPagePaymentMethodsScreen() {
     if (updating) return;
     setUpdating(true);
     try {
-      const selectedMethod = paymentMethods.find((method) => method.id === methodId);
+      const selectedMethod = registeredPaymentMethods.find((method) => method.id === methodId);
       if (!selectedMethod) return;
       const nextMethods = [
         { ...selectedMethod, isDefault: true },
-        ...paymentMethods
+        ...registeredPaymentMethods
           .filter((method) => method.id !== methodId)
           .map((method) => ({ ...method, isDefault: false })),
       ];
       const result = await updatePaymentMethods(nextMethods);
-      if (!result.ok) Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+      if (!result.ok) showAlert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
     } catch {
-      Alert.alert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
+      showAlert(SAVE_ERROR_TITLE, SAVE_ERROR_MESSAGE);
     } finally {
       setUpdating(false);
     }
@@ -92,7 +95,7 @@ export function MyPagePaymentMethodsScreen() {
       <MyPageHeader title="결제 수단 관리">
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={styles.sectionLabel}>등록된 결제 수단</Text>
-          {paymentMethods.length === 0 ? (
+          {registeredPaymentMethods.length === 0 ? (
             <EmptyState description="결제 수단을 등록하면 이곳에 표시돼요." title="결제 수단이 없어요." />
           ) : (
             sortedPaymentMethods.map((method) => (
@@ -106,12 +109,12 @@ export function MyPagePaymentMethodsScreen() {
                     {method.last4 === '등록 대기' ? '간편결제 연결 전' : method.last4}
                   </Text>
                 </View>
-                {method.isDefault ? (
-                  <View style={styles.defaultBadge}>
-                    <Text style={styles.defaultText}>기본</Text>
-                  </View>
-                ) : (
-                  <View style={styles.methodActions}>
+                <View style={styles.methodActions}>
+                  {method.isDefault ? (
+                    <View style={styles.defaultBadge}>
+                      <Text style={styles.defaultText}>기본</Text>
+                    </View>
+                  ) : (
                     <AppButton
                       disabled={updating}
                       fullWidth={false}
@@ -121,21 +124,27 @@ export function MyPagePaymentMethodsScreen() {
                       title="기본 설정"
                       variant="secondary"
                     />
-                    <Pressable
-                      accessibilityLabel="결제 수단 삭제"
-                      accessibilityRole="button"
-                      disabled={updating}
-                      onPress={() => setMethodToDelete(method)}
-                      style={({ pressed }) => [
-                        styles.deleteIconButton,
-                        pressed && !updating && styles.pressedIconButton,
-                        updating && styles.disabledIconButton,
-                      ]}
-                    >
-                      <AppIcon color={COLORS.danger} name="trash-outline" size={18} />
-                    </Pressable>
-                  </View>
-                )}
+                  )}
+                  <Pressable
+                    accessibilityHint={
+                      method.isDefault && registeredPaymentMethods.length > 1
+                        ? '삭제하면 남은 결제 수단 중 첫 번째 수단이 기본으로 설정됩니다.'
+                        : undefined
+                    }
+                    accessibilityLabel={`${method.label} 결제 수단 삭제`}
+                    accessibilityRole="button"
+                    disabled={updating}
+                    hitSlop={SPACING.md}
+                    onPress={() => setMethodToDelete(method)}
+                    style={({ pressed }) => [
+                      styles.deleteIconButton,
+                      pressed && !updating && styles.pressedIconButton,
+                      updating && styles.disabledIconButton,
+                    ]}
+                  >
+                    <AppIcon color={COLORS.danger} name="trash-outline" size={18} />
+                  </Pressable>
+                </View>
               </View>
             ))
           )}
@@ -143,7 +152,7 @@ export function MyPagePaymentMethodsScreen() {
             disabled={updating}
             loading={updating}
             onPress={() =>
-              paymentMethods.length >= 3
+              registeredPaymentMethods.length >= 3
                 ? setLimitModalVisible(true)
                 : void addMethod()
             }
@@ -173,6 +182,9 @@ export function MyPagePaymentMethodsScreen() {
       >
         <Text style={styles.modalDescription}>
           {methodToDelete?.label} 결제 수단이 목록에서 삭제돼요.
+          {methodToDelete?.isDefault && registeredPaymentMethods.length > 1
+            ? '\n남은 결제 수단이 자동으로 기본 설정돼요.'
+            : ''}
         </Text>
       </AppModal>
       <AppModal

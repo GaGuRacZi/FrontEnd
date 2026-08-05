@@ -2,7 +2,6 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -13,6 +12,7 @@ import { AppModal } from '@/src/components/modal/AppModal';
 import { COLORS, LAYOUT, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import { SignupScaffold } from '../components/SignupScaffold';
+import { useSignupCompletion } from '../hooks/useSignupCompletion';
 import { useSignup } from '../SignupContext';
 import {
   formatBirthDate,
@@ -25,8 +25,13 @@ import {
 } from '../signupValidation';
 
 export function SignupPetInfoScreen() {
-  const router = useRouter();
   const { data, updateField } = useSignup();
+  const {
+    completeSignup,
+    hasCommittedSignupRecovery,
+    signupIdentityFinalized,
+    submitting,
+  } = useSignupCompletion();
   const [nameError, setNameError] = useState<string>();
   const [birthDateError, setBirthDateError] = useState<string>();
   const [calendarVisible, setCalendarVisible] = useState(false);
@@ -68,10 +73,14 @@ export function SignupPetInfoScreen() {
 
   return (
     <SignupScaffold
+      backDisabled={signupIdentityFinalized || hasCommittedSignupRecovery}
       bodyStyle={styles.body}
-      currentStep={4}
-      nextDisabled={!canContinue}
-      onNext={() => router.push('/signup/location')}
+      buttonTitle="회원가입 완료하기"
+      contentDisabled={signupIdentityFinalized || hasCommittedSignupRecovery}
+      currentStep={5}
+      nextDisabled={!hasCommittedSignupRecovery && !canContinue}
+      nextLoading={submitting}
+      onNext={completeSignup}
       title={'우리 아이 정보를\n입력해주세요'}
     >
       <AppInput
