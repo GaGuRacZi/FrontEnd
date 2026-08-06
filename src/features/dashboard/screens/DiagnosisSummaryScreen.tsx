@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
@@ -72,39 +72,38 @@ export function DiagnosisSummaryScreen() {
                         </>
 					) : null}
 				</DiagnosisSectionCard>
-
-				{detail.medications.length > 0 ? (
-					<View style={styles.section}>
-						<View style={styles.headerRow}>
-							<Text style={styles.sectionTitle}>처방 약물</Text>
-							<Pressable
-								accessibilityLabel="약물 추가"
-								accessibilityRole="button"
-								onPress={() => {
-									// TODO: 약물 검색/OCR/직접입력)
-								}}
-								style={styles.actionButton}
-							>
-								<AppIcon color={COLORS.primary} name="add" size={16} />
-								<Text style={styles.actionLabel}>약물 추가</Text>
-							</Pressable>
+					{detail.medications.length > 0 ? (
+						<View style={styles.section}>
+							<View style={styles.headerRow}>
+								<Text style={styles.sectionTitle}>처방 약물</Text>
+								<Pressable
+									accessibilityLabel="약물 추가"
+									accessibilityRole="button"
+									onPress={() => {
+										// TODO: 약물 검색/OCR/직접입력
+									}}
+									style={styles.actionButton}
+								>
+									<Image
+										resizeMode="contain"
+										source={require('@/assets/images/dashboard/Plus.png')}
+										style={{ height: 14, width: 14 }}
+									/>
+									<Text style={styles.actionLabel}>약물 추가</Text>
+								</Pressable>
+							</View>
+							<View style={styles.medicationList}>
+								{detail.medications.map((medication, index) => (
+									<PrescriptionMedicationCard index={index} key={medication.id} medication={medication} />
+								))}
+							</View>
 						</View>
-						<View style={styles.medicationCard}>
-							{detail.medications.map((medication, index) => (
-								<View key={medication.id}>
-									{index > 0 ? <View style={styles.medicationDivider} /> : null}
-									<PrescriptionMedicationCard index={index} medication={medication} />
-								</View>
-							))}
-						</View>
-					</View>
-				) : null}
-
+					) : null}
 				{detail.careNotes.length > 0 ? (
 					<DiagnosisSectionCard
-						iconBgColor={COLORS.successSoft}
-						iconColor={COLORS.success}
-						iconName="leaf-outline"
+						iconBgColor={COLORS.cream}
+						iconSize={12}
+						iconSource={require('@/assets/images/dashboard/Care.png')}
 						innerTitle="치료 및 관리"
 						title="치료 및 관리"
 					>
@@ -112,7 +111,10 @@ export function DiagnosisSummaryScreen() {
 							<BulletItem dotColor={COLORS.success} key={`care-${index}`} text={note} />
 						))}
 						{detail.careFooterNote ? (
-							<Text style={styles.careFooterNote}>{detail.careFooterNote}</Text>
+							<>
+								<View style={styles.sectionDivider} />
+								<Text style={styles.careFooterNote}>{detail.careFooterNote}</Text>
+							</>
 						) : null}
 					</DiagnosisSectionCard>
 				) : null}
@@ -147,16 +149,17 @@ const styles = StyleSheet.create({
 	section: { gap: SPACING.md },
 	headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
 	sectionTitle: { ...TYPOGRAPHY.title3, color: COLORS.black },
-	actionButton: { alignItems: 'center', flexDirection: 'row', gap: SPACING.xxs },
-	actionLabel: { ...TYPOGRAPHY.body2, color: COLORS.primary },
-	medicationCard: {
-		backgroundColor: COLORS.background,
-		borderColor: COLORS.gray200,
-		borderRadius: RADIUS.lg,
-		borderWidth: 1,
-		padding: SPACING.xxl,
+	actionButton: { 
+		alignItems: 'center',
+		backgroundColor: COLORS.primarySoft,
+		borderRadius: RADIUS.round, 
+		flexDirection: 'row', 
+		gap: SPACING.xxs,
+		paddingHorizontal: SPACING.lg,
+		paddingVertical: SPACING.sm,
 	},
-	medicationDivider: { backgroundColor: COLORS.gray200, height: 1, marginVertical: SPACING.lg },
+	actionLabel: { ...TYPOGRAPHY.label, color: COLORS.primary },
+	medicationList: { gap: SPACING.lg },
 	aiCard: {
 		backgroundColor: COLORS.background,
 		borderColor: COLORS.gray200,
