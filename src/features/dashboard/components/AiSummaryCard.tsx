@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, AppIcon } from '@/src/components/common';
+import { AppButton } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 type AiSummaryCardProps = {
@@ -13,7 +13,11 @@ export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
 		<View style={styles.wrap}>
 			<View style={styles.headerRow}>
 				<View style={styles.iconBadge}>
-					<AppIcon color={COLORS.primary} name="sparkles" size={16} />
+					<Image
+						resizeMode="contain"
+						source={require('@/assets/images/dashboard/AISummary.png')}
+						style={styles.iconImage}
+					/>
 				</View>
 				<View style={styles.headerTextGroup}>
 					<Text style={styles.headerTitle}>AI 진료 요약</Text>
@@ -28,7 +32,13 @@ export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
 				</>
 			) : (
 				<AppButton
-					leftIcon={<AppIcon color={COLORS.background} name="sparkles" size={16} />}
+					leftIcon={
+						<Image
+							resizeMode="contain"
+							source={require('@/assets/images/dashboard/AISummary.png')}
+							style={styles.iconImageWhite}
+						/>
+					}
 					onPress={onGenerate}
 					title="AI 요약 생성하기"
 				/>
@@ -40,6 +50,8 @@ export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
 const styles = StyleSheet.create({
 	wrap: { gap: SPACING.lg },
 	headerRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
+	iconImage: { height: 16, width: 16 },
+	iconImageWhite: { height: 16, width: 16, tintColor: COLORS.background },
 	iconBadge: {
 		alignItems: 'center',
 		backgroundColor: COLORS.primarySoft,
