@@ -11,6 +11,7 @@ type DiagnosisSectionCardProps = PropsWithChildren<{
 	iconBgColor?: string;
 	iconColor?: string;
 	iconName?: AppIconName;
+	iconSize?: number;
 	iconSource?: ImageSourcePropType;
 	innerSubtitle?: string;
 	innerTitle: string;
@@ -24,6 +25,7 @@ export function DiagnosisSectionCard({
 	iconBgColor = COLORS.primarySoft,
 	iconColor = COLORS.primary,
 	iconName,
+	iconSize = 16,
 	iconSource,
 	innerSubtitle,
 	innerTitle,
@@ -51,9 +53,9 @@ export function DiagnosisSectionCard({
 				<View style={styles.innerHeaderRow}>
 					<View style={[styles.iconBadge, { backgroundColor: iconBgColor }]}>
 						{iconSource ? (
-							<Image resizeMode="contain" source={iconSource} style={styles.iconImage} />
+							<Image resizeMode="contain" source={iconSource} style={{ height: iconSize, width: iconSize }} />
 						) : (
-							<AppIcon color={iconColor} name={iconName ?? 'ellipse-outline'} size={16} />
+							<AppIcon color={iconColor} name={iconName ?? 'ellipse-outline'} size={iconSize} />
 						)}
 					</View>
 					<View style={styles.innerHeaderTextGroup}>
@@ -117,7 +119,6 @@ const styles = StyleSheet.create({
 	content: {
 		gap: SPACING.sm,
 	},
-    iconImage: { height: 16, width:16 },
 	bulletRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.sm },
 	bulletDot: { borderRadius: 3, height: 6, width: 6 },
 	bulletText: { ...TYPOGRAPHY.body2, color: COLORS.gray800 },
