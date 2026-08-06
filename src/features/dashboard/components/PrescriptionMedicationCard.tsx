@@ -3,7 +3,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-import { BulletItem } from './DiagnosisSectionCard';
 import type { DiagnosisMedication, DiagnosisMedicationTiming } from '../types';
 
 type PrescriptionMedicationCardProps = {
@@ -38,8 +37,14 @@ export function PrescriptionMedicationCard({ index, medication }: PrescriptionMe
 			<View style={styles.divider} />
 
 			<View style={styles.metaRow}>
-				<BulletItem text={medication.doseLabel} />
-				<BulletItem text={medication.mealTimingLabel} />
+				<View style={styles.metaChip}>
+					<View style={styles.metaDot} />
+					<Text style={styles.metaChipText}>{medication.doseLabel}</Text>
+				</View>
+				<View style={styles.metaChip}>
+					<View style={styles.metaDot} />
+					<Text style={styles.metaChipText}>{medication.mealTimingLabel}</Text>
+				</View>			
 			</View>
 
 			<View style={styles.timingRow}>
@@ -63,17 +68,31 @@ export function PrescriptionMedicationCard({ index, medication }: PrescriptionMe
 					);
 				})}
 			</View>
+
+			{medication.warningNote ? (
+				<View style={styles.warningBanner}>
+					<AppIcon color={COLORS.alert} name="alert-circle-outline" size={16} />
+					<Text style={styles.warningText}>{medication.warningNote}</Text>
+				</View>
+			) : null}
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	card: { gap: SPACING.md },
+	card: {
+		backgroundColor: COLORS.background,
+		borderColor: COLORS.gray200,
+		borderRadius: RADIUS.lg,
+		borderWidth: 1,
+		gap: SPACING.md,
+		padding: SPACING.xxl,
+	},
 	headerRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
 	indexBadge: {
 		alignItems: 'center',
 		backgroundColor: COLORS.primarySoft,
-		borderRadius: RADIUS.round,
+		borderRadius: RADIUS.sm,
 		height: 24,
 		justifyContent: 'center',
 		width: 24,
@@ -89,20 +108,40 @@ const styles = StyleSheet.create({
 	frequencyPill: {
 		backgroundColor: COLORS.primarySoft,
 		borderRadius: RADIUS.round,
-		paddingHorizontal: SPACING.md,
-		paddingVertical: SPACING.xxs,
+		paddingHorizontal: SPACING.lg,
+		paddingVertical: SPACING.xs,
 	},
-	frequencyPillText: { ...TYPOGRAPHY.small, color: COLORS.primary },
+	frequencyPillText: { ...TYPOGRAPHY.checkboxLabel, color: COLORS.primary },
 	divider: { backgroundColor: COLORS.gray200, height: 1 },
 	metaRow: { flexDirection: 'row', gap: SPACING.xl },
+	metaChip: {
+		alignItems: 'center',
+		backgroundColor: COLORS.primarySoft,
+		borderRadius: RADIUS.sm,
+		flexDirection: 'row',
+		gap: SPACING.xs,
+		paddingHorizontal: SPACING.md,
+		paddingVertical: SPACING.xs,
+	},
+	metaDot: { backgroundColor: COLORS.primary, borderRadius: 3, height: 6, width: 6 },
+	metaChipText: { ...TYPOGRAPHY.small, color: COLORS.black },
 	timingRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.xs },
 	timingChip: {
 		backgroundColor: COLORS.gray100,
-		borderRadius: RADIUS.round,
+		borderRadius: RADIUS.sm,
 		paddingHorizontal: SPACING.md,
-		paddingVertical: SPACING.xxs,
+		paddingVertical: SPACING.xs,
 	},
 	timingChipActive: { backgroundColor: COLORS.primary },
 	timingChipText: { ...TYPOGRAPHY.small, color: COLORS.gray500 },
 	timingChipTextActive: { color: COLORS.background },
+	warningBanner: {
+		alignItems: 'center',
+		backgroundColor: COLORS.alertBackground,
+		borderRadius: RADIUS.md,
+		flexDirection: 'row',
+		gap: SPACING.sm,
+		padding: SPACING.lg,
+	},
+	warningText: { ...TYPOGRAPHY.small, color: COLORS.alert },
 });
