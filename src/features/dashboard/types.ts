@@ -18,6 +18,7 @@ export type DiagnosisMedication = {
 	mealTimingLabel: string; // '식사 후'
 	name: string;
 	timings: DiagnosisMedicationTiming[];
+	warningNote?: string;
 };
 
 export type DiagnosisDetail = {

@@ -54,6 +54,7 @@ export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
 				doseLabel: '1정씩',
 				mealTimingLabel: '식사 후',
 				timings: ['morning', 'dinner'],
+				warningNote: '위장 자극 주의, 공복 투여 금지',
 			},
 			{
 				id: 'med-2',
@@ -63,6 +64,7 @@ export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
 				doseLabel: '1정씩',
 				mealTimingLabel: '식사 후',
 				timings: ['morning', 'dinner'],
+				warningNote: '식사 후 복용',
 			},
 		],
 		careNotes: [
