@@ -23,6 +23,8 @@ export const COLORS = {
   like: '#FF2D2D',
   error: '#B23A3A',
   errorBackground: '#FDEAEA',
+  alert: '#FF6868',
+  alertBackground: '#FFF2F2',
   borderSoft: '#EDEFF5',
   borderBlue: '#E3E7F0',
   confettiBlue: 'rgba(140, 169, 255, 0.75)',
