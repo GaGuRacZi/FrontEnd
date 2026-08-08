@@ -8,7 +8,7 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { PetAvatar } from '@/src/features/pet/components/PetAvatar';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
-import { AiSummaryCard } from '../components/AiSummaryCard';
+import { AiSummaryCard, PLACEHOLDER_SUMMARY } from '../components/AiSummaryCard';
 import { AiSummaryCoinModal } from '../components/AiSummaryCoinModal';
 import { BulletItem, DiagnosisSectionCard } from '../components/DiagnosisSectionCard';
 import { PrescriptionMedicationCard } from '../components/PrescriptionMedicationCard';
@@ -130,7 +130,7 @@ export function DiagnosisSummaryScreen() {
 			<AiSummaryCoinModal
 				onClose={() => setCoinModalVisible(false)}
 				onConfirm={() => {
-					setAiSummary('AI가 생성한 요약입니다. (mock)'); // TODO: 실제 AI 요약 API 연동
+					setAiSummary(PLACEHOLDER_SUMMARY); // TODO: 실제 AI 요약 API 연동
 					setCoinModalVisible(false);
 				}}
 				visible={coinModalVisible}
