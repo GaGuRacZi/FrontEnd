@@ -27,6 +27,8 @@ export const COLORS = {
   alertBackground: '#FFF2F2',
   borderSoft: '#EDEFF5',
   borderBlue: '#E3E7F0',
+  summarycontainer: '#F7F9FF',
+  summarycontainerborder: '#E0E8FF',
   confettiBlue: 'rgba(140, 169, 255, 0.75)',
   confettiPeach: 'rgba(255, 184, 162, 0.75)',
   confettiPink: 'rgba(255, 205, 251, 0.75)',
