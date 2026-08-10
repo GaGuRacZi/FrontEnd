@@ -1,5 +1,4 @@
-import type { DiagnosisListItem } from './types';
-import type { DiagnosisDetail } from './types';
+import type { DiagnosisListItem, DiagnosisDetail } from './types';
 
 export const MOCK_DIAGNOSIS_LIST: DiagnosisListItem[] = [
 	{
@@ -74,6 +73,24 @@ export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
 			'체중 관리로 관절 부담 줄이기',
 		],
 		careFooterNote: '증상이 심해지거나 식욕 저하 시 즉시 재방문 권장',
+		hospitalName: '하얀마음동물병원',
+		transcriptDuration: '05:25',
+		transcriptRecordedAt: '2025년 6월 27일 (금) 14:00',
+		transcript: [
+			{ id: 't1', speaker: 'vet', text: '안녕하세요! 아리 보호자님, 오늘 어떤 증상으로 내원하셨나요?' },
+			{ id: 't2', speaker: 'owner', text: '아리가 요즘 앞다리를 절뚝거리고, 계단 오르내리기를 너무 힘들어해요. 산책도 금방 지쳐서 주저앉더라고요.' },
+			{ id: 't3', speaker: 'vet', text: '언제부터 그런 증상이 나타났나요? 특히 더 아파 보이는 시간대가 있었나요?' },
+			{ id: 't4', speaker: 'owner', text: '한두 달 전부터요. 아침에 일어날 때 특히 뻣뻣해 보이고, 점점 더 심해지는 것 같아서 걱정이에요.' },
+			{ id: 't5', speaker: 'vet', text: '직접 만져서 확인해볼게요. 촉진해보니 앞다리 관절 부위에 통증 반응이 있고, 관절 가동 범위도 많이 줄어들어 있네요.' },
+			{ id: 't6', speaker: 'vet', text: 'X-ray 결과도 확인했는데, 퇴행성 관절염으로 진단됩니다. 11살 고령견에서 흔하게 나타나는 상태예요.' },
+			{ id: 't7', speaker: 'owner', text: '많이 심각한가요? 많이 아픈 건지 걱정되네요.' },
+			{ id: 't8', speaker: 'vet', text: '완치보다는 통증 관리와 삶의 질 유지가 목표예요. 꾸준히 관리하면 일상생활 충분히 가능합니다.' },
+			{ id: 't9', speaker: 'vet', text: '소염진통제인 카미녹스와 연골 보호제인 가리유니를 처방해드릴게요. 미끄러운 바닥은 매트로 덮어주시고, 격한 운동은 자제해주세요.' },
+			{ id: 't10', speaker: 'owner', text: '알겠어요. 수중 재활도 들어봤는데 도움이 될까요?' },
+			{ id: 't11', speaker: 'vet', text: '네, 수중 재활은 관절에 부담을 최소화하면서 근력을 키울 수 있어서 저희 병원에서도 연결해드릴 수 있어요.' },
+			{ id: 't12', speaker: 'vet', text: '4주 후에 한 번 다시 방문해서 상태 확인해보시죠. 그 사이에 식욕이 떨어지거나 증상이 급격히 나빠지면 바로 오세요.' },
+			{ id: 't13', speaker: 'owner', text: '감사합니다 선생님. 잘 돌봐줄게요 🙏' },
+		],
 	},
 	'diag-3': {
 		id: 'diag-3',

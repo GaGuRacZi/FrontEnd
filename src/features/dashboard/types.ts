@@ -29,7 +29,19 @@ export type DiagnosisDetail = {
 	diagnosisTitle: string;
 	findingConclusion?: string;
 	findings: string[];
+	hospitalName?: string;
 	id: string;
 	medications: DiagnosisMedication[];
 	status: DiagnosisStatus;
+	transcript?: DiagnosisTranscriptMessage[];
+	transcriptDuration?: string;
+	transcriptRecordedAt?: string;
+};
+
+export type DiagnosisTranscriptSpeaker = 'owner' | 'vet';
+
+export type DiagnosisTranscriptMessage = {
+	id: string;
+	speaker: DiagnosisTranscriptSpeaker;
+	text: string;
 };
