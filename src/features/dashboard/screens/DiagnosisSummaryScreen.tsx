@@ -1,4 +1,5 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import type { Href } from 'expo-router';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -17,6 +18,7 @@ import { calculatePetAgeLabel, DiagnosisHeroCard } from '../components/Diagnosis
 
 export function DiagnosisSummaryScreen() {
 	const { diagnosisId } = useLocalSearchParams<{ diagnosisId: string }>();
+	const router = useRouter();
 	const { selectedPet } = usePetStore();
 	const detail = diagnosisId ? MOCK_DIAGNOSIS_DETAIL[diagnosisId] : undefined;
 	const [aiSummary, setAiSummary] = useState(detail?.aiSummary);
@@ -48,9 +50,7 @@ export function DiagnosisSummaryScreen() {
                 <DiagnosisHeroCard
                     actionIcon="volume-high-outline"
                     actionLabel="음성&전사문 확인"
-                    onPressAction={() => {
-                        // TODO: 녹음 오디오 재생 연동
-                    }}
+                    onPressAction={() => router.push(`/dashboard/${detail.id}/transcript` as Href)}
                     pet={selectedPet}
                     subtitle={`${selectedPet.name} (${selectedPet.breed} · ${calculatePetAgeLabel(selectedPet.birthDate)})`}
                     title={detail.diagnosisTitle}
