@@ -5,7 +5,8 @@ import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { LoginStartScreen } from '@/src/features/auth/screens/LoginStartScreen';
 
 export default function IndexRoute() {
-  const { currentUserId, isReady, sessionLoadError } = useAuthSession();
+  const { currentUserId, isReady, pendingRemoteSignupUserId, sessionLoadError } =
+    useAuthSession();
 
   if (!isReady || sessionLoadError) {
     return <AuthSessionStateScreen loadingLabel="PAW를 준비하고 있어요." />;
@@ -13,6 +14,10 @@ export default function IndexRoute() {
 
   if (currentUserId) {
     return <Redirect href="/home" />;
+  }
+
+  if (pendingRemoteSignupUserId) {
+    return <Redirect href={{ pathname: '/signup/terms', params: { method: 'kakao' } }} />;
   }
 
   return <LoginStartScreen />;

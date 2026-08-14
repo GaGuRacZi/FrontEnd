@@ -1099,13 +1099,15 @@ export function CommunityWriteScreen() {
     if (photos.length >= maxCount) return;
 
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        showAlert('사진 접근 권한이 필요해요', '설정에서 사진 접근 권한을 허용해주세요.', [
-          { text: '취소', style: 'cancel' },
-          { text: '설정 열기', onPress: () => void Linking.openSettings() },
-        ]);
-        return;
+      if (Platform.OS === 'ios') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          showAlert('사진 접근 권한이 필요해요', '설정에서 사진 접근 권한을 허용해주세요.', [
+            { text: '취소', style: 'cancel' },
+            { text: '설정 열기', onPress: () => void Linking.openSettings() },
+          ]);
+          return;
+        }
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({

@@ -13,14 +13,17 @@ import { LoadingView } from '@/src/components/common';
 import { AppScreen } from '@/src/components/layout';
 import {
   getSignupUserId,
+  useAuthSession,
   type AuthMethod,
 } from '@/src/features/auth/session/AuthSessionStore';
+import { loadRemoteUserProfile } from '@/src/features/auth/services/kakaoAuthService';
 import { getSignupConsentUserId, TermsProvider } from '@/src/features/auth/terms';
 import type { PetGender, PetType } from '@/src/features/pet/types';
 
 import {
   clearActiveSignupTransaction,
   loadActiveSignupTransaction,
+  saveSignupTransaction,
   type SignupTransaction,
 } from './services/signupTransactionStore';
 
@@ -45,6 +48,8 @@ export type SignupData = {
   emailVerificationId: string | null;
   emailVerificationToken: string | null;
   introduction: string;
+  latitude: number | null;
+  longitude: number | null;
   method: SignupMethod;
   name: string;
   neutered: boolean | null;
@@ -83,6 +88,8 @@ function createInitialData(method: SignupMethod): SignupData {
     emailVerificationId: null,
     emailVerificationToken: null,
     introduction: '',
+    latitude: null,
+    longitude: null,
     method,
     name: '',
     neutered: null,
@@ -104,11 +111,13 @@ type SignupProviderProps = PropsWithChildren<{
 }>;
 
 export function SignupProvider({ children, initialMethod }: SignupProviderProps) {
+  const { pendingRemoteSignupUserId } = useAuthSession();
+  const signupMethod = pendingRemoteSignupUserId ? 'kakao' : initialMethod;
   const restorationStarted = useRef(false);
   const [signupSessionId, setSignupSessionId] = useState(
     () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`,
   );
-  const [data, setData] = useState<SignupData>(() => createInitialData(initialMethod ?? 'local'));
+  const [data, setData] = useState<SignupData>(() => createInitialData(signupMethod ?? 'local'));
   const [committedSignupRecovery, setCommittedSignupRecovery] =
     useState<SignupTransaction | null>(null);
   const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
@@ -124,25 +133,37 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     restorationStarted.current = true;
     let active = true;
 
-    void loadActiveSignupTransaction(initialMethod)
+    void loadActiveSignupTransaction(signupMethod)
       .then(async (transaction) => {
         if (!active) return;
 
         if (
           transaction &&
-          getSignupUserId(
-            transaction.method,
-            transaction.email,
-            transaction.sessionId,
-          ) === transaction.userId
+          (transaction.method === 'kakao'
+            ? transaction.userId === pendingRemoteSignupUserId
+            : getSignupUserId(
+                transaction.method,
+                transaction.email,
+                transaction.sessionId,
+              ) === transaction.userId)
         ) {
+          const restoredTransaction =
+            transaction.method === 'kakao' && transaction.status === 'pending'
+              ? await loadRemoteUserProfile()
+                  .then((profile) =>
+                    !profile.isNew && profile.uid === transaction.userId
+                      ? saveSignupTransaction(transaction, 'committed')
+                      : transaction,
+                  )
+                  .catch(() => transaction)
+              : transaction;
           setSignupSessionId(transaction.sessionId);
           setData({
             ...createInitialData(transaction.method),
             email: transaction.email,
           });
-          if (transaction.status === 'committed') {
-            setCommittedSignupRecovery(transaction);
+          if (restoredTransaction.status === 'committed') {
+            setCommittedSignupRecovery(restoredTransaction);
           }
           return;
         }
@@ -150,13 +171,13 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
         if (transaction) {
           await clearActiveSignupTransaction();
         }
-        if (initialMethod) {
-          setData((current) => ({ ...current, method: initialMethod }));
+        if (signupMethod) {
+          setData((current) => ({ ...current, method: signupMethod }));
         }
       })
       .catch(() => {
-        if (active && initialMethod) {
-          setData((current) => ({ ...current, method: initialMethod }));
+        if (active && signupMethod) {
+          setData((current) => ({ ...current, method: signupMethod }));
         }
       })
       .finally(() => {
@@ -166,7 +187,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     return () => {
       active = false;
     };
-  }, [initialMethod]);
+  }, [pendingRemoteSignupUserId, signupMethod]);
 
   const updateField = useCallback(
     <Key extends keyof SignupData>(key: Key, fieldValue: SignupData[Key]) => {

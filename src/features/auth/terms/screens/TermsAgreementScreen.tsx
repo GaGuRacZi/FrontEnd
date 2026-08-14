@@ -8,6 +8,8 @@ import { LoadingView } from '@/src/components/common/LoadingView';
 import { AppCheckbox } from '@/src/components/form/AppCheckbox';
 import { FormScreen } from '@/src/components/layout/FormScreen';
 import { COLORS, LAYOUT, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import { logoutRemoteSession } from '@/src/features/auth/services/kakaoAuthService';
 
 import { useSignup } from '../../signup/SignupContext';
 import { TermAgreementRow } from '../components/TermAgreementRow';
@@ -18,6 +20,7 @@ import { TERM_IDS } from '../types';
 export function TermsAgreementScreen() {
   const router = useRouter();
   const { data } = useSignup();
+  const { clearSession, pendingRemoteSignupUserId } = useAuthSession();
   const {
     allSignupTermsSelected,
     commitSignupConsents,
@@ -54,6 +57,22 @@ export function TermsAgreementScreen() {
     }
   };
 
+  const handleKakaoBack = async () => {
+    if (!pendingRemoteSignupUserId || saving) return;
+
+    setSaving(true);
+    setSaveError(undefined);
+
+    try {
+      await logoutRemoteSession().catch(() => undefined);
+      await clearSession(pendingRemoteSignupUserId);
+      router.replace('/');
+    } catch {
+      setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
+      setSaving(false);
+    }
+  };
+
   return (
     <FormScreen
       contentContainerStyle={styles.content}
@@ -78,6 +97,7 @@ export function TermsAgreementScreen() {
         <TermsHeader
           disabled={saving}
           fallbackRoute={data.method === 'kakao' ? '/' : '/login'}
+          onBack={data.method === 'kakao' ? () => void handleKakaoBack() : undefined}
         />
       }
     >

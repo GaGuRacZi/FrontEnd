@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import type { RemoteUserProfile } from '@/src/features/auth/services/kakaoAuthContract';
 
 import {
   getCheckoutPaymentMethod,
@@ -58,6 +59,7 @@ type MyPageStoreContextValue = {
   paymentHistory: PaymentHistoryItem[];
   paymentMethods: PaymentMethod[];
   profile: UserProfile | null;
+  registerRemoteProfile: (profile: RemoteUserProfile) => Promise<void>;
   registerSignupProfile: (
     data: Parameters<typeof signupDataToProfile>[0],
     userId: string,
@@ -256,6 +258,35 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     [enqueueMutation],
   );
 
+  const registerRemoteProfile = useCallback(
+    (remoteProfile: RemoteUserProfile) =>
+      enqueueMutation(async () => {
+        const status = await mypageRepository.getStoredStateStatus(remoteProfile.uid);
+
+        if (status === 'valid') return;
+
+        const previous = await mypageRepository.loadState(remoteProfile.uid);
+        const now = new Date().toISOString();
+        const nextState = {
+          ...previous,
+          profile: {
+            createdAt: previous.profile.createdAt || now,
+            id: remoteProfile.uid,
+            introduction: remoteProfile.intro,
+            location: remoteProfile.regionName,
+            loginConnections: [{ email: remoteProfile.email, method: 'kakao' as const }],
+            name: remoteProfile.name,
+            nickname: remoteProfile.nickname,
+            profileImageUri: remoteProfile.profileUrl,
+            updatedAt: now,
+          },
+        };
+
+        await mypageRepository.saveState(remoteProfile.uid, nextState);
+      }),
+    [enqueueMutation],
+  );
+
   const updateProfile = useCallback(
     (profile: UserProfile) =>
       enqueueMutation(async (): Promise<MutationResult> => {
@@ -410,6 +441,7 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       paymentHistory: visibleState?.paymentHistory ?? EMPTY_PAYMENT_HISTORY,
       paymentMethods: visibleState?.paymentMethods ?? EMPTY_PAYMENT_METHODS,
       profile: visibleState?.profile ?? null,
+      registerRemoteProfile,
       registerSignupProfile,
       reloadMyPage,
       scheduleCancelSubscription,
@@ -424,6 +456,7 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       deleteUserProfileData,
       hasLoadError,
       hasStoredUserProfileData,
+      registerRemoteProfile,
       registerSignupProfile,
       reloadMyPage,
       scheduleCancelSubscription,

@@ -13,6 +13,8 @@ import {
 } from '@/src/features/auth/session/AuthSessionStore';
 import { TermsProvider } from '@/src/features/auth/terms';
 import { RequiredTermsGuard } from '@/src/features/auth/terms/components/RequiredTermsGuard';
+import { ChatDataBridge } from '@/src/features/chat/ChatDataBridge';
+import { ChatProvider } from '@/src/features/chat/ChatStore';
 import { CommunityProvider } from '@/src/features/community/CommunityStore';
 import {
   MyPageProvider,
@@ -52,6 +54,9 @@ function AccountDataGuard({ children }: PropsWithChildren) {
       if (profileStatus === 'missing') {
         await clearSession(userId);
         return;
+      }
+      if (profileStatus !== 'valid') {
+        throw new Error('account-profile-invalid');
       }
       setCheckedUserId(userId);
     })().catch(() => {
@@ -103,11 +108,14 @@ function SessionProviders({ children }: PropsWithChildren) {
       <PetProvider>
         <MyPageProvider>
           <CommunityProvider>
-            <AccountDataGuard>
-              <RequiredTermsGuard userId={termsUserId}>
-                {children}
-              </RequiredTermsGuard>
-            </AccountDataGuard>
+            <ChatProvider>
+              <ChatDataBridge />
+              <AccountDataGuard>
+                <RequiredTermsGuard userId={termsUserId}>
+                  {children}
+                </RequiredTermsGuard>
+              </AccountDataGuard>
+            </ChatProvider>
           </CommunityProvider>
         </MyPageProvider>
       </PetProvider>

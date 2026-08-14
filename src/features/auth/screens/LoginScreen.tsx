@@ -86,9 +86,6 @@ export function LoginScreen() {
         return;
       }
 
-      if (screenActiveRef.current) {
-        router.replace('/home');
-      }
     } catch {
       if (screenActiveRef.current) {
         setFormError('로그인 정보를 저장하지 못했어요. 잠시 후 다시 시도해주세요.');

@@ -23,9 +23,6 @@
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "allowBackup": false,
       "backgroundColor": "#FFFFFF",
