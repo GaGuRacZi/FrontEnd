@@ -9,7 +9,7 @@ import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 type TermsHeaderProps = {
   disabled?: boolean;
   fallbackRoute: Href;
-  onBack?: () => void;
+  onBack?: () => void | Promise<void>;
   title?: string;
 };
 
@@ -28,8 +28,7 @@ export function TermsHeader({
 
     navigateOnce(() => {
       if (onBack) {
-        onBack();
-        return;
+        return onBack();
       }
 
       if (router.canGoBack()) {

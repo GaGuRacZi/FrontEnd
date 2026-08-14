@@ -20,6 +20,7 @@ import { TERM_IDS, useTerms } from '../../terms';
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
 import { SignupScaffold } from '../components/SignupScaffold';
 import {
+  geocodeAddress,
   getBestCurrentPosition,
   getRegionFromPosition,
   MAX_LOCATION_ACCURACY_METERS,
@@ -233,7 +234,7 @@ export function SignupLocationScreen() {
         }
       }
 
-      const locations = await Location.geocodeAsync(address);
+      const locations = await geocodeAddress(address);
 
       if (!isCurrentRequest()) return;
 

@@ -1,18 +1,19 @@
 import * as Location from 'expo-location';
 
 export const MAX_LOCATION_ACCURACY_METERS = 500;
+const LOCATION_TIMEOUT_MS = 15000;
 
-function getCurrentPosition() {
-  return new Promise<Location.LocationObject>((resolve, reject) => {
-    const timeoutId = setTimeout(() => reject(new Error('LOCATION_TIMEOUT')), 15000);
+function withLocationTimeout<T>(request: Promise<T>) {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(
+      () => reject(new Error('LOCATION_TIMEOUT')),
+      LOCATION_TIMEOUT_MS,
+    );
 
-    Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.High,
-      mayShowUserSettingsDialog: true,
-    }).then(
-      (position) => {
+    request.then(
+      (value) => {
         clearTimeout(timeoutId);
-        resolve(position);
+        resolve(value);
       },
       (error: unknown) => {
         clearTimeout(timeoutId);
@@ -20,6 +21,19 @@ function getCurrentPosition() {
       },
     );
   });
+}
+
+function getCurrentPosition() {
+  return withLocationTimeout(
+    Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+      mayShowUserSettingsDialog: true,
+    }),
+  );
+}
+
+export function geocodeAddress(address: string) {
+  return withLocationTimeout(Location.geocodeAsync(address));
 }
 
 export async function getBestCurrentPosition() {
@@ -34,7 +48,9 @@ export async function getBestCurrentPosition() {
 }
 
 export async function getRegionFromPosition(position: Location.LocationObject) {
-  const addresses = await Location.reverseGeocodeAsync(position.coords);
+  const addresses = await withLocationTimeout(
+    Location.reverseGeocodeAsync(position.coords),
+  );
   const address = addresses[0];
 
   if (!address) return '';

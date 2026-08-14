@@ -262,11 +262,31 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     (remoteProfile: RemoteUserProfile) =>
       enqueueMutation(async () => {
         const status = await mypageRepository.getStoredStateStatus(remoteProfile.uid);
-
-        if (status === 'valid') return;
-
         const previous = await mypageRepository.loadState(remoteProfile.uid);
         const now = new Date().toISOString();
+
+        if (status === 'valid') {
+          if (previous.profile.loginConnections.some(({ method }) => method === 'kakao')) {
+            return;
+          }
+          const email =
+            remoteProfile.email ||
+            previous.profile.loginConnections.find(({ email }) => email)?.email ||
+            '';
+          await persist(remoteProfile.uid, {
+            ...previous,
+            profile: {
+              ...previous.profile,
+              loginConnections: [
+                ...previous.profile.loginConnections,
+                { email, method: 'kakao' },
+              ],
+              updatedAt: now,
+            },
+          });
+          return;
+        }
+
         const nextState = {
           ...previous,
           profile: {
@@ -282,9 +302,9 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           },
         };
 
-        await mypageRepository.saveState(remoteProfile.uid, nextState);
+        await persist(remoteProfile.uid, nextState);
       }),
-    [enqueueMutation],
+    [enqueueMutation, persist],
   );
 
   const updateProfile = useCallback(

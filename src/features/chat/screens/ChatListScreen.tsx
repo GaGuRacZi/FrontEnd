@@ -99,29 +99,68 @@ export function ChatListScreen() {
     setSearchQuery,
   } = useChatStore();
   const [searchOpen, setSearchOpen] = useState(Boolean(searchQuery));
+  const [searchText, setSearchText] = useState(searchQuery);
   const [guideVisible, setGuideVisible] = useState(false);
   const bootstrapRequestedUserRef = useRef<string | null>(null);
   const renderedUserIdRef = useRef(currentUserId);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSearchText = useCallback(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+    setSearchText('');
+    void setSearchQuery('');
+  }, [setSearchQuery]);
+
+  const updateSearchText = useCallback(
+    (value: string) => {
+      setSearchText(value);
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = setTimeout(() => {
+        searchTimerRef.current = null;
+        void setSearchQuery(value);
+      }, 250);
+    },
+    [setSearchQuery],
+  );
+
+  useEffect(
+    () => () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!searchTimerRef.current) setSearchText(searchQuery);
+  }, [searchQuery]);
 
   useEffect(() => {
     if (renderedUserIdRef.current === currentUserId) return;
     renderedUserIdRef.current = currentUserId;
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+    setSearchText(searchQuery);
     setSearchOpen(Boolean(searchQuery));
     setGuideVisible(false);
   }, [currentUserId, searchQuery]);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
-    void setSearchQuery('');
-  }, [setSearchQuery]);
+    clearSearchText();
+  }, [clearSearchText]);
 
   const goBack = useCallback(() => {
-    if (searchOpen || searchQuery) {
+    if (searchOpen || searchText) {
       closeSearch();
       return;
     }
     router.replace('/community');
-  }, [closeSearch, router, searchOpen, searchQuery]);
+  }, [closeSearch, router, searchOpen, searchText]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -209,7 +248,7 @@ export function ChatListScreen() {
 
   const roomRows = useMemo(() => {
     if (!currentUserId) return [];
-    const query = normalizeChatSearch(searchQuery);
+    const query = normalizeChatSearch(searchText);
     if (searchOpen && !query) return [];
     return rooms.flatMap((room) => {
       const participant = getOtherParticipant(room);
@@ -232,11 +271,11 @@ export function ChatListScreen() {
     getUnreadCount,
     rooms,
     searchOpen,
-    searchQuery,
+    searchText,
   ]);
 
-  const searchVisible = searchOpen || Boolean(searchQuery);
-  const normalizedSearchQuery = normalizeChatSearch(searchQuery);
+  const searchVisible = searchOpen || Boolean(searchText);
+  const normalizedSearchQuery = normalizeChatSearch(searchText);
 
   return (
     <ScreenLayout
@@ -260,24 +299,24 @@ export function ChatListScreen() {
       <View style={styles.root}>
         {searchVisible ? (
           <AppInput
-            autoFocus={!searchQuery}
+            autoFocus={!searchText}
             containerStyle={styles.searchInput}
             leftElement={<AppIcon color={COLORS.gray500} name="search-outline" size={19} />}
             maxLength={100}
-            onChangeText={(value) => void setSearchQuery(value)}
+            onChangeText={updateSearchText}
             placeholder="닉네임이나 게시글을 검색해보세요"
-            rightElement={searchQuery ? (
+            rightElement={searchText ? (
               <Pressable
                 accessibilityLabel="검색어 지우기"
                 accessibilityRole="button"
                 hitSlop={SPACING.sm}
-                onPress={() => void setSearchQuery('')}
+                onPress={clearSearchText}
               >
                 <AppIcon color={COLORS.gray500} name="close-circle" size={19} />
               </Pressable>
             ) : null}
             size="compact"
-            value={searchQuery}
+            value={searchText}
           />
         ) : null}
 

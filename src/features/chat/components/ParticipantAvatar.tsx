@@ -28,7 +28,9 @@ export function ParticipantAvatar({ participant, size = 56 }: ParticipantAvatarP
 
   return (
     <View
+      accessible
       accessibilityLabel={`${participant.nickname} 프로필 사진`}
+      accessibilityRole="image"
       style={[
         styles.container,
         {
@@ -67,7 +69,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   initial: {
-    color: COLORS.background,
+    color: COLORS.gray800,
     fontFamily: FONT_FAMILY.bold,
   },
 });

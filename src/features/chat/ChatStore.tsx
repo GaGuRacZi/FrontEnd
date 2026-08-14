@@ -88,6 +88,7 @@ type ChatStoreContextValue = {
 
 const ChatStoreContext = createContext<ChatStoreContextValue | null>(null);
 const EMPTY_DRAFT: ChatDraft = { images: [], text: '', updatedAt: '' };
+const EMPTY_MESSAGES: ChatMessage[] = [];
 const MAX_MESSAGE_LENGTH = 1000;
 const MAX_IMAGE_COUNT = 5;
 
@@ -109,16 +110,6 @@ function getRoomMessages(state: StoredChatState, roomId: string) {
     .sort((first, second) =>
       first.createdAt.localeCompare(second.createdAt) || first.id.localeCompare(second.id),
     );
-}
-
-function getVisibleRoomMessages(
-  state: StoredChatState,
-  roomId: string,
-  userId: string,
-) {
-  return getRoomMessages(state, roomId).filter(
-    (message) => message.status === 'sent' || message.senderId === userId,
-  );
 }
 
 function getLastSentMessage(state: StoredChatState, roomId: string) {
@@ -272,20 +263,54 @@ export function ChatProvider({ children }: PropsWithChildren) {
     [currentUserId, enqueueMutation, persist],
   );
 
+  const messagesByRoomId = useMemo(() => {
+    const grouped = new Map<string, ChatMessage[]>();
+
+    state.messages.forEach((message) => {
+      const messages = grouped.get(message.roomId);
+      if (messages) messages.push(message);
+      else grouped.set(message.roomId, [message]);
+    });
+    grouped.forEach((messages) => {
+      messages.sort(
+        (first, second) =>
+          first.createdAt.localeCompare(second.createdAt) ||
+          first.id.localeCompare(second.id),
+      );
+    });
+
+    return grouped;
+  }, [state.messages]);
+
+  const visibleMessagesByRoomId = useMemo(() => {
+    const grouped = new Map<string, ChatMessage[]>();
+    if (!currentUserId) return grouped;
+
+    messagesByRoomId.forEach((messages, roomId) => {
+      grouped.set(
+        roomId,
+        messages.filter(
+          (message) => message.status === 'sent' || message.senderId === currentUserId,
+        ),
+      );
+    });
+    return grouped;
+  }, [currentUserId, messagesByRoomId]);
+
   const visibleRooms = useMemo(() => {
     if (!currentUserId) return [];
     return state.rooms
       .filter((room) => hasParticipant(room, currentUserId))
       .sort((first, second) => {
         const firstTime =
-          getVisibleRoomMessages(state, first.id, currentUserId).at(-1)?.createdAt ??
+          visibleMessagesByRoomId.get(first.id)?.at(-1)?.createdAt ??
           first.createdAt;
         const secondTime =
-          getVisibleRoomMessages(state, second.id, currentUserId).at(-1)?.createdAt ??
+          visibleMessagesByRoomId.get(second.id)?.at(-1)?.createdAt ??
           second.createdAt;
         return secondTime.localeCompare(firstTime);
       });
-  }, [currentUserId, state]);
+  }, [currentUserId, state.rooms, visibleMessagesByRoomId]);
 
   const getRoomById = useCallback(
     (roomId: string) =>
@@ -300,9 +325,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const getMessages = useCallback(
     (roomId: string) =>
       currentUserId && getRoomById(roomId)
-        ? getVisibleRoomMessages(stateRef.current, roomId, currentUserId)
-        : [],
-    [currentUserId, getRoomById],
+        ? visibleMessagesByRoomId.get(roomId) ?? EMPTY_MESSAGES
+        : EMPTY_MESSAGES,
+    [currentUserId, getRoomById, visibleMessagesByRoomId],
   );
 
   const getOtherParticipant = useCallback(
@@ -324,7 +349,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const getUnreadCount = useCallback(
     (roomId: string) => {
       if (!currentUserId || !getRoomById(roomId)) return 0;
-      const messages = getRoomMessages(state, roomId);
+      const messages = messagesByRoomId.get(roomId) ?? EMPTY_MESSAGES;
       const lastReadMessageId = getViewerState(state, currentUserId).lastReadMessageIds[roomId];
       const lastReadIndex = lastReadMessageId
         ? messages.findIndex((message) => message.id === lastReadMessageId)
@@ -335,7 +360,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
           (message) => message.senderId !== currentUserId && message.status === 'sent',
         ).length;
     },
-    [currentUserId, getRoomById, state],
+    [currentUserId, getRoomById, messagesByRoomId, state],
   );
 
   const totalUnreadCount = useMemo(
@@ -937,11 +962,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         );
         const authoredRoomIds = new Set(
           current.rooms
-            .filter(
-              (room) =>
-                room.postReference?.authorId === userId ||
-                (room.kind === 'market' && room.participants[1]?.userId === userId),
-            )
+            .filter((room) => room.postReference?.authorId === userId)
             .map((room) => room.id),
         );
         const draftImages = Object.values(current.viewerStates).flatMap((viewerState) =>

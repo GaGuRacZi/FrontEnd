@@ -2541,6 +2541,7 @@ export function CommunityScreen() {
 
   const resetVisibleCount = useCallback((tab: CommunityTab) => {
     scrollLoadLockRef.current.main = false;
+    mainScrollRef.current?.scrollTo({ animated: false, y: 0 });
     setVisibleCounts((current) =>
       current[tab] === COMMUNITY_BATCH_SIZE
         ? current
@@ -2955,7 +2956,6 @@ export function CommunityScreen() {
         accessibilityRole="button"
         onPress={() => {
           resetVisibleCount(activeTab);
-          mainScrollRef.current?.scrollTo({ animated: false, y: 0 });
           router.push({
             pathname: '/community/write',
             params: { origin: 'community', type: activeTab },

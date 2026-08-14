@@ -19,7 +19,16 @@ import {
   loadRemoteUserProfile,
   startKakaoLogin,
 } from '@/src/features/auth/services/kakaoAuthService';
+import {
+  clearSignupTransaction,
+  loadSignupTransaction,
+} from '@/src/features/auth/signup/services/signupTransactionStore';
+import {
+  consentStore,
+  getSignupConsentUserId,
+} from '@/src/features/auth/terms';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
+import { usePetStore } from '@/src/features/pet/PetStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 export function LoginStartScreen() {
@@ -27,7 +36,8 @@ export function LoginStartScreen() {
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const { activateRemoteSession, prepareRemoteSignup } = useAuthSession();
-  const { registerRemoteProfile } = useMyPageStore();
+  const { deleteUserProfileData, registerRemoteProfile } = useMyPageStore();
+  const { deleteUserPetData } = usePetStore();
   const mountedRef = useRef(true);
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
@@ -36,8 +46,12 @@ export function LoginStartScreen() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [linkError, setLinkError] = useState<string>();
 
-  useEffect(() => () => {
-    mountedRef.current = false;
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const showKakaoError = (error: unknown) => {
@@ -52,8 +66,23 @@ export function LoginStartScreen() {
 
   const finishKakaoLogin = async (session: KakaoSession) => {
     if (session.isNew) {
+      const storedTransaction = await loadSignupTransaction(session.uid);
+      const cleanupResults = await Promise.allSettled([
+        deleteUserPetData(session.uid),
+        deleteUserProfileData(session.uid),
+        consentStore.deleteHistory(session.uid),
+        storedTransaction.transaction
+          ? consentStore.deleteHistory(
+              getSignupConsentUserId(storedTransaction.transaction.sessionId),
+            )
+          : Promise.resolve(),
+      ]);
+      const cleanupFailure = cleanupResults.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (cleanupFailure) throw cleanupFailure.reason;
+      await clearSignupTransaction(session.uid);
       await prepareRemoteSignup(session);
-      router.push({ pathname: '/signup/terms', params: { method: 'kakao' } });
       return;
     }
 
@@ -63,7 +92,6 @@ export function LoginStartScreen() {
     }
     await registerRemoteProfile(profile);
     await activateRemoteSession(session);
-    router.replace('/home');
   };
 
   const handleKakaoLogin = async () => {

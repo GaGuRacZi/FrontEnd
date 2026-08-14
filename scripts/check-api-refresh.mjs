@@ -146,6 +146,38 @@ fetchHandler = async (url) => {
 await assert.rejects(apiRequest('/profile'), ApiError);
 assert.equal(tokens, null);
 
+tokens = { accessToken: 'access-e', refreshToken: 'refresh-e' };
+fetchHandler = async () =>
+  jsonResponse({ code: 'JWT_403_2', isSuccess: false, message: 'invalid token' }, 403);
+await assert.rejects(apiRequest('/profile'), ApiError);
+assert.equal(tokens, null);
+
+tokens = { accessToken: 'access-f', refreshToken: 'refresh-f' };
+fetchHandler = async () =>
+  jsonResponse({ code: 'FORBIDDEN', isSuccess: false, message: 'forbidden' }, 403);
+await assert.rejects(apiRequest('/profile'), ApiError);
+assert.deepEqual(tokens, { accessToken: 'access-f', refreshToken: 'refresh-f' });
+
+let releaseInvalidTokenResponse;
+let markInvalidTokenRequestStarted;
+const invalidTokenRequestStarted = new Promise((resolve) => {
+  markInvalidTokenRequestStarted = resolve;
+});
+const invalidTokenResponseReleased = new Promise((resolve) => {
+  releaseInvalidTokenResponse = resolve;
+});
+fetchHandler = async () => {
+  markInvalidTokenRequestStarted();
+  await invalidTokenResponseReleased;
+  return jsonResponse({ code: 'JWT_403_2', isSuccess: false, message: 'invalid token' }, 403);
+};
+const invalidTokenRequest = apiRequest('/profile');
+await invalidTokenRequestStarted;
+tokens = { accessToken: 'new-access', refreshToken: 'new-refresh' };
+releaseInvalidTokenResponse();
+await assert.rejects(invalidTokenRequest, ApiError);
+assert.deepEqual(tokens, { accessToken: 'new-access', refreshToken: 'new-refresh' });
+
 tokens = { accessToken: 'access-d', refreshToken: 'refresh-d' };
 fetchHandler = async (url) =>
   url.endsWith('/auth/reissue')

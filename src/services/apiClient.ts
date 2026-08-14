@@ -240,17 +240,31 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     }
   }
 
-  let response = await send(tokens?.accessToken ?? null);
+  let responseAccessToken = tokens?.accessToken ?? null;
+  let response = await send(responseAccessToken);
 
   if (authenticated && tokens && response.status === 401) {
     const retryAccessToken = await getRetryAccessToken(tokens);
 
     if (retryAccessToken) {
+      responseAccessToken = retryAccessToken;
       response = await send(retryAccessToken);
     }
   }
 
   const data = await readResponse(response);
+
+  if (
+    authenticated &&
+    response.status === 403 &&
+    getResponseCode(data) === 'JWT_403_2'
+  ) {
+    const currentTokens = await getTokens();
+
+    if (currentTokens?.accessToken === responseAccessToken) {
+      await invalidateTokensIfRefreshTokenMatches(currentTokens.refreshToken);
+    }
+  }
 
   if (!response.ok) {
     throw new ApiError(getErrorMessage(data, response.status), response.status, data);

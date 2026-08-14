@@ -126,7 +126,11 @@ async function rollbackRemoteSession(error: unknown): Promise<never> {
     (result): result is PromiseRejectedResult => result.status === 'rejected',
   );
 
-  throw cleanupFailure?.reason ?? error;
+  if (cleanupFailure && error instanceof Error && error.cause === undefined) {
+    error.cause = cleanupFailure.reason;
+  }
+
+  throw error;
 }
 
 async function clearPersistedSession(userId: string) {

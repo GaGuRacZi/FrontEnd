@@ -6,14 +6,20 @@ import {
   getSignupUserId,
   useAuthSession,
 } from '@/src/features/auth/session/AuthSessionStore';
-import { completeKakaoOnboarding } from '@/src/features/auth/services/kakaoAuthService';
+import {
+  completeKakaoOnboarding,
+  KakaoAuthError,
+} from '@/src/features/auth/services/kakaoAuthService';
 import {
   consentStore,
   hasCurrentRequiredSignupConsents,
   termsRepository,
   useTerms,
 } from '@/src/features/auth/terms';
-import { TERM_IDS } from '@/src/features/auth/terms/types';
+import {
+  REQUIRED_SIGNUP_TERM_IDS,
+  TERM_IDS,
+} from '@/src/features/auth/terms/types';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { signupDataToPetEntity } from '@/src/features/pet/petMappers';
 import { usePetStore } from '@/src/features/pet/PetStore';
@@ -27,6 +33,7 @@ import {
   type SignupTransactionOwner,
 } from '../services/signupTransactionStore';
 import { useSignup } from '../SignupContext';
+import { hasValidSignupLocation } from '../signupValidation';
 
 export function useSignupCompletion() {
   const router = useRouter();
@@ -57,6 +64,7 @@ export function useSignupCompletion() {
     finalizeSignupConsents,
     hasCurrentConsent,
     signupIdentityFinalized,
+    status: termsStatus,
   } = useTerms();
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
@@ -80,6 +88,8 @@ export function useSignupCompletion() {
     const userId = transactionOwner.userId;
     let consentsFinalized = signupIdentityFinalized;
     let ownsTransaction = false;
+    let remoteOnboardingAttempted = false;
+    let remoteOnboardingCompleted = false;
 
     try {
       if (!currentUserId) throw new Error('missing-remote-signup-session');
@@ -111,11 +121,25 @@ export function useSignupCompletion() {
             : Promise.resolve(true),
           termsRepository.getTerms(),
         ]);
-      const hasCompleteAccount =
+      let hasCompleteAccount =
         hasPetData &&
         profileStatus === 'valid' &&
         hasCurrentRequiredSignupConsents(consentHistory, currentTerms) &&
         hasCredentialData;
+      const canFinalizeCommittedKakao =
+        ownsStoredTransaction &&
+        transaction?.status === 'committed' &&
+        transactionOwner.method === 'kakao' &&
+        !signupIdentityFinalized &&
+        hasPetData &&
+        profileStatus === 'valid' &&
+        REQUIRED_SIGNUP_TERM_IDS.every((termId) => hasCurrentConsent(termId));
+
+      if (canFinalizeCommittedKakao) {
+        await finalizeSignupConsents(userId);
+        consentsFinalized = true;
+        hasCompleteAccount = true;
+      }
       const canRecoverAccount =
         transaction?.status === 'committed' ||
         (transactionOwner.method === 'local' &&
@@ -196,7 +220,11 @@ export function useSignupCompletion() {
 
       let kakaoLocation: { latitude: number; longitude: number } | null = null;
       if (transactionOwner.method === 'kakao') {
-        if (data.latitude === null || data.longitude === null) {
+        if (
+          !hasValidSignupLocation(data) ||
+          data.latitude === null ||
+          data.longitude === null
+        ) {
           throw new Error('missing-onboarding-location');
         }
         kakaoLocation = { latitude: data.latitude, longitude: data.longitude };
@@ -207,9 +235,8 @@ export function useSignupCompletion() {
       if (transactionOwner.method === 'local') {
         await registerLocalCredential(userId, data.password);
       }
-      await finalizeSignupConsents(userId);
-      consentsFinalized = true;
       if (kakaoLocation) {
+        remoteOnboardingAttempted = true;
         await completeKakaoOnboarding({
           agreements: {
             AGE_OVER_14: hasCurrentConsent(TERM_IDS.age),
@@ -224,8 +251,14 @@ export function useSignupCompletion() {
           name: data.name,
           nickname: data.nickname,
         });
+        remoteOnboardingCompleted = true;
+        await saveSignupTransaction(transactionOwner, 'committed');
       }
-      await saveSignupTransaction(transactionOwner, 'committed');
+      await finalizeSignupConsents(userId);
+      consentsFinalized = true;
+      if (!kakaoLocation) {
+        await saveSignupTransaction(transactionOwner, 'committed');
+      }
       if (transactionOwner.method === 'local') {
         await activateLocalCredential(userId);
       }
@@ -244,7 +277,15 @@ export function useSignupCompletion() {
       );
       router.push('/signup/complete');
     } catch (error) {
-      if (ownsTransaction && !consentsFinalized) {
+      const preserveRemoteOnboarding =
+        transactionOwner.method === 'kakao' &&
+        (remoteOnboardingCompleted ||
+          (remoteOnboardingAttempted &&
+            error instanceof KakaoAuthError &&
+            error.kind !== 'invalid-kakao-token' &&
+            error.kind !== 'invalid-nickname'));
+
+      if (ownsTransaction && !consentsFinalized && !preserveRemoteOnboarding) {
         const cleanupResults = await Promise.allSettled([
           deleteUserPetData(userId),
           deleteUserProfileData(userId),
@@ -258,6 +299,11 @@ export function useSignupCompletion() {
             () => undefined,
           );
         }
+      }
+      if (error instanceof KakaoAuthError && error.kind === 'invalid-nickname') {
+        showAlert('닉네임을 확인해주세요', error.message);
+        navigateOnce(() => router.dismissTo('/signup/user-info'));
+        return;
       }
       if (!(error instanceof Error) || error.message !== 'signup-account-exists') {
         showAlert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
@@ -294,11 +340,17 @@ export function useSignupCompletion() {
   ]);
 
   useEffect(() => {
-    if (!committedSignupRecovery || recoveryAttemptedRef.current) return;
+    if (
+      !committedSignupRecovery ||
+      recoveryAttemptedRef.current ||
+      termsStatus !== 'ready'
+    ) {
+      return;
+    }
 
     recoveryAttemptedRef.current = true;
     void completeSignup().catch(() => undefined);
-  }, [committedSignupRecovery, completeSignup]);
+  }, [committedSignupRecovery, completeSignup, termsStatus]);
 
   return {
     completeSignup,

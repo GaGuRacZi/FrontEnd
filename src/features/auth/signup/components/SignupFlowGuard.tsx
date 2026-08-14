@@ -20,7 +20,7 @@ const ROUTE_ORDER: Record<string, number> = {
 
 export function SignupFlowGuard({ children }: PropsWithChildren) {
   const pathname = usePathname();
-  const { pendingRemoteSignupUserId } = useAuthSession();
+  const { currentUserId, pendingRemoteSignupUserId } = useAuthSession();
   const { committedSignupRecovery, data, signupCompleted } = useSignup();
   const { hasRequiredSignupConsents, status } = useTerms();
   const currentOrder = pathname.startsWith('/signup/terms/')
@@ -37,7 +37,7 @@ export function SignupFlowGuard({ children }: PropsWithChildren) {
     return <Redirect href={{ pathname: '/signup/terms', params: { method: 'kakao' } }} />;
   }
 
-  if (!pendingRemoteSignupUserId && data.method === 'kakao') {
+  if (!currentUserId && !pendingRemoteSignupUserId && data.method === 'kakao') {
     return <Redirect href="/" />;
   }
 

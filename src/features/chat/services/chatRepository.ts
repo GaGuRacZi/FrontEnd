@@ -411,14 +411,9 @@ export const chatRepository = {
       }
 
       const state = normalizeStoredChatState(parsed);
-      if (
-        parsed.rooms.length !== state.rooms.length ||
-        parsed.messages.length !== state.messages.length
-      ) {
-        throw new Error('invalid-chat-state');
-      }
-      if (JSON.stringify(state) !== stored) {
-        await AsyncStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(state));
+      const serialized = JSON.stringify(state);
+      if (serialized !== stored) {
+        await AsyncStorage.setItem(CHAT_STORAGE_KEY, serialized);
       }
       return state;
     });

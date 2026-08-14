@@ -26,6 +26,7 @@ export type KakaoAuthErrorKind =
   | 'cancelled'
   | 'conflict'
   | 'invalid-kakao-token'
+  | 'invalid-nickname'
   | 'invalid-password'
   | 'invalid-response'
   | 'network'
@@ -66,7 +67,7 @@ function getErrorText(error: unknown) {
 }
 
 export function isKakaoLoginCancelled(error: unknown) {
-  return /cancel(?:led|ed)?|access[_ -]?denied/i.test(getErrorText(error));
+  return /E_CANCELLED_OPERATION|\bcancel(?:led|ed)\b/i.test(getErrorText(error));
 }
 
 function getResponseCode(error: unknown) {
@@ -105,6 +106,27 @@ function toKakaoAuthError(
     return new KakaoAuthError(
       'invalid-kakao-token',
       '카카오 로그인 정보가 만료됐어요. 다시 시도해 주세요.',
+    );
+  }
+
+  if (['JWT_403_2', 'REFRESH_401', 'REFRESH_INVALID'].includes(code ?? '')) {
+    return new KakaoAuthError(
+      'invalid-kakao-token',
+      '로그인 정보가 유효하지 않아요. 다시 로그인해주세요.',
+    );
+  }
+
+  if (phase === 'onboarding' && code === 'NICKNAME_409') {
+    return new KakaoAuthError(
+      'invalid-nickname',
+      '이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해주세요.',
+    );
+  }
+
+  if (phase === 'onboarding' && code === 'NICKNAME_400') {
+    return new KakaoAuthError(
+      'invalid-nickname',
+      '닉네임은 15자 이내의 한글, 영문, 숫자만 사용할 수 있어요.',
     );
   }
 
@@ -220,6 +242,10 @@ export async function completeKakaoOnboarding(input: KakaoOnboardingInput) {
 
     assertSuccessfulKakaoEnvelope(response);
   } catch (error) {
+    if (['NICKNAME_400', 'NICKNAME_409'].includes(getResponseCode(error) ?? '')) {
+      throw toKakaoAuthError(error, 'onboarding');
+    }
+
     const profile = await loadRemoteUserProfile().catch(() => null);
     if (
       profile &&

@@ -1,5 +1,5 @@
 import { Link, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/common/AppButton';
@@ -57,8 +57,13 @@ export function TermsAgreementScreen() {
     }
   };
 
-  const handleKakaoBack = async () => {
-    if (!pendingRemoteSignupUserId || saving) return;
+  const handleKakaoBack = useCallback(async () => {
+    if (saving) return;
+
+    if (!pendingRemoteSignupUserId) {
+      router.replace('/');
+      return;
+    }
 
     setSaving(true);
     setSaveError(undefined);
@@ -67,11 +72,12 @@ export function TermsAgreementScreen() {
       await logoutRemoteSession().catch(() => undefined);
       await clearSession(pendingRemoteSignupUserId);
       router.replace('/');
-    } catch {
+    } catch (error) {
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
       setSaving(false);
+      throw error;
     }
-  };
+  }, [clearSession, pendingRemoteSignupUserId, router, saving]);
 
   return (
     <FormScreen
@@ -97,7 +103,7 @@ export function TermsAgreementScreen() {
         <TermsHeader
           disabled={saving}
           fallbackRoute={data.method === 'kakao' ? '/' : '/login'}
-          onBack={data.method === 'kakao' ? () => void handleKakaoBack() : undefined}
+          onBack={data.method === 'kakao' ? handleKakaoBack : undefined}
         />
       }
     >

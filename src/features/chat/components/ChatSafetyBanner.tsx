@@ -47,9 +47,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     minHeight: 84,
     paddingHorizontal: SPACING.xxl,
+    paddingVertical: SPACING.lg,
   },
   compactContainer: {
     minHeight: 52,
+    paddingVertical: SPACING.xs,
   },
   iconContainer: {
     alignItems: 'center',

@@ -31,17 +31,31 @@ export function ChatDataBridge() {
     () => new Map([...posts, ...reviewPosts].map((post) => [post.id, post])),
     [posts, reviewPosts],
   );
+  const participantIdsKey = useMemo(
+    () =>
+      [...new Set(rooms.flatMap((room) => room.participants.map(({ userId }) => userId)))]
+        .sort()
+        .join('\u0000'),
+    [rooms],
+  );
+  const postIdsKey = useMemo(
+    () =>
+      [...new Set(rooms.flatMap((room) => room.postReference?.postId ?? []))]
+        .sort()
+        .join('\u0000'),
+    [rooms],
+  );
 
   useEffect(() => {
     if (!currentUserId || !isChatReady || !isCommunityReady || hasCommunityLoadError) return;
 
+    const participantIds = new Set(participantIdsKey ? participantIdsKey.split('\u0000') : []);
     const participants = new Map(
-      [...posts, ...reviewPosts].map((post) => [
-        post.author.userId,
-        toChatParticipant(post.author),
-      ]),
+      [...posts, ...reviewPosts]
+        .filter((post) => participantIds.has(post.author.userId))
+        .map((post) => [post.author.userId, toChatParticipant(post.author)]),
     );
-    if (profile && isProfileReady && isPetReady) {
+    if (participantIds.has(currentUserId) && profile && isProfileReady && isPetReady) {
       participants.set(
         currentUserId,
         toChatParticipant(createCommunityAuthor(profile, selectedPet, currentUserId)),
@@ -51,9 +65,7 @@ export function ChatDataBridge() {
     const operations = [...participants.values()].map(
       (participant) => () => syncParticipant(participant),
     );
-    const referenceIds = new Set(
-      rooms.flatMap((room) => room.postReference?.postId ?? []),
-    );
+    const referenceIds = postIdsKey ? postIdsKey.split('\u0000') : [];
 
     referenceIds.forEach((postId) => {
       const post = livePosts.get(postId);
@@ -73,10 +85,15 @@ export function ChatDataBridge() {
 
     let active = true;
     void (async () => {
+      let pendingOperations = operations;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         if (!active) return;
-        const results = await Promise.all(operations.map((operation) => operation()));
-        if (!active || results.every((result) => result.ok)) return;
+        const results = await Promise.all(
+          pendingOperations.map((operation) => operation()),
+        );
+        if (!active) return;
+        pendingOperations = pendingOperations.filter((_, index) => !results[index].ok);
+        if (!pendingOperations.length) return;
         if (attempt < 2) {
           await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
         }
@@ -96,10 +113,11 @@ export function ChatDataBridge() {
     isProfileReady,
     livePosts,
     markPostDeleted,
+    participantIdsKey,
+    postIdsKey,
     posts,
     profile,
     reviewPosts,
-    rooms,
     selectedPet,
     syncParticipant,
     syncPostReference,

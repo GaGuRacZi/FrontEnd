@@ -162,7 +162,10 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const participant = room ? getOtherParticipant(room) : null;
   const draft = getDraft(roomId);
   const roomMessages = getMessages(roomId);
-  const messages = roomMessages.filter((message) => message.kind !== 'post');
+  const messages = useMemo(
+    () => roomMessages.filter((message) => message.kind !== 'post'),
+    [roomMessages],
+  );
   const lastMessageId = roomMessages.at(-1)?.id;
   const roomSessionKey = `${currentUserId ?? ''}\u0000${roomId}`;
   const [text, setText] = useState('');
@@ -174,6 +177,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const textRef = useRef('');
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const nearBottomRef = useRef(true);
   const leavingRef = useRef(false);
   const pickingImagesRef = useRef(false);
   const retryingIdsRef = useRef(new Set<string>());
@@ -431,6 +435,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
 
   const writable = canSendMessage(roomId);
   const canSubmit = writable && !sending && Boolean(text.trim() || draft.images.length);
+  const postReference = room.postReference;
 
   return (
     <AppScreen edges={['top', 'bottom', 'left', 'right']} padded={false}>
@@ -461,13 +466,13 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
           ListHeaderComponent={
             <View style={styles.roomHeaderContent}>
               <ChatSafetyBanner compact />
-              {room.postReference ? (
+              {postReference ? (
                 <ChatPostReferenceCard
-                  onPress={room.postReference.deletedAt ? undefined : () => router.push({
+                  onPress={postReference.deletedAt ? undefined : () => router.push({
                     pathname: '/community/[postId]',
-                    params: { origin: 'community', postId: room.postReference!.postId },
+                    params: { origin: 'community', postId: postReference.postId },
                   })}
-                  reference={room.postReference}
+                  reference={postReference}
                 />
               ) : null}
               {!writable ? (
@@ -483,7 +488,18 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
           keyExtractor={(message) => message.id}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() => {
+            if (nearBottomRef.current) {
+              listRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
+          onScroll={({ nativeEvent }) => {
+            nearBottomRef.current =
+              nativeEvent.contentSize.height -
+                nativeEvent.layoutMeasurement.height -
+                nativeEvent.contentOffset.y <=
+              80;
+          }}
           ref={listRef}
           renderItem={({ index, item }) => {
             const previous = messages[index - 1];
@@ -505,6 +521,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
               </View>
             );
           }}
+          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
         />
 
