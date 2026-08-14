@@ -23,7 +23,6 @@ export function MyPageSettingsScreen() {
       setLogoutError(false);
       try {
         await logOut();
-        router.replace('/');
       } catch (error) {
         setLogoutError(true);
         throw error;

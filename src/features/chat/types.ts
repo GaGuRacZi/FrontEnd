@@ -100,4 +100,4 @@ export type ChatRoomMutationResult =
 
 export type ChatMessageMutationResult =
   | { messageId: string; ok: true }
-  | { ok: false; reason: ChatMutationFailureReason };
+  | { messageId?: string; ok: false; reason: ChatMutationFailureReason };

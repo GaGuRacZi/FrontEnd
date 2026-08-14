@@ -71,7 +71,6 @@ export function TermsAgreementScreen() {
     try {
       await logoutRemoteSession().catch(() => undefined);
       await clearSession(pendingRemoteSignupUserId);
-      router.replace('/');
     } catch (error) {
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
       setSaving(false);

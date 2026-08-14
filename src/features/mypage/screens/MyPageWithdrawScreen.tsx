@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -14,7 +13,6 @@ import { MyPageCard, MyPageHeader } from '../components';
 import { useMyPageStore } from '../MyPageStore';
 
 export function MyPageWithdrawScreen() {
-  const router = useRouter();
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const { withdrawAccount } = useAccountLifecycle();
@@ -125,7 +123,6 @@ export function MyPageWithdrawScreen() {
       setWithdrawing(true);
       try {
         await withdrawAccount();
-        router.replace('/');
       } catch (error) {
         setWithdrawError(true);
         throw error;

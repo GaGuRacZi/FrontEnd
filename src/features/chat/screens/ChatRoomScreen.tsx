@@ -19,6 +19,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { AppScreen, ScreenLayout, TopHeader } from '@/src/components/layout';
 import { useAppAlert } from '@/src/components/modal';
@@ -141,6 +142,7 @@ function MessageBubble({
 export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const router = useRouter();
   const showAlert = useAppAlert();
+  const insets = useSafeAreaInsets();
   const { currentUserId } = useAuthSession();
   const {
     addDraftImages,
@@ -352,22 +354,23 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
         textRef.current = '';
         setText('');
         requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+      } else if (result.messageId) {
+        textRef.current = '';
+        setText('');
+        showAlert('메시지를 보내지 못했어요', '메시지 옆의 다시 보내기를 눌러주세요.');
       } else if (result.reason === 'read-only') {
         showAlert('메시지를 보낼 수 없는 채팅방이에요');
       } else if (result.reason !== 'empty') {
-        const savedDraft = getDraft(roomId);
         showAlert(
           '메시지를 보내지 못했어요',
-          savedDraft.text || savedDraft.images.length
-            ? '입력 내용은 보존했어요. 다시 전송해주세요.'
-            : '메시지 옆의 다시 보내기를 눌러주세요.',
+          '입력 내용은 보존했어요. 다시 전송해주세요.',
         );
       }
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [draft.images.length, flushDraft, getDraft, roomId, sendDraft, showAlert, text]);
+  }, [draft.images.length, flushDraft, roomId, sendDraft, showAlert, text]);
 
   const retry = useCallback(async (messageId: string) => {
     if (retryingIdsRef.current.has(messageId)) return;
@@ -459,7 +462,8 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
       />
       <View style={styles.headerDivider} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
+        keyboardVerticalOffset={insets.bottom}
         style={styles.root}
       >
         <FlatList

@@ -773,7 +773,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
           };
           await chatRepository.saveState(failedState).catch(() => undefined);
           applyState(failedState);
-          return { ok: false, reason: 'error' };
+          return { messageId: message.id, ok: false, reason: 'error' };
         }
       }),
     [applyState, currentUserId, enqueueMutation, persist],

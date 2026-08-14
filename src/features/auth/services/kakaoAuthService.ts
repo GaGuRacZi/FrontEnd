@@ -109,7 +109,7 @@ function toKakaoAuthError(
     );
   }
 
-  if (['JWT_403_2', 'REFRESH_401', 'REFRESH_INVALID'].includes(code ?? '')) {
+  if (['JWT_403_2', 'REFRESH_401', 'REFRESH_INVALID', 'USER_404_1'].includes(code ?? '')) {
     return new KakaoAuthError(
       'invalid-kakao-token',
       '로그인 정보가 유효하지 않아요. 다시 로그인해주세요.',
