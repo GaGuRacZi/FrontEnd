@@ -20,6 +20,7 @@ import { TERM_IDS, useTerms } from '../../terms';
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
 import { SignupScaffold } from '../components/SignupScaffold';
 import {
+  geocodeAddress,
   getBestCurrentPosition,
   getRegionFromPosition,
   MAX_LOCATION_ACCURACY_METERS,
@@ -45,9 +46,10 @@ export function SignupLocationScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
-  const { data, updateField } = useSignup();
+  const { data, updateFields } = useSignup();
   const [searching, setSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
   const [locationError, setLocationError] = useState<string>();
   const locating = useRef(false);
   const locationRequestId = useRef(0);
@@ -62,11 +64,13 @@ export function SignupLocationScreen() {
   const cancelLocationRequest = useCallback(() => {
     invalidateLocationRequest();
     setIsLocating(false);
+    setIsResolvingAddress(false);
   }, [invalidateLocationRequest]);
 
   useFocusEffect(
     useCallback(() => {
       setIsLocating(false);
+      setIsResolvingAddress(false);
 
       return () => invalidateLocationRequest();
     }, [invalidateLocationRequest]),
@@ -174,8 +178,12 @@ export function SignupLocationScreen() {
         return;
       }
 
-      updateField('region', region);
-      updateField('regionSource', 'current');
+      updateFields({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        region,
+        regionSource: 'current',
+      });
     } catch {
       if (isCurrentRequest()) {
         setLocationError('현재 위치를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
@@ -188,6 +196,68 @@ export function SignupLocationScreen() {
     }
   };
 
+  const handleAddressSelect = async (address: string) => {
+    cancelLocationRequest();
+    const requestId = locationRequestId.current + 1;
+    locationRequestId.current = requestId;
+    const isCurrentRequest = () => locationRequestId.current === requestId;
+    setSearching(false);
+    setLocationError(undefined);
+    updateFields({
+      latitude: null,
+      longitude: null,
+      region: address,
+      regionSource: 'search',
+    });
+
+    if (data.method !== 'kakao') return;
+
+    setIsResolvingAddress(true);
+
+    try {
+      if (Platform.OS === 'android') {
+        const permission = await Location.requestForegroundPermissionsAsync();
+
+        if (!isCurrentRequest()) return;
+
+        if (!permission.granted) {
+          setLocationError('선택한 지역을 확인하려면 위치 권한을 허용해주세요.');
+          showAlert(
+            '위치 권한이 필요해요',
+            '선택한 지역의 위치를 확인하려면 앱 설정에서 위치 권한을 허용해주세요.',
+            [
+              { text: '취소', style: 'cancel' },
+              { text: '설정 열기', onPress: () => void Linking.openSettings() },
+            ],
+          );
+          return;
+        }
+      }
+
+      const locations = await geocodeAddress(address);
+
+      if (!isCurrentRequest()) return;
+
+      const location = locations.find(
+        ({ latitude, longitude }) =>
+          Number.isFinite(latitude) && Number.isFinite(longitude),
+      );
+
+      if (!location) {
+        setLocationError('선택한 지역의 위치를 확인하지 못했어요. 다시 검색해주세요.');
+        return;
+      }
+
+      updateFields({ latitude: location.latitude, longitude: location.longitude });
+    } catch {
+      if (isCurrentRequest()) {
+        setLocationError('선택한 지역의 위치를 확인하지 못했어요. 다시 검색해주세요.');
+      }
+    } finally {
+      if (isCurrentRequest()) setIsResolvingAddress(false);
+    }
+  };
+
   if (searching) {
     return (
       <AddressSearchScreen
@@ -195,22 +265,18 @@ export function SignupLocationScreen() {
           cancelLocationRequest();
           setSearching(false);
         }}
-        onSelect={(address) => {
-          cancelLocationRequest();
-          updateField('region', address);
-          updateField('regionSource', 'search');
-          setLocationError(undefined);
-          setSearching(false);
-        }}
+        onSelect={(address) => void handleAddressSelect(address)}
       />
     );
   }
+
+  const locationBusy = isLocating || isResolvingAddress;
 
   return (
     <SignupScaffold
       bodyStyle={styles.body}
       currentStep={3}
-      nextDisabled={!hasValidSignupLocation(data)}
+      nextDisabled={locationBusy || !hasValidSignupLocation(data)}
       onNext={() => {
         cancelLocationRequest();
         router.push('/signup/pet-type');
@@ -226,6 +292,8 @@ export function SignupLocationScreen() {
         <Pressable
           accessibilityHint="지역 검색 화면을 엽니다"
           accessibilityRole="button"
+          accessibilityState={{ busy: isResolvingAddress, disabled: locationBusy }}
+          disabled={locationBusy}
           onPress={() => {
             cancelLocationRequest();
             setLocationError(undefined);
@@ -239,15 +307,19 @@ export function SignupLocationScreen() {
           >
             {data.region || '여기를 눌러 지역을 선택해주세요'}
           </Text>
-          <AppIcon color={COLORS.black} name="chevron-down" size={22} />
+          {isResolvingAddress ? (
+            <ActivityIndicator color={COLORS.primary} size="small" />
+          ) : (
+            <AppIcon color={COLORS.black} name="chevron-down" size={22} />
+          )}
         </Pressable>
       </View>
 
       <Pressable
         accessibilityHint="위치 약관 동의 후 현재 지역을 자동으로 설정합니다"
         accessibilityRole="button"
-        accessibilityState={{ busy: isLocating, disabled: isLocating }}
-        disabled={isLocating}
+        accessibilityState={{ busy: locationBusy, disabled: locationBusy }}
+        disabled={locationBusy}
         onPress={handleCurrentLocation}
         style={({ pressed }) => [
           styles.currentLocationCard,

@@ -9,7 +9,8 @@ import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { SignupScaffold } from '../components/SignupScaffold';
 import { useSignup } from '../SignupContext';
 import {
-  getRequiredError,
+  getSignupNameError,
+  getSignupNicknameError,
   hasValidSignupProfileInfo,
 } from '../signupValidation';
 
@@ -33,7 +34,8 @@ export function SignupUserInfoScreen() {
         autoComplete="name"
         error={nameError}
         label="이름"
-        onBlur={() => setNameError(getRequiredError(data.name, '이름을 입력해주세요.'))}
+        maxLength={10}
+        onBlur={() => setNameError(getSignupNameError(data.name))}
         onChangeText={(value) => {
           updateField('name', value);
           setNameError(undefined);
@@ -49,10 +51,8 @@ export function SignupUserInfoScreen() {
         leftElement={
           isLocal ? <AppIcon color={COLORS.gray500} name="person-outline" size={22} /> : undefined
         }
-        maxLength={12}
-        onBlur={() =>
-          setNicknameError(getRequiredError(data.nickname, '닉네임을 입력해주세요.'))
-        }
+        maxLength={15}
+        onBlur={() => setNicknameError(getSignupNicknameError(data.nickname))}
         onChangeText={(value) => {
           updateField('nickname', value);
           setNicknameError(undefined);

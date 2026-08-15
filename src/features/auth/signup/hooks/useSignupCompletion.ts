@@ -7,11 +7,19 @@ import {
   useAuthSession,
 } from '@/src/features/auth/session/AuthSessionStore';
 import {
+  completeKakaoOnboarding,
+  KakaoAuthError,
+} from '@/src/features/auth/services/kakaoAuthService';
+import {
   consentStore,
   hasCurrentRequiredSignupConsents,
   termsRepository,
   useTerms,
 } from '@/src/features/auth/terms';
+import {
+  REQUIRED_SIGNUP_TERM_IDS,
+  TERM_IDS,
+} from '@/src/features/auth/terms/types';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { signupDataToPetEntity } from '@/src/features/pet/petMappers';
 import { usePetStore } from '@/src/features/pet/PetStore';
@@ -25,6 +33,7 @@ import {
   type SignupTransactionOwner,
 } from '../services/signupTransactionStore';
 import { useSignup } from '../SignupContext';
+import { hasValidSignupLocation } from '../signupValidation';
 
 export function useSignupCompletion() {
   const router = useRouter();
@@ -38,9 +47,11 @@ export function useSignupCompletion() {
   } = useSignup();
   const {
     activateLocalCredential,
+    activatePreparedRemoteSignup,
     activateSignupUser,
     deleteLocalCredential,
     hasLocalCredential,
+    pendingRemoteSignupUserId,
     registerLocalCredential,
   } = useAuthSession();
   const { deleteUserPetData, hasStoredUserPetData, registerSignupPet } = usePetStore();
@@ -51,7 +62,9 @@ export function useSignupCompletion() {
   } = useMyPageStore();
   const {
     finalizeSignupConsents,
+    hasCurrentConsent,
     signupIdentityFinalized,
+    status: termsStatus,
   } = useTerms();
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
@@ -62,7 +75,10 @@ export function useSignupCompletion() {
 
     submittingRef.current = true;
     setSubmitting(true);
-    const currentUserId = getSignupUserId(data.method, data.email, signupSessionId);
+    const currentUserId =
+      data.method === 'kakao'
+        ? pendingRemoteSignupUserId ?? ''
+        : getSignupUserId(data.method, data.email, signupSessionId);
     const transactionOwner: SignupTransactionOwner = committedSignupRecovery ?? {
       email: data.email,
       method: data.method,
@@ -72,14 +88,20 @@ export function useSignupCompletion() {
     const userId = transactionOwner.userId;
     let consentsFinalized = signupIdentityFinalized;
     let ownsTransaction = false;
+    let remoteOnboardingAttempted = false;
+    let remoteOnboardingCompleted = false;
 
     try {
+      if (!currentUserId) throw new Error('missing-remote-signup-session');
+
       if (
-        getSignupUserId(
-          transactionOwner.method,
-          transactionOwner.email,
-          transactionOwner.sessionId,
-        ) !== userId
+        (transactionOwner.method === 'kakao'
+          ? transactionOwner.userId !== pendingRemoteSignupUserId
+          : getSignupUserId(
+              transactionOwner.method,
+              transactionOwner.email,
+              transactionOwner.sessionId,
+            ) !== userId)
       ) {
         throw new Error('signup-owner-mismatch');
       }
@@ -99,18 +121,31 @@ export function useSignupCompletion() {
             : Promise.resolve(true),
           termsRepository.getTerms(),
         ]);
-      const hasCompleteAccount =
+      let hasCompleteAccount =
         hasPetData &&
         profileStatus === 'valid' &&
         hasCurrentRequiredSignupConsents(consentHistory, currentTerms) &&
         hasCredentialData;
-
-      if (
+      const canFinalizeCommittedKakao =
         ownsStoredTransaction &&
-        (transaction?.status === 'committed' ||
-          signupIdentityFinalized ||
-          hasCompleteAccount)
-      ) {
+        transaction?.status === 'committed' &&
+        transactionOwner.method === 'kakao' &&
+        !signupIdentityFinalized &&
+        hasPetData &&
+        profileStatus === 'valid' &&
+        REQUIRED_SIGNUP_TERM_IDS.every((termId) => hasCurrentConsent(termId));
+
+      if (canFinalizeCommittedKakao) {
+        await finalizeSignupConsents(userId);
+        consentsFinalized = true;
+        hasCompleteAccount = true;
+      }
+      const canRecoverAccount =
+        transaction?.status === 'committed' ||
+        (transactionOwner.method === 'local' &&
+          (signupIdentityFinalized || hasCompleteAccount));
+
+      if (ownsStoredTransaction && canRecoverAccount) {
         if (hasCompleteAccount) {
           if (transaction?.status !== 'committed') {
             await saveSignupTransaction(transactionOwner, 'committed');
@@ -118,11 +153,15 @@ export function useSignupCompletion() {
           if (transactionOwner.method === 'local') {
             await activateLocalCredential(userId);
           }
-          await activateSignupUser(
-            transactionOwner.method,
-            transactionOwner.email,
-            transactionOwner.sessionId,
-          );
+          if (transactionOwner.method === 'kakao') {
+            await activatePreparedRemoteSignup(userId);
+          } else {
+            await activateSignupUser(
+              transactionOwner.method,
+              transactionOwner.email,
+              transactionOwner.sessionId,
+            );
+          }
           markSignupCompleted();
           await clearSignupTransaction(userId, transactionOwner.sessionId).catch(
             () => undefined,
@@ -138,7 +177,11 @@ export function useSignupCompletion() {
       }
 
       if (!signupIdentityFinalized) {
-        if (transaction?.status === 'pending' && ownsStoredTransaction) {
+        if (
+          transaction?.status === 'pending' &&
+          transaction.method === transactionOwner.method &&
+          transaction.userId === userId
+        ) {
           ownsTransaction = true;
           const recoveryResults = await Promise.allSettled([
             deleteUserPetData(userId),
@@ -151,7 +194,7 @@ export function useSignupCompletion() {
           if (recoveryResults.some((result) => result.status === 'rejected')) {
             throw new Error('signup-recovery-failed');
           }
-          await clearSignupTransaction(userId, transactionOwner.sessionId);
+          await clearSignupTransaction(userId, transaction.sessionId);
         } else if (
           hasPetData ||
           profileStatus !== 'missing' ||
@@ -175,30 +218,74 @@ export function useSignupCompletion() {
         ownsTransaction = true;
       }
 
+      let kakaoLocation: { latitude: number; longitude: number } | null = null;
+      if (transactionOwner.method === 'kakao') {
+        if (
+          !hasValidSignupLocation(data) ||
+          data.latitude === null ||
+          data.longitude === null
+        ) {
+          throw new Error('missing-onboarding-location');
+        }
+        kakaoLocation = { latitude: data.latitude, longitude: data.longitude };
+      }
       const initialPet = signupDataToPetEntity(data, userId);
       await registerSignupPet(userId, initialPet);
       await registerSignupProfile(data, userId);
       if (transactionOwner.method === 'local') {
         await registerLocalCredential(userId, data.password);
       }
+      if (kakaoLocation) {
+        remoteOnboardingAttempted = true;
+        await completeKakaoOnboarding({
+          agreements: {
+            AGE_OVER_14: hasCurrentConsent(TERM_IDS.age),
+            LOCATION_SERVICE: hasCurrentConsent(TERM_IDS.location),
+            MARKETING_PUSH: hasCurrentConsent(TERM_IDS.marketing),
+            PRIVACY: hasCurrentConsent(TERM_IDS.privacy),
+            PROFILE_EXTRA: hasCurrentConsent(TERM_IDS.profilePrivacy),
+            TERMS_OF_SERVICE: hasCurrentConsent(TERM_IDS.service),
+          },
+          intro: data.introduction,
+          location: kakaoLocation,
+          name: data.name,
+          nickname: data.nickname,
+        });
+        remoteOnboardingCompleted = true;
+        await saveSignupTransaction(transactionOwner, 'committed');
+      }
       await finalizeSignupConsents(userId);
       consentsFinalized = true;
-      await saveSignupTransaction(transactionOwner, 'committed');
+      if (!kakaoLocation) {
+        await saveSignupTransaction(transactionOwner, 'committed');
+      }
       if (transactionOwner.method === 'local') {
         await activateLocalCredential(userId);
       }
-      await activateSignupUser(
-        transactionOwner.method,
-        transactionOwner.email,
-        transactionOwner.sessionId,
-      );
+      if (transactionOwner.method === 'kakao') {
+        await activatePreparedRemoteSignup(userId);
+      } else {
+        await activateSignupUser(
+          transactionOwner.method,
+          transactionOwner.email,
+          transactionOwner.sessionId,
+        );
+      }
       markSignupCompleted();
       await clearSignupTransaction(userId, transactionOwner.sessionId).catch(
         () => undefined,
       );
       router.push('/signup/complete');
     } catch (error) {
-      if (ownsTransaction && !consentsFinalized) {
+      const preserveRemoteOnboarding =
+        transactionOwner.method === 'kakao' &&
+        (remoteOnboardingCompleted ||
+          (remoteOnboardingAttempted &&
+            error instanceof KakaoAuthError &&
+            error.kind !== 'invalid-kakao-token' &&
+            error.kind !== 'invalid-nickname'));
+
+      if (ownsTransaction && !consentsFinalized && !preserveRemoteOnboarding) {
         const cleanupResults = await Promise.allSettled([
           deleteUserPetData(userId),
           deleteUserProfileData(userId),
@@ -213,6 +300,11 @@ export function useSignupCompletion() {
           );
         }
       }
+      if (error instanceof KakaoAuthError && error.kind === 'invalid-nickname') {
+        showAlert('닉네임을 확인해주세요', error.message);
+        navigateOnce(() => router.dismissTo('/signup/user-info'));
+        return;
+      }
       if (!(error instanceof Error) || error.message !== 'signup-account-exists') {
         showAlert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
       }
@@ -223,6 +315,7 @@ export function useSignupCompletion() {
     }
   }, [
     activateLocalCredential,
+    activatePreparedRemoteSignup,
     activateSignupUser,
     committedSignupRecovery,
     data,
@@ -230,11 +323,13 @@ export function useSignupCompletion() {
     deleteUserPetData,
     deleteUserProfileData,
     finalizeSignupConsents,
+    hasCurrentConsent,
     hasLocalCredential,
     hasStoredUserPetData,
     hasStoredUserProfileData,
     markSignupCompleted,
     navigateOnce,
+    pendingRemoteSignupUserId,
     registerSignupPet,
     registerSignupProfile,
     registerLocalCredential,
@@ -245,11 +340,17 @@ export function useSignupCompletion() {
   ]);
 
   useEffect(() => {
-    if (!committedSignupRecovery || recoveryAttemptedRef.current) return;
+    if (
+      !committedSignupRecovery ||
+      recoveryAttemptedRef.current ||
+      termsStatus !== 'ready'
+    ) {
+      return;
+    }
 
     recoveryAttemptedRef.current = true;
     void completeSignup().catch(() => undefined);
-  }, [committedSignupRecovery, completeSignup]);
+  }, [committedSignupRecovery, completeSignup, termsStatus]);
 
   return {
     completeSignup,

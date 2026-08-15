@@ -48,10 +48,10 @@ export function normalizeSignupEmail(email: string) {
 }
 
 export function getTemporarySignupEmailVerification(email: string) {
-  if (API_BASE_URL) return null;
-  if (!TEMPORARY_EMAIL_VERIFICATION_ENABLED) {
+  if (!TEMPORARY_EMAIL_VERIFICATION_ENABLED && !API_BASE_URL) {
     throw new Error('EXPO_PUBLIC_API_BASE_URL이 설정되지 않았습니다.');
   }
+  if (!TEMPORARY_EMAIL_VERIFICATION_ENABLED) return null;
 
   const normalizedEmail = normalizeSignupEmail(email);
 

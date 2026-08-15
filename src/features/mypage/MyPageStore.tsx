@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import type { RemoteUserProfile } from '@/src/features/auth/services/kakaoAuthContract';
 
 import {
   getCheckoutPaymentMethod,
@@ -58,6 +59,7 @@ type MyPageStoreContextValue = {
   paymentHistory: PaymentHistoryItem[];
   paymentMethods: PaymentMethod[];
   profile: UserProfile | null;
+  registerRemoteProfile: (profile: RemoteUserProfile) => Promise<void>;
   registerSignupProfile: (
     data: Parameters<typeof signupDataToProfile>[0],
     userId: string,
@@ -256,6 +258,55 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     [enqueueMutation],
   );
 
+  const registerRemoteProfile = useCallback(
+    (remoteProfile: RemoteUserProfile) =>
+      enqueueMutation(async () => {
+        const status = await mypageRepository.getStoredStateStatus(remoteProfile.uid);
+        const previous = await mypageRepository.loadState(remoteProfile.uid);
+        const now = new Date().toISOString();
+
+        if (status === 'valid') {
+          if (previous.profile.loginConnections.some(({ method }) => method === 'kakao')) {
+            return;
+          }
+          const email =
+            remoteProfile.email ||
+            previous.profile.loginConnections.find(({ email }) => email)?.email ||
+            '';
+          await persist(remoteProfile.uid, {
+            ...previous,
+            profile: {
+              ...previous.profile,
+              loginConnections: [
+                ...previous.profile.loginConnections,
+                { email, method: 'kakao' },
+              ],
+              updatedAt: now,
+            },
+          });
+          return;
+        }
+
+        const nextState = {
+          ...previous,
+          profile: {
+            createdAt: previous.profile.createdAt || now,
+            id: remoteProfile.uid,
+            introduction: remoteProfile.intro,
+            location: remoteProfile.regionName,
+            loginConnections: [{ email: remoteProfile.email, method: 'kakao' as const }],
+            name: remoteProfile.name,
+            nickname: remoteProfile.nickname,
+            profileImageUri: remoteProfile.profileUrl,
+            updatedAt: now,
+          },
+        };
+
+        await persist(remoteProfile.uid, nextState);
+      }),
+    [enqueueMutation, persist],
+  );
+
   const updateProfile = useCallback(
     (profile: UserProfile) =>
       enqueueMutation(async (): Promise<MutationResult> => {
@@ -410,6 +461,7 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       paymentHistory: visibleState?.paymentHistory ?? EMPTY_PAYMENT_HISTORY,
       paymentMethods: visibleState?.paymentMethods ?? EMPTY_PAYMENT_METHODS,
       profile: visibleState?.profile ?? null,
+      registerRemoteProfile,
       registerSignupProfile,
       reloadMyPage,
       scheduleCancelSubscription,
@@ -424,6 +476,7 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       deleteUserProfileData,
       hasLoadError,
       hasStoredUserProfileData,
+      registerRemoteProfile,
       registerSignupProfile,
       reloadMyPage,
       scheduleCancelSubscription,

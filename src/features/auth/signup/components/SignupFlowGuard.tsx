@@ -1,6 +1,7 @@
 import { Redirect, usePathname } from 'expo-router';
 import type { PropsWithChildren } from 'react';
 
+import { useAuthSession } from '../../session/AuthSessionStore';
 import { useTerms } from '../../terms';
 import { useSignup } from '../SignupContext';
 import { getNextSignupRoute } from '../signupValidation';
@@ -19,6 +20,7 @@ const ROUTE_ORDER: Record<string, number> = {
 
 export function SignupFlowGuard({ children }: PropsWithChildren) {
   const pathname = usePathname();
+  const { currentUserId, pendingRemoteSignupUserId } = useAuthSession();
   const { committedSignupRecovery, data, signupCompleted } = useSignup();
   const { hasRequiredSignupConsents, status } = useTerms();
   const currentOrder = pathname.startsWith('/signup/terms/')
@@ -31,15 +33,19 @@ export function SignupFlowGuard({ children }: PropsWithChildren) {
     ? ROUTE_ORDER[allowedRoute]
     : ROUTE_ORDER['/signup/terms'];
 
+  if (pendingRemoteSignupUserId && data.method !== 'kakao') {
+    return <Redirect href={{ pathname: '/signup/terms', params: { method: 'kakao' } }} />;
+  }
+
+  if (!currentUserId && !pendingRemoteSignupUserId && data.method === 'kakao') {
+    return <Redirect href="/" />;
+  }
+
   if (committedSignupRecovery) {
     if (pathname !== '/signup/pet-info' && pathname !== '/signup/complete') {
       return <Redirect href="/signup/pet-info" />;
     }
     return children;
-  }
-
-  if (data.method === 'kakao') {
-    return <Redirect href="/" />;
   }
 
   if (status === 'loading') {

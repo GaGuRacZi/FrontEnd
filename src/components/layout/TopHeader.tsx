@@ -15,6 +15,7 @@ type RightHeaderActionProps =
 
 type TopHeaderProps = {
   centerContent?: ReactNode;
+  centerContentStyle?: StyleProp<ViewStyle>;
   leftContent?: ReactNode;
   leftDisabled?: boolean;
   leftIcon?: AppIconName;
@@ -65,6 +66,7 @@ function HeaderAction({
 
 export function TopHeader({
   centerContent,
+  centerContentStyle,
   leftAccessibilityLabel,
   leftContent,
   leftDisabled = false,
@@ -94,7 +96,10 @@ export function TopHeader({
           ))}
       </View>
 
-      <View pointerEvents={centerContent ? 'box-none' : 'none'} style={styles.titleContainer}>
+      <View
+        pointerEvents={centerContent ? 'box-none' : 'none'}
+        style={[styles.titleContainer, centerContentStyle]}
+      >
         {centerContent ??
           (title ? (
             <Text numberOfLines={1} style={[styles.title, titleStyle]}>

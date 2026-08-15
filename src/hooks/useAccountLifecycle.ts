@@ -2,7 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback } from 'react';
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import { isUuid } from '@/src/features/auth/services/kakaoAuthContract';
+import { logoutRemoteSession } from '@/src/features/auth/services/kakaoAuthService';
 import { useTerms } from '@/src/features/auth/terms';
+import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useCommunityStore } from '@/src/features/community/CommunityStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
@@ -38,6 +41,10 @@ async function runAll(operations: Promise<void>[]) {
 export function useAccountLifecycle() {
   const { clearSession, currentUserId, deleteLocalCredential } = useAuthSession();
   const { deleteConsentHistory } = useTerms();
+  const {
+    clearScreenSession: clearChatSession,
+    deleteUserChatData,
+  } = useChatStore();
   const { clearScreenSession: clearCommunitySession, deleteUserCommunityData } =
     useCommunityStore();
   const { clearScreenSession, deleteUserProfileData } = useMyPageStore();
@@ -45,13 +52,18 @@ export function useAccountLifecycle() {
 
   const logOut = useCallback(async () => {
     const userId = currentUserId;
+    if (userId && isUuid(userId)) {
+      await runWithRetry(logoutRemoteSession).catch(() => undefined);
+    }
     await runAll([
+      runWithRetry(clearChatSession),
       runWithRetry(clearCommunitySession),
       runWithRetry(async () => clearScreenSession()),
       userId ? runWithRetry(() => clearDrafts(userId)) : Promise.resolve(),
     ]);
     if (userId) await runWithRetry(() => clearSession(userId));
   }, [
+    clearChatSession,
     clearCommunitySession,
     clearDrafts,
     clearScreenSession,
@@ -61,6 +73,7 @@ export function useAccountLifecycle() {
 
   const deleteAccountData = useCallback(async (userId: string) => {
     await runAll([
+      runWithRetry(() => deleteUserChatData(userId)),
       runWithRetry(() => deleteUserCommunityData(userId)),
       runWithRetry(() => deleteUserPetData(userId)),
       runWithRetry(() => deleteUserProfileData(userId)),
@@ -68,12 +81,13 @@ export function useAccountLifecycle() {
     ]);
 
     await runWithRetry(() => deleteLocalCredential(userId));
-    await runWithRetry(() => AsyncStorage.removeItem(PENDING_WITHDRAWAL_KEY));
     await runWithRetry(() => clearSession(userId));
+    await runWithRetry(() => AsyncStorage.removeItem(PENDING_WITHDRAWAL_KEY));
   }, [
     clearSession,
     deleteLocalCredential,
     deleteConsentHistory,
+    deleteUserChatData,
     deleteUserCommunityData,
     deleteUserPetData,
     deleteUserProfileData,

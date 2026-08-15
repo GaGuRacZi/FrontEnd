@@ -7,6 +7,7 @@ import {
 } from '@/src/features/pet/petValidation';
 
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+const NICKNAME_PATTERN = /^[A-Za-z0-9가-힣]+$/;
 
 export {
   formatBirthDate,
@@ -44,6 +45,27 @@ export function getRequiredError(value: string, message: string) {
   return value.trim() ? undefined : message;
 }
 
+export function getSignupNameError(name: string) {
+  const value = name.trim();
+
+  if (!value) return '이름을 입력해주세요.';
+  if (value.length > 10) return '이름은 10자 이하로 입력해주세요.';
+
+  return undefined;
+}
+
+export function getSignupNicknameError(nickname: string) {
+  const value = nickname.trim();
+
+  if (!value) return '닉네임을 입력해주세요.';
+  if (value.length > 15) return '닉네임은 15자 이하로 입력해주세요.';
+  if (!NICKNAME_PATTERN.test(value)) {
+    return '닉네임은 한글, 영문, 숫자만 입력할 수 있어요.';
+  }
+
+  return undefined;
+}
+
 export function hasValidSignupCredentials(data: SignupData) {
   if (data.method !== 'local') return true;
 
@@ -57,8 +79,9 @@ export function hasValidSignupCredentials(data: SignupData) {
 
 export function hasValidSignupProfileInfo(data: SignupData) {
   return (
-    !getRequiredError(data.name, '이름을 입력해주세요.') &&
-    !getRequiredError(data.nickname, '닉네임을 입력해주세요.')
+    !getSignupNameError(data.name) &&
+    !getSignupNicknameError(data.nickname) &&
+    data.introduction.trim().length <= 30
   );
 }
 
@@ -77,7 +100,19 @@ export function hasValidSignupPetInfo(data: SignupData) {
 }
 
 export function hasValidSignupLocation(data: SignupData) {
-  return Boolean(data.region.trim());
+  if (!data.region.trim()) return false;
+  if (data.method !== 'kakao') return true;
+
+  return (
+    data.latitude !== null &&
+    data.longitude !== null &&
+    Number.isFinite(data.latitude) &&
+    Number.isFinite(data.longitude) &&
+    data.latitude >= -90 &&
+    data.latitude <= 90 &&
+    data.longitude >= -180 &&
+    data.longitude <= 180
+  );
 }
 
 export function getNextSignupRoute(data: SignupData): SignupFlowRoute {

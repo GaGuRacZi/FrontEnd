@@ -23,9 +23,6 @@
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "allowBackup": false,
       "backgroundColor": "#FFFFFF",
@@ -33,7 +30,7 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
-      "permissions": ["android.permission.SCHEDULE_EXACTT_ALARM"],
+      "permissions": ["android.permission.SCHEDULE_EXACT_ALARM"],
       "package": "com.gaguraczi.paw",
       "googleServicesFile": "./google-services.json",
       "versionCode": 1,
@@ -43,7 +40,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": true
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "bundler": "metro",

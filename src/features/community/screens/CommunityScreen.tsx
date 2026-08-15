@@ -6,6 +6,8 @@ import {
   KeyboardAvoidingView,
   Image,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -23,6 +25,10 @@ import { AppInput } from '@/src/components/form';
 import { ScreenLayout } from '@/src/components/layout';
 import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SHADOWS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import { ChatEntryButton } from '@/src/features/chat/components';
+import { toChatParticipant, toChatPostReference } from '@/src/features/chat/communityAdapter';
+import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
 import { formatCompactRegion } from '@/src/utils/location';
@@ -74,7 +80,7 @@ const REVIEW_GOOD_ICON = require('@/assets/images/decorations/review-good.png');
 const REVIEW_NO_ICON = require('@/assets/images/decorations/review-no.png');
 
 const REVIEW_STAR_COLOR = COLORS.star;
-const COMMUNITY_PAGE_SIZE = 10;
+const COMMUNITY_BATCH_SIZE = 10;
 
 const CATEGORY_PILL_STYLE = {
   backgroundColor: COLORS.primarySoft,
@@ -300,96 +306,9 @@ function TabSegment({
   );
 }
 
-function CommunityPagination({
-  currentPage,
-  onChange,
-  totalPages,
-}: {
-  currentPage: number;
-  onChange: (page: number) => void;
-  totalPages: number;
-}) {
-  if (totalPages <= 1) return null;
-
-  const visiblePageCount = Math.min(4, totalPages);
-  const firstPage = Math.min(
-    Math.max(1, currentPage - Math.floor(visiblePageCount / 2)),
-    totalPages - visiblePageCount + 1,
-  );
-  const pages = Array.from(
-    { length: visiblePageCount },
-    (_, index) => firstPage + index,
-  );
-
-  return (
-    <View style={styles.pagination}>
-      <Pressable
-        accessibilityLabel="이전 페이지"
-        accessibilityRole="button"
-        accessibilityState={{ disabled: currentPage === 1 }}
-        disabled={currentPage === 1}
-        onPress={() => onChange(currentPage - 1)}
-        style={({ pressed }) => [
-          styles.paginationButton,
-          currentPage === 1 && styles.paginationButtonDisabled,
-          pressed && styles.pressed,
-        ]}
-      >
-        <AppIcon color={COLORS.gray600} name="chevron-back" size={18} />
-      </Pressable>
-
-      {pages.map((page) => {
-        const selected = page === currentPage;
-        return (
-          <Pressable
-            accessibilityLabel={`${page}페이지`}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            key={page}
-            onPress={() => onChange(page)}
-            style={({ pressed }) => [
-              styles.paginationButton,
-              selected && styles.paginationButtonActive,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text
-              style={[
-                styles.paginationText,
-                selected && styles.paginationTextActive,
-              ]}
-            >
-              {page}
-            </Text>
-          </Pressable>
-        );
-      })}
-
-      <Pressable
-        accessibilityLabel="다음 페이지"
-        accessibilityRole="button"
-        accessibilityState={{ disabled: currentPage === totalPages }}
-        disabled={currentPage === totalPages}
-        onPress={() => onChange(currentPage + 1)}
-        style={({ pressed }) => [
-          styles.paginationButton,
-          currentPage === totalPages && styles.paginationButtonDisabled,
-          pressed && styles.pressed,
-        ]}
-      >
-        <AppIcon color={COLORS.gray600} name="chevron-forward" size={18} />
-      </Pressable>
-    </View>
-  );
-}
-
-function getPageCount(itemCount: number) {
-  return Math.max(1, Math.ceil(itemCount / COMMUNITY_PAGE_SIZE));
-}
-
-function getPageItems<Item>(items: Item[], page: number) {
-  const startIndex = (page - 1) * COMMUNITY_PAGE_SIZE;
-  return items.slice(startIndex, startIndex + COMMUNITY_PAGE_SIZE);
+function isNearScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
+  const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+  return contentOffset.y + layoutMeasurement.height >= contentSize.height - SPACING.xxxl;
 }
 
 function AdBanner() {
@@ -768,23 +687,17 @@ function ReviewCard({
 
 function ReviewReadyContent({
   category,
-  currentPage,
   onCategoryChange,
   onOpenReview,
-  onPageChange,
   posts,
   profile,
-  totalPages,
   viewerId,
 }: {
   category: ReviewCategory;
-  currentPage: number;
   onCategoryChange: (category: ReviewCategory) => void;
   onOpenReview: (postId: string) => void;
-  onPageChange: (page: number) => void;
   posts: ReviewPost[];
   profile: ReturnType<typeof useMyPageStore>['profile'];
-  totalPages: number;
   viewerId: string;
 }) {
   return (
@@ -811,11 +724,6 @@ function ReviewReadyContent({
       ) : (
         <CommunityEmptyPosts icon="star-outline" title="아직 리뷰가 등록되지 않았습니다" />
       )}
-      <CommunityPagination
-        currentPage={currentPage}
-        onChange={onPageChange}
-        totalPages={totalPages}
-      />
     </>
   );
 }
@@ -848,6 +756,7 @@ function PhotoViewer({
 
 export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   const router = useRouter();
+  const { currentUserId } = useAuthSession();
   const { focusOnReturn, origin, searchQuery, searchTab } = useLocalSearchParams<{
     focusOnReturn?: string;
     origin?: string;
@@ -875,6 +784,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
     updateMarketStatus,
     viewerId,
   } = useCommunityStore();
+  const { openMarketRoom } = useChatStore();
   const { profile } = useMyPageStore();
   const { selectedPet } = usePetStore();
   const [commentText, setCommentText] = useState('');
@@ -907,6 +817,8 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   const [marketDeleteVisible, setMarketDeleteVisible] = useState(false);
   const [marketDeleting, setMarketDeleting] = useState(false);
   const marketDeletingRef = useRef(false);
+  const [chatOpening, setChatOpening] = useState(false);
+  const chatOpeningRef = useRef(false);
   const [talkReactionSubmitting, setTalkReactionSubmitting] = useState(false);
   const talkReactionSubmittingRef = useRef(false);
   const [reviewReactionSubmitting, setReviewReactionSubmitting] = useState(false);
@@ -924,6 +836,61 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
           selectedPost.imageCount,
       )
     : 1;
+
+  const openMarketChat = useCallback(async () => {
+    if (
+      chatOpeningRef.current ||
+      !currentUserId ||
+      !selectedPost ||
+      selectedPost.kind !== 'market' ||
+      selectedPost.status === '완료' ||
+      selectedPost.author.userId === currentUserId
+    ) {
+      return;
+    }
+
+    chatOpeningRef.current = true;
+    setChatOpening(true);
+    try {
+      const buyer = toChatParticipant(
+        createCommunityAuthor(profile, selectedPet, currentUserId),
+      );
+      const seller = {
+        ...toChatParticipant(selectedPost.author),
+        ...(selectedPost.location.trim() ? { location: selectedPost.location } : {}),
+      };
+      const result = await openMarketRoom(
+        buyer,
+        seller,
+        toChatPostReference(selectedPost),
+      );
+      if (result.ok) {
+        router.push({
+          pathname: '/chat/[roomId]',
+          params: { roomId: result.roomId },
+        });
+        return;
+      }
+
+      setModal({
+        description:
+          result.reason === 'completed-post'
+            ? '거래가 완료된 게시글에는 새 문의를 시작할 수 없어요.'
+            : result.reason === 'deleted-post'
+              ? '삭제된 게시글에는 문의할 수 없어요.'
+              : '잠시 후 다시 시도해주세요.',
+        title: '채팅을 시작하지 못했어요',
+      });
+    } catch {
+      setModal({
+        description: '잠시 후 다시 시도해주세요.',
+        title: '채팅을 시작하지 못했어요',
+      });
+    } finally {
+      chatOpeningRef.current = false;
+      setChatOpening(false);
+    }
+  }, [currentUserId, openMarketRoom, profile, router, selectedPet, selectedPost]);
 
   useEffect(() => {
     setImageIndex(0);
@@ -2103,14 +2070,10 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
             />
           </Pressable>
           <AppButton
-            disabled={!canInquire}
+            disabled={!canInquire || chatOpening}
             fullWidth={false}
-            onPress={() =>
-              setModal({
-                description: '장터 문의는 채팅 기능이 열리면 바로 이용할 수 있어요.',
-                title: '채팅 문의는 준비 중이에요',
-              })
-            }
+            loading={chatOpening}
+            onPress={() => void openMarketChat()}
             style={styles.marketChatButton}
             title={selectedPost.status === '완료' ? '거래 완료' : isMine ? '내 게시글이에요' : '채팅으로 문의하기'}
           />
@@ -2301,6 +2264,7 @@ export function CommunityScreen() {
     updateFilterSession,
     viewerId,
   } = useCommunityStore();
+  const { totalUnreadCount } = useChatStore();
   const { profile } = useMyPageStore();
   const [activeTab, setActiveTab] = useState<CommunityTab>(filterSession.activeTab);
   const [talkCategory, setTalkCategory] = useState<TalkCategory>(filterSession.talkCategory);
@@ -2316,12 +2280,12 @@ export function CommunityScreen() {
   const [searchQuery, setSearchQuery] = useState(
     params.searchQuery ?? filterSession.searchQuery,
   );
-  const [pages, setPages] = useState<Record<CommunityTab, number>>({
-    market: 1,
-    review: 1,
-    talk: 1,
+  const [visibleCounts, setVisibleCounts] = useState<Record<CommunityTab, number>>({
+    market: COMMUNITY_BATCH_SIZE,
+    review: COMMUNITY_BATCH_SIZE,
+    talk: COMMUNITY_BATCH_SIZE,
   });
-  const [searchPage, setSearchPage] = useState(1);
+  const [searchVisibleCount, setSearchVisibleCount] = useState(COMMUNITY_BATCH_SIZE);
   const [modal, setModal] = useState<ModalState>(null);
   const showBookmarkError = useCallback(() => {
     setModal({
@@ -2343,6 +2307,7 @@ export function CommunityScreen() {
   } | null>(null);
   const mainScrollRef = useRef<ScrollView>(null);
   const searchScrollRef = useRef<ScrollView>(null);
+  const scrollLoadLockRef = useRef({ main: false, search: false });
 
   const saveFilterSession = useCallback(
     async (
@@ -2415,8 +2380,13 @@ export function CommunityScreen() {
     setSearchOpen(params.search === '1');
     setSearchTab(requestedSearchTab ?? filterSession.searchTab);
     setSearchQuery(params.searchQuery ?? filterSession.searchQuery);
-    setPages({ market: 1, review: 1, talk: 1 });
-    setSearchPage(1);
+    setVisibleCounts({
+      market: COMMUNITY_BATCH_SIZE,
+      review: COMMUNITY_BATCH_SIZE,
+      talk: COMMUNITY_BATCH_SIZE,
+    });
+    setSearchVisibleCount(COMMUNITY_BATCH_SIZE);
+    scrollLoadLockRef.current = { main: false, search: false };
     lastSavedSessionRef.current = JSON.stringify(filterSession);
     setRestoredSessionKey(sessionKey);
   }, [
@@ -2552,117 +2522,93 @@ export function CommunityScreen() {
       .map((post) => ({ kind: 'market', post }));
   }, [posts, profile, reviewPosts, searchQuery, searchTab, viewerId]);
 
-  const talkPageCount = getPageCount(talkPosts.length);
-  const marketPageCount = getPageCount(marketPosts.length);
-  const reviewPageCount = getPageCount(filteredReviewPosts.length);
-  const searchPageCount = getPageCount(searchResults.length);
-  const talkPage = Math.min(pages.talk, talkPageCount);
-  const marketPage = Math.min(pages.market, marketPageCount);
-  const reviewPage = Math.min(pages.review, reviewPageCount);
-  const safeSearchPage = Math.min(searchPage, searchPageCount);
   const visibleTalkPosts = useMemo(
-    () => getPageItems(talkPosts, talkPage),
-    [talkPage, talkPosts],
+    () => talkPosts.slice(0, visibleCounts.talk),
+    [talkPosts, visibleCounts.talk],
   );
   const visibleMarketPosts = useMemo(
-    () => getPageItems(marketPosts, marketPage),
-    [marketPage, marketPosts],
+    () => marketPosts.slice(0, visibleCounts.market),
+    [marketPosts, visibleCounts.market],
   );
   const visibleReviewPosts = useMemo(
-    () => getPageItems(filteredReviewPosts, reviewPage),
-    [filteredReviewPosts, reviewPage],
+    () => filteredReviewPosts.slice(0, visibleCounts.review),
+    [filteredReviewPosts, visibleCounts.review],
   );
   const visibleSearchResults = useMemo(
-    () => getPageItems(searchResults, safeSearchPage),
-    [safeSearchPage, searchResults],
+    () => searchResults.slice(0, searchVisibleCount),
+    [searchResults, searchVisibleCount],
   );
 
-  useEffect(() => {
-    const next = {
-      market: Math.min(pages.market, marketPageCount),
-      review: Math.min(pages.review, reviewPageCount),
-      talk: Math.min(pages.talk, talkPageCount),
-    };
-    const activePageChanged = next[activeTab] !== pages[activeTab];
-
-    if (
-      next.market === pages.market &&
-      next.review === pages.review &&
-      next.talk === pages.talk
-    ) {
-      return;
-    }
-
-    setPages(next);
-    if (activePageChanged) {
-      requestAnimationFrame(() => {
-        mainScrollRef.current?.scrollTo({ animated: false, y: 0 });
-      });
-    }
-  }, [
-    activeTab,
-    marketPageCount,
-    pages,
-    reviewPageCount,
-    talkPageCount,
-  ]);
-
-  useEffect(() => {
-    if (searchPage <= searchPageCount) return;
-
-    setSearchPage(searchPageCount);
-    requestAnimationFrame(() => {
-      searchScrollRef.current?.scrollTo({ animated: false, y: 0 });
-    });
-  }, [searchPage, searchPageCount]);
-
-  const changePage = useCallback(
-    (tab: CommunityTab, page: number) => {
-      if (pages[tab] === page) return;
-
-      setPages((current) => ({ ...current, [tab]: page }));
-      requestAnimationFrame(() => {
-        mainScrollRef.current?.scrollTo({ animated: true, y: 0 });
-      });
-    },
-    [pages],
-  );
-
-  const changeSearchPage = useCallback(
-    (page: number) => {
-      if (safeSearchPage === page) return;
-
-      setSearchPage(page);
-      requestAnimationFrame(() => {
-        searchScrollRef.current?.scrollTo({ animated: true, y: 0 });
-      });
-    },
-    [safeSearchPage],
-  );
-
-  const resetPage = useCallback((tab: CommunityTab) => {
-    setPages((current) =>
-      current[tab] === 1 ? current : { ...current, [tab]: 1 },
+  const resetVisibleCount = useCallback((tab: CommunityTab) => {
+    scrollLoadLockRef.current.main = false;
+    mainScrollRef.current?.scrollTo({ animated: false, y: 0 });
+    setVisibleCounts((current) =>
+      current[tab] === COMMUNITY_BATCH_SIZE
+        ? current
+        : { ...current, [tab]: COMMUNITY_BATCH_SIZE },
     );
   }, []);
 
-  const resetSearchPage = useCallback(() => {
-    setSearchPage(1);
+  const resetSearchVisibleCount = useCallback(() => {
+    scrollLoadLockRef.current.search = false;
+    setSearchVisibleCount(COMMUNITY_BATCH_SIZE);
     searchScrollRef.current?.scrollTo({ animated: false, y: 0 });
   }, []);
 
+  const handleListScroll = useCallback(
+    (
+      event: NativeSyntheticEvent<NativeScrollEvent>,
+      target: 'main' | 'search',
+    ) => {
+      if (!isNearScrollEnd(event)) {
+        scrollLoadLockRef.current[target] = false;
+        return;
+      }
+
+      const activeItemCount =
+        activeTab === 'talk'
+          ? talkPosts.length
+          : activeTab === 'market'
+            ? marketPosts.length
+            : filteredReviewPosts.length;
+      const hasMore = target === 'search'
+        ? searchVisibleCount < searchResults.length
+        : visibleCounts[activeTab] < activeItemCount;
+      if (!hasMore || scrollLoadLockRef.current[target]) return;
+
+      scrollLoadLockRef.current[target] = true;
+      if (target === 'search') {
+        setSearchVisibleCount((current) => current + COMMUNITY_BATCH_SIZE);
+        return;
+      }
+      setVisibleCounts((current) => ({
+        ...current,
+        [activeTab]: current[activeTab] + COMMUNITY_BATCH_SIZE,
+      }));
+    },
+    [
+      activeTab,
+      filteredReviewPosts.length,
+      marketPosts.length,
+      searchResults.length,
+      searchVisibleCount,
+      talkPosts.length,
+      visibleCounts,
+    ],
+  );
+
   const openSearch = () => {
     setSearchTab(activeTab);
-    resetSearchPage();
+    resetSearchVisibleCount();
     setSearchOpen(true);
   };
 
   useEffect(() => {
     if (requestedTab) {
       setActiveTab(requestedTab);
-      resetPage(requestedTab);
+      resetVisibleCount(requestedTab);
     }
-  }, [requestedTab, resetPage]);
+  }, [requestedTab, resetVisibleCount]);
 
   useEffect(() => {
     if (!isReady || hasLoadError || !params.focusPostId) return;
@@ -2688,9 +2634,7 @@ export function CommunityScreen() {
     }
 
     if (focusedTab) {
-      setPages((current) =>
-        current[focusedTab] === 1 ? current : { ...current, [focusedTab]: 1 },
-      );
+      resetVisibleCount(focusedTab);
       requestAnimationFrame(() => {
         mainScrollRef.current?.scrollTo({ animated: false, y: 0 });
       });
@@ -2702,6 +2646,7 @@ export function CommunityScreen() {
     isReady,
     params.focusPostId,
     posts,
+    resetVisibleCount,
     reviewPosts,
     router,
   ]);
@@ -2722,8 +2667,8 @@ export function CommunityScreen() {
     });
   };
 
-  const openComingSoon = (title: string, description: string) => {
-    setModal({ title, description });
+  const openChat = () => {
+    router.push({ pathname: '/community', params: { view: 'chat' } });
   };
 
   const handleToggleMarketFilter = <T extends string,>(
@@ -2732,7 +2677,7 @@ export function CommunityScreen() {
     setter: (nextValues: T[]) => void,
   ) => {
     setter(values.includes(value) ? values.filter((current) => current !== value) : [...values, value]);
-    resetPage('market');
+    resetVisibleCount('market');
   };
 
   useEffect(() => {
@@ -2752,11 +2697,7 @@ export function CommunityScreen() {
         centerContent={<CommunityHeaderTitle />}
         headerFullWidth
         leftContent={
-          <HeaderIconButton
-            icon="chatbubble-outline"
-            label="채팅 열기"
-            onPress={() => openComingSoon('채팅은 곧 만날 수 있어요', '채팅 목록과 대화방은 곧 이용할 수 있어요.')}
-          />
+          <ChatEntryButton onPress={openChat} unreadCount={totalUnreadCount} />
         }
         rightContent={<HeaderIconButton icon="search-outline" label="커뮤니티 검색" onPress={openSearch} outlined />}
       >
@@ -2770,7 +2711,9 @@ export function CommunityScreen() {
       <ScreenLayout
         centerContent={<CommunityHeaderTitle />}
         headerFullWidth
-        leftContent={<View style={styles.headerIconButton} />}
+        leftContent={
+          <ChatEntryButton onPress={openChat} unreadCount={totalUnreadCount} />
+        }
         rightContent={<View style={styles.headerIconButton} />}
       >
         <EmptyState
@@ -2800,7 +2743,7 @@ export function CommunityScreen() {
             leftElement={<AppIcon color={COLORS.gray500} name="search-outline" size={20} />}
             onChangeText={(value) => {
               setSearchQuery(value);
-              resetSearchPage();
+              resetSearchVisibleCount();
             }}
             placeholder={searchTab === 'review' ? '병원, 장소, 샵 이름을 검색해보세요' : '검색어를 입력해주세요'}
             rightElement={
@@ -2811,7 +2754,7 @@ export function CommunityScreen() {
                   hitSlop={SPACING.sm}
                   onPress={() => {
                     setSearchQuery('');
-                    resetSearchPage();
+                    resetSearchVisibleCount();
                   }}
                 >
                   <AppIcon color={COLORS.gray500} name="close-circle" size={19} />
@@ -2824,7 +2767,7 @@ export function CommunityScreen() {
             activeTab={searchTab}
             onChange={(tab) => {
               setSearchTab(tab);
-              resetSearchPage();
+              resetSearchVisibleCount();
             }}
           />
           {!normalizeText(searchQuery) ? (
@@ -2847,7 +2790,9 @@ export function CommunityScreen() {
             <ScrollView
               contentContainerStyle={styles.searchResults}
               keyboardShouldPersistTaps="handled"
+              onScroll={(event) => handleListScroll(event, 'search')}
               ref={searchScrollRef}
+              scrollEventThrottle={16}
               showsVerticalScrollIndicator={false}
             >
               <SectionTitle count={searchResults.length} title="검색 결과" />
@@ -2878,11 +2823,6 @@ export function CommunityScreen() {
                   />
                 ),
               )}
-              <CommunityPagination
-                currentPage={safeSearchPage}
-                onChange={changeSearchPage}
-                totalPages={searchPageCount}
-              />
             </ScrollView>
           )}
         </View>
@@ -2895,24 +2835,22 @@ export function CommunityScreen() {
       centerContent={<CommunityHeaderTitle />}
       headerFullWidth
       leftContent={
-        <HeaderIconButton
-          icon="chatbubble-outline"
-          label="채팅 열기"
-          onPress={() => openComingSoon('채팅은 곧 만날 수 있어요', '채팅 목록과 대화방은 곧 이용할 수 있어요.')}
-        />
+        <ChatEntryButton onPress={openChat} unreadCount={totalUnreadCount} />
       }
       rightContent={<HeaderIconButton icon="search-outline" label="커뮤니티 검색" onPress={openSearch} outlined />}
     >
       <ScrollView
         contentContainerStyle={styles.rootContent}
+        onScroll={(event) => handleListScroll(event, 'main')}
         ref={mainScrollRef}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
         <TabSegment
           activeTab={activeTab}
           onChange={(tab) => {
             setActiveTab(tab);
-            resetPage(tab);
+            resetVisibleCount(tab);
           }}
         />
 
@@ -2924,7 +2862,7 @@ export function CommunityScreen() {
               activeValue={talkCategory}
               onChange={(category) => {
                 setTalkCategory(category);
-                resetPage('talk');
+                resetVisibleCount('talk');
               }}
               values={TALK_CATEGORIES}
             />
@@ -2942,11 +2880,6 @@ export function CommunityScreen() {
             ) : (
               <CommunityEmptyPosts icon="chatbubble-ellipses-outline" title="아직 소통 글이 등록되지 않았습니다" />
             )}
-            <CommunityPagination
-              currentPage={talkPage}
-              onChange={(page) => changePage('talk', page)}
-              totalPages={talkPageCount}
-            />
           </>
         ) : null}
 
@@ -2958,7 +2891,7 @@ export function CommunityScreen() {
                 activeValue={marketCategory}
                 onChange={(category) => {
                   setMarketCategory(category);
-                  resetPage('market');
+                  resetVisibleCount('market');
                 }}
                 roomy
                 values={MARKET_CATEGORIES}
@@ -2986,27 +2919,19 @@ export function CommunityScreen() {
             ) : (
               <CommunityEmptyPosts icon="bag-outline" title="아직 장터 글이 등록되지 않았습니다" />
             )}
-            <CommunityPagination
-              currentPage={marketPage}
-              onChange={(page) => changePage('market', page)}
-              totalPages={marketPageCount}
-            />
           </>
         ) : null}
 
         {activeTab === 'review' ? (
           <ReviewReadyContent
             category={reviewCategory}
-            currentPage={reviewPage}
             onCategoryChange={(category) => {
               setReviewCategory(category);
-              resetPage('review');
+              resetVisibleCount('review');
             }}
             onOpenReview={openPost}
-            onPageChange={(page) => changePage('review', page)}
             posts={visibleReviewPosts}
             profile={profile}
-            totalPages={reviewPageCount}
             viewerId={viewerId}
           />
         ) : null}
@@ -3030,8 +2955,7 @@ export function CommunityScreen() {
         accessibilityLabel={activeTab === 'review' ? '리뷰 글쓰기' : '커뮤니티 글쓰기'}
         accessibilityRole="button"
         onPress={() => {
-          resetPage(activeTab);
-          mainScrollRef.current?.scrollTo({ animated: false, y: 0 });
+          resetVisibleCount(activeTab);
           router.push({
             pathname: '/community/write',
             params: { origin: 'community', type: activeTab },
@@ -3055,7 +2979,7 @@ export function CommunityScreen() {
           onPress: () => {
             setMarketStatuses([]);
             setMarketTradeTypes([]);
-            resetPage('market');
+            resetVisibleCount('market');
           },
         }}
         title="장터 필터"
@@ -3128,39 +3052,6 @@ const styles = StyleSheet.create({
     gap: SPACING.xl,
     paddingBottom: SIZE.tabBarHeight + SPACING.xxxl,
     paddingTop: SPACING.lg,
-  },
-  pagination: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    marginTop: SPACING.md,
-  },
-  paginationButton: {
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.gray300,
-    borderRadius: RADIUS.round,
-    borderWidth: 1,
-    height: SIZE.touchTarget,
-    justifyContent: 'center',
-    minWidth: SIZE.touchTarget,
-    paddingHorizontal: SPACING.sm,
-  },
-  paginationButtonActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  paginationButtonDisabled: {
-    opacity: 0.35,
-  },
-  paginationText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.gray600,
-    fontFamily: TYPOGRAPHY.label.fontFamily,
-  },
-  paginationTextActive: {
-    color: COLORS.background,
   },
   policyLink: {
     alignItems: 'center',
