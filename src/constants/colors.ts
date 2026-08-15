@@ -33,6 +33,7 @@ export const COLORS = {
   confettiPeach: 'rgba(255, 184, 162, 0.75)',
   confettiPink: 'rgba(255, 205, 251, 0.75)',
   confettiYellow: 'rgba(255, 242, 198, 0.75)',
+  disabledPrimary: '#D0D8E8',
 
   gray100: '#F7F7F7',
   gray200: '#F0F0F0',
