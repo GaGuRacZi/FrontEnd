@@ -11,6 +11,7 @@ export type DiagnosisListItem = {
 export type DiagnosisMedicationTiming = 'bedtime' | 'dinner' | 'lunch' | 'morning';
 
 export type DiagnosisMedication = {
+	description?: string;
 	doseLabel: string; // '1정씩'
 	dosageLabel: string; // 'Meloxicam 1.5mg/ml'
 	frequencyLabel: string; // '하루 2회'

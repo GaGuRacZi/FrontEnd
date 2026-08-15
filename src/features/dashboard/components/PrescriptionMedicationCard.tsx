@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -8,6 +8,7 @@ import type { DiagnosisMedication, DiagnosisMedicationTiming } from '../types';
 type PrescriptionMedicationCardProps = {
 	index: number;
 	medication: DiagnosisMedication;
+	onPress: () => void;
 };
 
 const TIMING_LABEL: Record<DiagnosisMedicationTiming, string> = {
@@ -18,9 +19,14 @@ const TIMING_LABEL: Record<DiagnosisMedicationTiming, string> = {
 };
 const TIMING_ORDER: DiagnosisMedicationTiming[] = ['morning', 'lunch', 'dinner', 'bedtime'];
 
-export function PrescriptionMedicationCard({ index, medication }: PrescriptionMedicationCardProps) {
+export function PrescriptionMedicationCard({ index, medication, onPress }: PrescriptionMedicationCardProps) {
 	return (
-		<View style={styles.card}>
+		<Pressable
+			accessibilityLabel={`${medication.name} 상세 보기`}
+			accessibilityRole="button"
+			onPress={onPress}
+			style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+		>
 			<View style={styles.headerRow}>
 				<View style={styles.indexBadge}>
 					<Text style={styles.indexBadgeText}>{index + 1}</Text>
@@ -75,7 +81,7 @@ export function PrescriptionMedicationCard({ index, medication }: PrescriptionMe
 					<Text style={styles.warningText}>{medication.warningNote}</Text>
 				</View>
 			) : null}
-		</View>
+		</Pressable>
 	);
 }
 
@@ -88,6 +94,7 @@ const styles = StyleSheet.create({
 		gap: SPACING.md,
 		padding: SPACING.xxl,
 	},
+	pressed: { opacity: 0.85 },
 	headerRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
 	indexBadge: {
 		alignItems: 'center',

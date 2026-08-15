@@ -63,7 +63,8 @@ export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
 				doseLabel: '1정씩',
 				mealTimingLabel: '식사 후',
 				timings: ['morning', 'dinner'],
-				warningNote: '식사 후 복용',
+				description: '관절 염증과 통증을 줄여주는 비스테로이드 소염진통제(NSAID)예요. 프로스타글란딘 합성을 억제해 염증을 가라앉히고 통증을 완화해요. 퇴행성 관절염이나 수술 후 통증 관리에 주로 쓰여요.',
+				warningNote: '다른 소염제와 함께 쓰면 안 돼요\n공복보다는 식후에 주시는 게 위장에 훨씬 부담이 덜해요\n장기 복용 시 간·신장 기능을 주기적으로 확인해주세요',
 			},
 		],
 		careNotes: [
