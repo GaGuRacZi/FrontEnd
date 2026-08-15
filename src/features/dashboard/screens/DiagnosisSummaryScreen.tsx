@@ -4,16 +4,19 @@ import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
+import { MedicationDetailModal, MedicationSaveConfirmModal, MedicationSearchModal } from '@/src/components/modal';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { PetAvatar } from '@/src/features/pet/components/PetAvatar';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import type { MedicationEntry } from '@/src/types/medication';
 
 import { AiSummaryCard, PLACEHOLDER_SUMMARY } from '../components/AiSummaryCard';
 import { AiSummaryCoinModal } from '../components/AiSummaryCoinModal';
 import { BulletItem, DiagnosisSectionCard } from '../components/DiagnosisSectionCard';
 import { PrescriptionMedicationCard } from '../components/PrescriptionMedicationCard';
 import { MOCK_DIAGNOSIS_DETAIL } from '../mock';
+import type { DiagnosisMedication } from '../types';
 import { calculatePetAgeLabel, DiagnosisHeroCard } from '../components/DiagnosisHeroCard';
 
 export function DiagnosisSummaryScreen() {
@@ -23,6 +26,9 @@ export function DiagnosisSummaryScreen() {
 	const detail = diagnosisId ? MOCK_DIAGNOSIS_DETAIL[diagnosisId] : undefined;
 	const [aiSummary, setAiSummary] = useState(detail?.aiSummary);
 	const [coinModalVisible, setCoinModalVisible] = useState(false);
+	const [searchModalVisible, setSearchModalVisible] = useState(false);
+	const [saveConfirmVisible, setSaveConfirmVisible] = useState(false);
+	const [detailMedication, setDetailMedication] = useState<DiagnosisMedication | null>(null);
 
 	if (!selectedPet) return null;
 
@@ -79,9 +85,7 @@ export function DiagnosisSummaryScreen() {
 								<Pressable
 									accessibilityLabel="약물 추가"
 									accessibilityRole="button"
-									onPress={() => {
-										// TODO: 약물 검색/OCR/직접입력
-									}}
+									onPress={() => setSearchModalVisible(true)}
 									style={styles.actionButton}
 								>
 									<Image
@@ -94,7 +98,12 @@ export function DiagnosisSummaryScreen() {
 							</View>
 							<View style={styles.medicationList}>
 								{detail.medications.map((medication, index) => (
-									<PrescriptionMedicationCard index={index} key={medication.id} medication={medication} />
+									<PrescriptionMedicationCard
+										index={index}
+										key={medication.id}
+										medication={medication}
+										onPress={() => setDetailMedication(medication)}
+									/>
 								))}
 							</View>
 						</View>
@@ -135,6 +144,34 @@ export function DiagnosisSummaryScreen() {
 				}}
 				visible={coinModalVisible}
 			/>
+
+			<MedicationSearchModal
+				onClose={() => setSearchModalVisible(false)}
+				onSubmit={(medications: MedicationEntry[]) => {
+					// TODO: 실제로는 detail.medications에 반영하는 로직 필요 — 지금은 확인 모달만 연결
+					setSearchModalVisible(false);
+					setSaveConfirmVisible(true);
+				}}
+				visible={searchModalVisible}
+			/>
+
+			<MedicationSaveConfirmModal
+				onConfirm={() => setSaveConfirmVisible(false)}
+				onDismiss={() => setSaveConfirmVisible(false)}
+				visible={saveConfirmVisible}
+			/>
+
+			{detailMedication ? (
+				<MedicationDetailModal
+					description={detailMedication.description}
+					dosageMetaLabel={`${detailMedication.doseLabel} · ${detailMedication.frequencyLabel} · ${detailMedication.mealTimingLabel}`}
+					ingredientLabel={detailMedication.dosageLabel}
+					name={detailMedication.name}
+					onClose={() => setDetailMedication(null)}
+					visible={Boolean(detailMedication)}
+					warningNote={detailMedication.warningNote}
+				/>
+			) : null}
 		</ScreenLayout>
 	);
 }
