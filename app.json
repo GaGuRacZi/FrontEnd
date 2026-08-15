@@ -30,7 +30,9 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
+      "permissions": ["android.permission.SCHEDULE_EXACT_ALARM"],
       "package": "com.gaguraczi.paw",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
@@ -81,7 +83,9 @@
           "imageWidth": 200,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "@react-native-firebase/messaging",
+      "@react-native-firebase/app"
     ],
     "experiments": {
       "typedRoutes": true
