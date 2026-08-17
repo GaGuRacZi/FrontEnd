@@ -33,14 +33,14 @@ export function MyPageSettingsScreen() {
   };
 
   return (
-    <MyPageHeader title="사용자 설정">
+    <MyPageHeader title="계정 설정">
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <MyPageCard title="사용자">
+        <MyPageCard title="계정">
           <MyPageRow
             description="닉네임, 한 줄 소개, 지역 변경"
             iconName="person-outline"
-            onPress={() => router.push('/mypage/profile')}
-            title="프로필 정보 수정"
+            onPress={() => navigateOnce(() => router.push('/mypage/profile'))}
+            title="프로필 수정"
           />
         </MyPageCard>
 
@@ -48,28 +48,28 @@ export function MyPageSettingsScreen() {
           <MyPageRow
             description="내 요금제 확인"
             iconName="cash-outline"
-            onPress={() => router.push('/mypage/plan')}
+            onPress={() => navigateOnce(() => router.push('/mypage/plan'))}
             title="내 요금제"
           />
           <MyPageDivider />
           <MyPageRow
             description="간편페이 연결 및 관리"
             iconName="card-outline"
-            onPress={() => router.push('/mypage/payment-methods')}
+            onPress={() => navigateOnce(() => router.push('/mypage/payment-methods'))}
             title="결제 수단 관리"
           />
           <MyPageDivider />
           <MyPageRow
             description="결제 완료, 실패, 취소 내역"
             iconName="receipt-outline"
-            onPress={() => router.push('/mypage/payment-history')}
+            onPress={() => navigateOnce(() => router.push('/mypage/payment-history'))}
             title="결제 내역"
           />
         </MyPageCard>
 
         <MyPageCard title="기타">
           <MyPageRow
-            description="현재 기기에서 계정 로그아웃"
+            description="이 기기에서 로그아웃"
             iconName="log-out-outline"
             onPress={() => {
               setLogoutError(false);
@@ -79,9 +79,9 @@ export function MyPageSettingsScreen() {
           />
           <MyPageDivider />
           <MyPageRow
-            description="계정 삭제 진행"
+            description="계정 탈퇴 절차"
             iconName="trash-outline"
-            onPress={() => router.push('/mypage/withdraw')}
+            onPress={() => navigateOnce(() => router.push('/mypage/withdraw'))}
             title="탈퇴하기"
           />
         </MyPageCard>
@@ -113,7 +113,7 @@ export function MyPageSettingsScreen() {
       >
         <Text style={styles.modalDescription}>
           {logoutError
-            ? '작성 중인 내용을 정리하지 못했어요. 잠시 후 다시 시도해주세요.'
+            ? '잠시 후 다시 시도해주세요.'
             : '로그인 화면으로 되돌아갑니다.'}
         </Text>
       </AppModal>

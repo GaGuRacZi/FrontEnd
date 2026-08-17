@@ -16,10 +16,10 @@ export function SignupIntroScreen() {
       buttonTitle="시작하기"
       currentStep={1}
       onNext={() => router.push('/signup/profile')}
-      title={'환영해요!\n첫 가입을 진행해볼까요?'}
+      title={'환영해요!\n회원가입을 시작해볼까요?'}
     >
       <Text style={styles.description}>
-        {'PAW를 더 잘 사용하기 위해\n몇 가지 정보를 입력해주세요.'}
+        {'PAW 이용에 필요한\n정보를 차례로 입력해주세요.'}
       </Text>
       <Image accessibilityIgnoresInvertColors source={SIGNUP_PETS} style={styles.image} />
     </SignupScaffold>

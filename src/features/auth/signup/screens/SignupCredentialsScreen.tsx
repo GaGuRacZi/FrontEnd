@@ -32,7 +32,7 @@ export function SignupCredentialsScreen() {
       currentStep={2}
       nextDisabled={!hasValidSignupCredentials(data)}
       onNext={() => router.push('/signup/user-info')}
-      title={'로그인 정보를\n입력해주세요'}
+      title={'비밀번호를\n설정해주세요'}
     >
       <EmailVerificationField />
 

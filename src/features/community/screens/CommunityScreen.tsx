@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
@@ -55,6 +55,7 @@ import type {
   MarketPost,
   MarketStatus,
   MarketTradeType,
+  PostKind,
   ReactionKind,
   ReviewCategory,
   ReviewPost,
@@ -722,7 +723,7 @@ function ReviewReadyContent({
           );
         })
       ) : (
-        <CommunityEmptyPosts icon="star-outline" title="아직 리뷰가 등록되지 않았습니다" />
+        <CommunityEmptyPosts icon="star-outline" title="아직 등록된 리뷰가 없어요" />
       )}
     </>
   );
@@ -754,10 +755,30 @@ function PhotoViewer({
   );
 }
 
-export function CommunityPostDetailScreen({ postId }: { postId: string }) {
+export function CommunityPostDetailScreen({
+  defaultOrigin,
+  postId,
+  postKind,
+}: {
+  defaultOrigin?: 'mypage-activity';
+  postId: string;
+  postKind?: PostKind;
+}) {
   const router = useRouter();
+  const rootNavigation = useNavigation('/');
   const { currentUserId } = useAuthSession();
-  const { focusOnReturn, origin, searchQuery, searchTab } = useLocalSearchParams<{
+  const {
+    activityFilter,
+    activitySection,
+    activityTab,
+    focusOnReturn,
+    origin,
+    searchQuery,
+    searchTab,
+  } = useLocalSearchParams<{
+    activityFilter?: string;
+    activitySection?: string;
+    activityTab?: string;
     focusOnReturn?: string;
     origin?: string;
     searchQuery?: string;
@@ -776,6 +797,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
     isBookmarked,
     isReady,
     isReacted,
+    posts,
     reloadCommunity,
     reviewPosts,
     toggleBookmark,
@@ -827,8 +849,28 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   const [reviewDeleteVisible, setReviewDeleteVisible] = useState(false);
   const [reviewDeleting, setReviewDeleting] = useState(false);
   const reviewDeletingRef = useRef(false);
-  const selectedPost = getPostById(postId);
-  const selectedReviewPost = reviewPosts.find((post) => post.id === postId) ?? null;
+  const requiresPostKind = defaultOrigin === 'mypage-activity';
+  const matchedPost = requiresPostKind
+    ? posts.find((post) => post.id === postId && post.kind === postKind) ?? null
+    : getPostById(postId);
+  const matchedReviewPost = reviewPosts.find((post) => post.id === postId) ?? null;
+  const selectedPost = matchedPost;
+  const selectedReviewPost = requiresPostKind
+    ? postKind === 'review'
+      ? matchedReviewPost
+      : null
+    : matchedReviewPost;
+  const resolvedOrigin = origin ?? defaultOrigin;
+  const detailBackAccessibilityLabel =
+    resolvedOrigin === 'mypage-activity'
+      ? '마이페이지 커뮤니티 활동으로 돌아가기'
+      : selectedReviewPost
+        ? '리뷰 목록으로 돌아가기'
+        : selectedPost?.kind === 'talk'
+          ? '소통 목록으로 돌아가기'
+          : selectedPost?.kind === 'market'
+            ? '장터 목록으로 돌아가기'
+            : '커뮤니티로 돌아가기';
   const selectedMarketImageCount = selectedPost?.kind === 'market'
     ? Math.max(
         1,
@@ -901,7 +943,42 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
   }, [selectedMarketImageCount]);
 
   const goBack = useCallback(() => {
-    if (origin === 'search') {
+    if (resolvedOrigin === 'mypage-activity') {
+      const rootState = rootNavigation.getState();
+      if (rootState?.routes[rootState.index - 1]?.name === '(tabs)') {
+        rootNavigation.goBack();
+        return;
+      }
+
+      if (activitySection === 'engagement') {
+        router.replace({
+          pathname: '/mypage/activity/engagement',
+          params: {
+            filter:
+              activityFilter === 'talk' || activityFilter === 'market'
+                ? activityFilter
+                : 'all',
+            tab: activityTab === 'commented' ? 'commented' : 'saved',
+          },
+        });
+        return;
+      }
+
+      router.replace({
+        pathname: '/mypage/activity/authored',
+        params: {
+          filter:
+            activityFilter === 'talk' ||
+            activityFilter === 'market' ||
+            activityFilter === 'review'
+              ? activityFilter
+              : 'all',
+        },
+      });
+      return;
+    }
+
+    if (resolvedOrigin === 'search') {
       router.dismissTo({
         pathname: '/community',
         params: {
@@ -916,7 +993,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       return;
     }
 
-    if (origin === 'community' && focusOnReturn === '1') {
+    if (resolvedOrigin === 'community' && focusOnReturn === '1') {
       router.dismissTo({
         pathname: '/community',
         params: { focusPostId: postId },
@@ -924,22 +1001,35 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       return;
     }
 
-    if (origin === 'community' && router.canGoBack()) {
+    if (resolvedOrigin === 'community' && router.canGoBack()) {
       router.back();
       return;
     }
 
     router.replace('/community');
-  }, [focusOnReturn, origin, postId, router, searchQuery, searchTab]);
+  }, [
+    activityFilter,
+    activitySection,
+    activityTab,
+    focusOnReturn,
+    postId,
+    resolvedOrigin,
+    rootNavigation,
+    router,
+    searchQuery,
+    searchTab,
+  ]);
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      goBack();
-      return true;
-    });
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        goBack();
+        return true;
+      });
 
-    return () => subscription.remove();
-  }, [goBack]);
+      return () => subscription.remove();
+    }, [goBack]),
+  );
 
   const handleSubmitComment = async () => {
     if (!selectedPost || selectedPost.kind !== 'talk') return;
@@ -1082,7 +1172,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       <ScreenLayout
         headerFullWidth
         headerVariant="auth"
-        leftAccessibilityLabel="커뮤니티로 돌아가기"
+        leftAccessibilityLabel={detailBackAccessibilityLabel}
         onLeftPress={goBack}
         title="커뮤니티"
       >
@@ -1096,7 +1186,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       <ScreenLayout
         headerFullWidth
         headerVariant="auth"
-        leftAccessibilityLabel="커뮤니티로 돌아가기"
+        leftAccessibilityLabel={detailBackAccessibilityLabel}
         onLeftPress={goBack}
         title="커뮤니티"
       >
@@ -1116,7 +1206,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       <ScreenLayout
         headerFullWidth
         headerVariant="auth"
-        leftAccessibilityLabel="커뮤니티로 돌아가기"
+        leftAccessibilityLabel={detailBackAccessibilityLabel}
         onLeftPress={goBack}
         title="커뮤니티"
       >
@@ -1177,7 +1267,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       <ScreenLayout
         headerFullWidth
         headerVariant="auth"
-        leftAccessibilityLabel="리뷰 목록으로 돌아가기"
+        leftAccessibilityLabel={detailBackAccessibilityLabel}
         onLeftPress={goBack}
         rightContent={
           isMine ? (
@@ -1459,7 +1549,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
       <ScreenLayout
         headerFullWidth
         headerVariant="auth"
-        leftAccessibilityLabel="소통 목록으로 돌아가기"
+        leftAccessibilityLabel={detailBackAccessibilityLabel}
         onLeftPress={goBack}
         rightContent={
           isMine ? (
@@ -1900,7 +1990,7 @@ export function CommunityPostDetailScreen({ postId }: { postId: string }) {
     <ScreenLayout
       headerFullWidth
       headerVariant="auth"
-      leftAccessibilityLabel="장터 목록으로 돌아가기"
+      leftAccessibilityLabel={detailBackAccessibilityLabel}
       onLeftPress={goBack}
       rightContent={
         isMine ? (
@@ -2680,16 +2770,18 @@ export function CommunityScreen() {
     resetVisibleCount('market');
   };
 
-  useEffect(() => {
-    if (!searchOpen) return undefined;
+  useFocusEffect(
+    useCallback(() => {
+      if (!searchOpen) return undefined;
 
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeSearch();
-      return true;
-    });
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        closeSearch();
+        return true;
+      });
 
-    return () => subscription.remove();
-  }, [closeSearch, searchOpen]);
+      return () => subscription.remove();
+    }, [closeSearch, searchOpen]),
+  );
 
   if (!isReady) {
     return (
@@ -2878,7 +2970,7 @@ export function CommunityScreen() {
                 />
               ))
             ) : (
-              <CommunityEmptyPosts icon="chatbubble-ellipses-outline" title="아직 소통 글이 등록되지 않았습니다" />
+              <CommunityEmptyPosts icon="chatbubble-ellipses-outline" title="아직 등록된 소통 글이 없어요" />
             )}
           </>
         ) : null}
@@ -2917,7 +3009,7 @@ export function CommunityScreen() {
                 />
               ))
             ) : (
-              <CommunityEmptyPosts icon="bag-outline" title="아직 장터 글이 등록되지 않았습니다" />
+              <CommunityEmptyPosts icon="bag-outline" title="아직 등록된 장터 글이 없어요" />
             )}
           </>
         ) : null}

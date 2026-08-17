@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -162,13 +162,15 @@ export function ChatListScreen() {
     router.replace('/community');
   }, [closeSearch, router, searchOpen, searchText]);
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      goBack();
-      return true;
-    });
-    return () => subscription.remove();
-  }, [goBack]);
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        goBack();
+        return true;
+      });
+      return () => subscription.remove();
+    }, [goBack]),
+  );
 
   useEffect(() => {
     if (
@@ -210,9 +212,9 @@ export function ChatListScreen() {
         messages:
           index === 0
             ? [
-                { createdAt: createSeedTime(50), from: 'other', text: '안녕하세요! 게시글 보고 연락드렸어요.' },
-                { createdAt: createSeedTime(46), from: 'me', text: '네, 편하게 문의해주세요!' },
-                { createdAt: createSeedTime(4), from: 'other', text: '주말에도 괜찮으실까요?' },
+                { createdAt: createSeedTime(50), from: 'me', text: '안녕하세요! 게시글 보고 연락드렸어요.' },
+                { createdAt: createSeedTime(46), from: 'other', text: '네, 편하게 문의해주세요!' },
+                { createdAt: createSeedTime(4), from: 'me', text: '주말에도 거래 가능할까요?' },
               ]
             : index === 1
               ? [
@@ -224,7 +226,7 @@ export function ChatListScreen() {
                   { createdAt: createSeedTime(1_535), from: 'me', status: 'failed', text: '확인되면 알려주세요.' },
                 ],
         otherParticipant: other,
-        unreadCount: index === 0 ? 1 : index === 1 ? 1 : 0,
+        unreadCount: index === 1 ? 1 : 0,
       };
       if (index === 0 && marketPost) seed.postReference = toChatPostReference(marketPost);
       return seed;

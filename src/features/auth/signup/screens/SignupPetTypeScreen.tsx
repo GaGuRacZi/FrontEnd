@@ -60,7 +60,7 @@ export function SignupPetTypeScreen() {
         currentStep={4}
         nextDisabled={!hasValidSignupPetType(data)}
         onNext={() => router.push('/signup/pet-info')}
-        title={'반려동물의 정보를\n입력해주세요'}
+        title={'반려동물 종류를\n알려주세요'}
       >
         <Text style={styles.sectionLabel}>반려동물 종류</Text>
         <View accessibilityRole="radiogroup" style={styles.petTypes}>
@@ -92,7 +92,7 @@ export function SignupPetTypeScreen() {
           ]}
         >
           <Text style={[styles.breedText, data.breed && styles.selectedBreedText]}>
-            {data.breed || '품종을 선택해 주세요.'}
+            {data.breed || '품종을 선택해주세요.'}
           </Text>
           <AppIcon color={COLORS.black} name="chevron-down" size={22} />
         </Pressable>

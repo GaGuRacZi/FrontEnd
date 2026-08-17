@@ -1,28 +1,25 @@
-import { useRouter } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
 import { View } from 'react-native';
 
 import { BrandLogoButton } from '@/src/components/common/BrandLogoButton';
 import { ScreenLayout } from '@/src/components/layout';
-import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { PetProfileSelector } from '@/src/features/pet/components';
 
 type MyPageHeaderProps = {
   children?: ReactNode;
+  fallbackRoute?: Href;
   title?: string;
   variant?: 'root' | 'sub';
 };
 
-export function MyPageHeader({ children, title, variant = 'sub' }: MyPageHeaderProps) {
+export function MyPageHeader({
+  children,
+  fallbackRoute = '/mypage',
+  title,
+  variant = 'sub',
+}: MyPageHeaderProps) {
   const router = useRouter();
-  const { currentUserId, isReady } = useAuthSession();
-
-  useEffect(() => {
-    if (isReady && !currentUserId) router.replace('/');
-  }, [currentUserId, isReady, router]);
-
-  if (!isReady || !currentUserId) return null;
 
   if (variant === 'root') {
     return (
@@ -44,7 +41,7 @@ export function MyPageHeader({ children, title, variant = 'sub' }: MyPageHeaderP
       leftIcon="chevron-back"
       onLeftPress={() => {
         if (router.canGoBack()) router.back();
-        else router.replace('/mypage');
+        else router.replace(fallbackRoute);
       }}
       rightContent={<View style={{ width: 44 }} />}
       title={title}

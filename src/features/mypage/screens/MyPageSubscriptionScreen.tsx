@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 
 import { AppButton } from '@/src/components/common';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageHeader } from '../components';
 import { PLAN_DEFINITIONS, getPlanRank } from '../mypageData';
@@ -10,6 +11,7 @@ import { useMyPageStore } from '../MyPageStore';
 
 export function MyPageSubscriptionScreen() {
   const router = useRouter();
+  const navigateOnce = useNavigationLock();
   const { subscription } = useMyPageStore();
   const currentPlanId = subscription?.currentPlanId ?? 'baby-jelly';
   const currentRank = getPlanRank(currentPlanId);
@@ -17,7 +19,7 @@ export function MyPageSubscriptionScreen() {
   return (
     <MyPageHeader title="구독 살펴보기">
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.lead}>우리 아이에게 맞는 요금제를 선택하세요</Text>
+        <Text style={styles.lead}>요금제별 혜택과 가격을 비교해보세요</Text>
         {PLAN_DEFINITIONS.map((plan) => {
           const isCurrent = plan.id === currentPlanId;
           const planRank = getPlanRank(plan.id);
@@ -51,7 +53,11 @@ export function MyPageSubscriptionScreen() {
               </View>
               <AppButton
                 disabled={isCurrent}
-                onPress={() => router.push({ pathname: './checkout', params: { planId: plan.id } })}
+                onPress={() =>
+                  navigateOnce(() =>
+                    router.push({ pathname: './checkout', params: { planId: plan.id } }),
+                  )
+                }
                 size="medium"
                 title={actionLabel}
                 variant={isCurrent ? 'secondary' : 'primary'}

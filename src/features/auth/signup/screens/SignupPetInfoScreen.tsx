@@ -168,7 +168,7 @@ export function SignupPetInfoScreen() {
             style={styles.selectionButton}
           />
           <SelectionButton
-            label="중성화 안함"
+            label="중성화 안 함"
             onPress={() => updateField('neutered', false)}
             selected={data.neutered === false}
             style={styles.selectionButton}

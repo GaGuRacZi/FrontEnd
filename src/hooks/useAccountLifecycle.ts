@@ -8,6 +8,7 @@ import { useTerms } from '@/src/features/auth/terms';
 import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useCommunityStore } from '@/src/features/community/CommunityStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
+import { useSupportStore } from '@/src/features/mypage/support';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 const PENDING_WITHDRAWAL_KEY = 'paw:account-withdrawal';
@@ -48,6 +49,10 @@ export function useAccountLifecycle() {
   const { clearScreenSession: clearCommunitySession, deleteUserCommunityData } =
     useCommunityStore();
   const { clearScreenSession, deleteUserProfileData } = useMyPageStore();
+  const {
+    clearScreenSession: clearSupportSession,
+    deleteUserSupportData,
+  } = useSupportStore();
   const { clearDrafts, deleteUserPetData } = usePetStore();
 
   const logOut = useCallback(async () => {
@@ -58,6 +63,7 @@ export function useAccountLifecycle() {
     await runAll([
       runWithRetry(clearChatSession),
       runWithRetry(clearCommunitySession),
+      runWithRetry(clearSupportSession),
       runWithRetry(async () => clearScreenSession()),
       userId ? runWithRetry(() => clearDrafts(userId)) : Promise.resolve(),
     ]);
@@ -68,6 +74,7 @@ export function useAccountLifecycle() {
     clearDrafts,
     clearScreenSession,
     clearSession,
+    clearSupportSession,
     currentUserId,
   ]);
 
@@ -77,6 +84,7 @@ export function useAccountLifecycle() {
       runWithRetry(() => deleteUserCommunityData(userId)),
       runWithRetry(() => deleteUserPetData(userId)),
       runWithRetry(() => deleteUserProfileData(userId)),
+      runWithRetry(() => deleteUserSupportData(userId)),
       runWithRetry(deleteConsentHistory),
     ]);
 
@@ -91,6 +99,7 @@ export function useAccountLifecycle() {
     deleteUserCommunityData,
     deleteUserPetData,
     deleteUserProfileData,
+    deleteUserSupportData,
   ]);
 
   const resumePendingWithdrawal = useCallback(async () => {

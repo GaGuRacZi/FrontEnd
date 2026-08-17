@@ -13,8 +13,11 @@ import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
 import {
   clearPendingPetImagePicker,
-  removePetImage,
-  removeUserPetImages,
+  collectPetImageUris,
+  collectRetainedPetImageUris,
+  flushQueuedPetImageRemovals,
+  queuePetImageRemovals,
+  queueUserPetImageRemoval,
 } from './services/petImageStorage';
 import { petRepository } from './services/petRepository';
 import type { PetEntity, StoredPetState } from './types';
@@ -53,13 +56,11 @@ function resolveSelection(pets: PetEntity[], selectedPetId: string | null) {
   return pets[0]?.id ?? null;
 }
 
-function collectImageUris(pets: PetEntity[]) {
-  return new Set(
-    pets.flatMap((pet) =>
-      [pet.profileImageUri, pet.certificateImageUri].filter(
-        (uri): uri is string => Boolean(uri),
-      ),
-    ),
+async function flushPetImageRemovals(userId: string, pets: PetEntity[]) {
+  const drafts = await petRepository.loadDrafts(userId);
+  await flushQueuedPetImageRemovals(
+    userId,
+    collectRetainedPetImageUris(pets, drafts),
   );
 }
 
@@ -136,6 +137,7 @@ export function PetProvider({ children }: PropsWithChildren) {
             })
             .catch(() => undefined);
         }
+        await flushPetImageRemovals(currentUserId, state.pets).catch(() => undefined);
       })
       .catch(() => {
         if (active && loadRevisionRef.current === loadRevision) {
@@ -259,28 +261,26 @@ export function PetProvider({ children }: PropsWithChildren) {
         }
 
         const nextPets = currentPets.map((current) => (current.id === pet.id ? pet : current));
+        const imagesToRemove = [
+          previous.profileImageUri !== pet.profileImageUri
+            ? previous.profileImageUri
+            : null,
+          previous.certificateImageUri !== pet.certificateImageUri
+            ? previous.certificateImageUri
+            : null,
+        ];
+        try {
+          await queuePetImageRemovals(userId, imagesToRemove);
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
         const saveResult = await persistMutation(
           userId,
           nextPets,
           resolveSelection(nextPets, selectedPetIdRef.current),
         );
         if (!saveResult.ok) return saveResult;
-
-        const referencedImages = collectImageUris(nextPets);
-        if (
-          previous.profileImageUri !== pet.profileImageUri &&
-          previous.profileImageUri &&
-          !referencedImages.has(previous.profileImageUri)
-        ) {
-          await removePetImage(userId, previous.profileImageUri).catch(() => undefined);
-        }
-        if (
-          previous.certificateImageUri !== pet.certificateImageUri &&
-          previous.certificateImageUri &&
-          !referencedImages.has(previous.certificateImageUri)
-        ) {
-          await removePetImage(userId, previous.certificateImageUri).catch(() => undefined);
-        }
+        await flushPetImageRemovals(userId, nextPets).catch(() => undefined);
         return { ok: true };
       });
     },
@@ -301,9 +301,22 @@ export function PetProvider({ children }: PropsWithChildren) {
         if (currentPets.length === 1) return { ok: false, reason: 'last-pet' };
 
         const editDraftId = `edit-${petId}`;
-        const editDraft = await petRepository
-          .loadDraft(userId, editDraftId)
-          .catch(() => null);
+        let editDraft;
+        try {
+          editDraft = await petRepository.loadDraft(userId, editDraftId);
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
+        try {
+          await queuePetImageRemovals(userId, [
+            target.profileImageUri,
+            target.certificateImageUri,
+            editDraft?.profileImageUri ?? null,
+            editDraft?.certificateImageUri ?? null,
+          ]);
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
         const nextPets = currentPets.filter((pet) => pet.id !== petId);
         const currentSelectedPetId = selectedPetIdRef.current;
         const nextSelectedPetId =
@@ -312,24 +325,11 @@ export function PetProvider({ children }: PropsWithChildren) {
             : resolveSelection(nextPets, currentSelectedPetId);
         const saveResult = await persistMutation(userId, nextPets, nextSelectedPetId);
         if (!saveResult.ok) return saveResult;
-        const referencedImages = collectImageUris(nextPets);
-        const imagesToRemove = Array.from(
-          new Set(
-            [
-              target.profileImageUri,
-              target.certificateImageUri,
-              editDraft?.profileImageUri,
-              editDraft?.certificateImageUri,
-            ]
-              .filter((uri): uri is string => Boolean(uri))
-              .filter((uri) => !referencedImages.has(uri)),
-          ),
-        );
         await Promise.allSettled([
           petRepository.deleteDraft(userId, editDraftId),
           clearPendingPetImagePicker(userId, editDraftId),
-          ...imagesToRemove.map((uri) => removePetImage(userId, uri)),
         ]);
+        await flushPetImageRemovals(userId, nextPets).catch(() => undefined);
         return { ok: true };
       });
     },
@@ -374,33 +374,17 @@ export function PetProvider({ children }: PropsWithChildren) {
       if (!userId) return Promise.resolve();
 
       return enqueueMutation(async () => {
-        const [draftsResult, stateResult, pendingPickerResult] = await Promise.allSettled([
+        const [drafts, state] = await Promise.all([
           petRepository.loadDrafts(userId),
           petRepository.loadState(userId),
-          clearPendingPetImagePicker(userId),
         ]);
-
-        if (draftsResult.status === 'rejected') throw draftsResult.reason;
-        if (stateResult.status === 'rejected') throw stateResult.reason;
-
+        await queuePetImageRemovals(
+          userId,
+          [...collectPetImageUris(drafts)],
+        );
+        await clearPendingPetImagePicker(userId);
         await petRepository.clearDrafts(userId);
-
-        const savedImages = collectImageUris(stateResult.value.pets);
-        const draftImages = draftsResult.value.flatMap((draft) => [
-          draft.profileImageUri,
-          draft.certificateImageUri,
-        ]);
-        const imageResults = await Promise.allSettled(
-          draftImages.map((uri) =>
-            uri && !savedImages.has(uri)
-              ? removePetImage(userId, uri)
-              : Promise.resolve(),
-          ),
-        );
-        const cleanupFailure = [pendingPickerResult, ...imageResults].find(
-          (result): result is PromiseRejectedResult => result.status === 'rejected',
-        );
-        if (cleanupFailure) throw cleanupFailure.reason;
+        await flushQueuedPetImageRemovals(userId, collectPetImageUris(state.pets));
       });
     },
     [currentUserId, enqueueMutation],
@@ -415,9 +399,10 @@ export function PetProvider({ children }: PropsWithChildren) {
       return enqueueMutation(async () => {
         invalidateActiveState(userId);
         try {
+          await queueUserPetImageRemoval(userId);
           await petRepository.deleteUser(userId);
           await Promise.all([
-            removeUserPetImages(userId),
+            flushQueuedPetImageRemovals(userId, new Set()),
             clearPendingPetImagePicker(userId),
           ]);
           invalidateActiveState(userId);

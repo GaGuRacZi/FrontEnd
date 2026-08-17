@@ -97,7 +97,7 @@ const REVIEW_WRITE_CATEGORIES = REVIEW_CATEGORIES.filter(
   (category): category is Exclude<ReviewCategory, '전체'> => category !== '전체',
 );
 const TALK_TAG_SUGGESTIONS = ['피하수액', '응급', '동네병원', '산책', '고양이'];
-const DEFAULT_TALK_TAGS = ['피하수액', '응급'];
+const DEFAULT_TALK_TAGS: string[] = [];
 const MAX_PHOTOS = 5;
 const MAX_TITLE_LENGTH = 40;
 const MAX_BODY_LENGTH = 500;
@@ -782,7 +782,7 @@ export function CommunityWriteScreen() {
   const goBack = useCallback(() => {
     if (submitLock.current || submitting) return;
     if (pendingSubmittedPostId) {
-      showAlert('게시글은 저장됐어요', '작성 화면 정리가 끝난 뒤 이동할 수 있어요. 등록 버튼을 다시 눌러주세요.');
+      showAlert('게시글은 저장됐어요', '화면을 이동하지 못했어요. 등록 버튼을 다시 눌러주세요.');
       return;
     }
 
@@ -1009,7 +1009,7 @@ export function CommunityWriteScreen() {
 
     if (submitting) return;
     if (pendingSubmittedPostId) {
-      showAlert('게시글은 저장됐어요', '작성 화면 정리가 끝난 뒤 이동할 수 있어요. 등록 버튼을 다시 눌러주세요.');
+      showAlert('게시글은 저장됐어요', '화면을 이동하지 못했어요. 등록 버튼을 다시 눌러주세요.');
       return;
     }
 
@@ -1028,7 +1028,7 @@ export function CommunityWriteScreen() {
 
   const discardDraftAndLeave = useCallback(() => {
     if (pendingSubmittedPostId) {
-      showAlert('게시글은 저장됐어요', '작성 화면 정리가 끝난 뒤 이동할 수 있어요. 등록 버튼을 다시 눌러주세요.');
+      showAlert('게시글은 저장됐어요', '화면을 이동하지 못했어요. 등록 버튼을 다시 눌러주세요.');
       return;
     }
 
@@ -1061,7 +1061,7 @@ export function CommunityWriteScreen() {
         draftCompleted.current = false;
         setPendingExitAction(exitAction);
         setManualExitPending(shouldPerformManualExit);
-        showAlert('작성 내용을 정리하지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('작성 화면을 종료하지 못했어요', '잠시 후 다시 시도해주세요.');
         return;
       }
       allowNavigation.current = true;
@@ -1346,7 +1346,7 @@ export function CommunityWriteScreen() {
     } catch {
       showAlert(
         '게시글은 저장됐어요',
-        '작성 화면을 정리하지 못했어요. 등록 버튼을 눌러 다시 시도해주세요.',
+        '화면을 이동하지 못했어요. 등록 버튼을 다시 눌러주세요.',
       );
       return false;
     }
@@ -1533,7 +1533,7 @@ export function CommunityWriteScreen() {
       : initialTab === 'review'
         ? '리뷰 글쓰기'
         : '소통 글쓰기';
-  const submitLabel = pendingSubmittedPostId ? '정리 재시도' : isEditMode ? '저장' : '등록';
+  const submitLabel = pendingSubmittedPostId ? '다시 시도' : isEditMode ? '저장' : '등록';
   const submitReady = canSubmit || Boolean(pendingSubmittedPostId);
 
   if (!isReady) {
@@ -1729,7 +1729,9 @@ export function CommunityWriteScreen() {
                 <AppIcon color={COLORS.primary} name="shield-checkmark-outline" size={22} />
                 <View style={styles.guideText}>
                   <Text style={styles.guideTitle}>서로에게 도움이 되는 글로 남겨주세요</Text>
-                  <Text style={styles.guideDescription}>약품 거래나 처방 변경 조언은 제한될 수 있어요.</Text>
+                  <Text style={styles.guideDescription}>
+                    전문의약품·처방약 거래나 약물 용량 변경 권유는 할 수 없어요.
+                  </Text>
                 </View>
               </View>
             </>

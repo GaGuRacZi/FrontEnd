@@ -1,0 +1,84 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { consentStore, getSignupConsentUserId } from '../../terms/ConsentStore';
+import { removeUserProfileImages } from '../../../mypage/services/profileImageStorage';
+import {
+  createSignupDraft,
+  isCurrentSignupDraft,
+  parseStoredSignupDraft,
+  type PersistedSignupData,
+  type SignupDraftMethod,
+} from './signupDraftContract';
+
+const ACTIVE_SIGNUP_DRAFT_KEY = 'paw:signup-draft:active';
+let mutationQueue: Promise<void> = Promise.resolve();
+
+function enqueueMutation<T>(operation: () => Promise<T>) {
+  const result = mutationQueue.then(operation, operation);
+  mutationQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function clearDraftArtifacts(sessionId: string) {
+  const temporaryUserId = getSignupConsentUserId(sessionId);
+  await Promise.all([
+    consentStore.deleteHistory(temporaryUserId),
+    removeUserProfileImages(temporaryUserId),
+  ]);
+}
+
+export function loadActiveSignupDraft() {
+  return enqueueMutation(async () => {
+    const stored = await AsyncStorage.getItem(ACTIVE_SIGNUP_DRAFT_KEY);
+    const draft = parseStoredSignupDraft(stored);
+
+    if (!draft || !isCurrentSignupDraft(draft)) {
+      if (draft) await clearDraftArtifacts(draft.sessionId);
+      if (stored !== null) await AsyncStorage.removeItem(ACTIVE_SIGNUP_DRAFT_KEY);
+      return null;
+    }
+
+    return draft;
+  });
+}
+
+export function saveActiveSignupDraft(input: {
+  data: PersistedSignupData;
+  method: SignupDraftMethod;
+  remoteUserId: string | null;
+  sessionId: string;
+}) {
+  return enqueueMutation(async () => {
+    const draft = createSignupDraft(input);
+    const stored = await AsyncStorage.getItem(ACTIVE_SIGNUP_DRAFT_KEY);
+    const activeDraft = parseStoredSignupDraft(stored);
+
+    if (activeDraft && activeDraft.sessionId !== draft.sessionId) {
+      await clearDraftArtifacts(activeDraft.sessionId);
+      await AsyncStorage.removeItem(ACTIVE_SIGNUP_DRAFT_KEY);
+    }
+
+    await AsyncStorage.setItem(ACTIVE_SIGNUP_DRAFT_KEY, JSON.stringify(draft));
+    return draft;
+  });
+}
+
+export function clearActiveSignupDraft(expectedSessionId?: string) {
+  return enqueueMutation(async () => {
+    const stored = await AsyncStorage.getItem(ACTIVE_SIGNUP_DRAFT_KEY);
+    const draft = parseStoredSignupDraft(stored);
+
+    if (expectedSessionId && draft && draft.sessionId !== expectedSessionId) {
+      await clearDraftArtifacts(expectedSessionId);
+      return false;
+    }
+
+    const sessionId = draft?.sessionId ?? expectedSessionId;
+    if (sessionId) await clearDraftArtifacts(sessionId);
+    await AsyncStorage.removeItem(ACTIVE_SIGNUP_DRAFT_KEY);
+    return true;
+  });
+}

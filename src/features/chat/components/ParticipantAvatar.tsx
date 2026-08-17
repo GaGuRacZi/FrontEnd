@@ -69,7 +69,11 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   initial: {
+    ...StyleSheet.absoluteFillObject,
     color: COLORS.gray800,
     fontFamily: FONT_FAMILY.bold,
+    includeFontPadding: false,
+    textAlign: 'center',
+    textAlignVertical: 'center',
   },
 });

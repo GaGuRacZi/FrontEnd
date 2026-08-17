@@ -257,11 +257,11 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
           <DetailProfile pet={pet} />
 
           <PetInfoCard
-            description="건강 기록과 알림에 꼭 필요한 정보예요"
+            description="반려동물 프로필에 표시되는 기본 정보예요"
             minHeight={362}
             title="기본 정보"
           >
-            <PetInfoRow label="반려동물">
+            <PetInfoRow label="종류">
               <View style={styles.choiceRow}>
                 <PetChoiceButton label="강아지" selected={pet.type === 'dog'} />
                 <PetChoiceButton label="고양이" selected={pet.type === 'cat'} />
@@ -272,7 +272,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
               <ReadOnlyField value={pet.name} />
             </PetInfoRow>
 
-            <PetInfoRow label="견/묘종">
+            <PetInfoRow label="품종">
               <ReadOnlyField value={pet.breed} />
             </PetInfoRow>
 
@@ -291,7 +291,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
           </PetInfoCard>
 
           <PetInfoCard
-            description="헌혈 매칭과 병원 기록에 활용돼요"
+            description="성별, 중성화 여부와 혈액형을 기록해요"
             minHeight={264}
             title="성별·의료 정보"
           >
@@ -305,12 +305,12 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
             <PetInfoRow label="중성화">
               <View style={styles.choiceRow}>
                 <PetChoiceButton compact label="완료" selected={pet.neutered} />
-                <PetChoiceButton compact label="안함" selected={!pet.neutered} />
+                <PetChoiceButton compact label="안 함" selected={!pet.neutered} />
               </View>
             </PetInfoRow>
 
             <PetInfoRow label="혈액형">
-              <ReadOnlyField icon="water-outline" placeholder="선택 안함" value={pet.bloodType} />
+              <ReadOnlyField icon="water-outline" placeholder="선택 안 함" value={pet.bloodType} />
             </PetInfoRow>
           </PetInfoCard>
 
@@ -329,7 +329,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
           </PetInfoCard>
 
           <PetInfoCard
-            description="AI 성분 분석과 건강 추천에 연결돼요"
+            description="먹거리와 관리 정보를 한곳에서 확인할 수 있어요"
             minHeight={335}
             title="먹거리·관리 정보"
           >

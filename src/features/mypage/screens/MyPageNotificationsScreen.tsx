@@ -25,18 +25,18 @@ const NOTIFICATION_ROWS: {
   title: string;
 }[] = [
   {
-    description: '오늘의 할 일과 복약 시간을 알려줘요',
+    description: '오늘의 할 일과 복약 알림을 설정해요',
     key: 'schedule',
     title: '할 일 알림',
   },
   {
-    description: '기록에서 주의가 필요한 변화를 알려줘요',
+    description: '건강 기록 관련 알림을 설정해요',
     key: 'healthAlert',
     title: '건강 이상 알림',
   },
-  { description: '진료 요약과 OCR 분석 완료를 알려줘요', key: 'aiAnalysis', title: 'AI 분석 완료 알림' },
-  { description: '댓글, 답글, 거래 문의를 알려줘요', key: 'community', title: '커뮤니티 알림' },
-  { description: '새 메시지와 거래 대화를 알려줘요', key: 'chat', title: '채팅 알림' },
+  { description: '진료 요약과 OCR 분석 알림을 설정해요', key: 'aiAnalysis', title: 'AI 분석 완료 알림' },
+  { description: '댓글·답글·거래 문의 알림을 설정해요', key: 'community', title: '커뮤니티 알림' },
+  { description: '새 메시지와 거래 대화 알림을 설정해요', key: 'chat', title: '채팅 알림' },
 ];
 
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -206,8 +206,8 @@ export function MyPageNotificationsScreen() {
       <MyPageHeader title="알림 설정">
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.intro}>
-            <Text style={styles.title}>알림을 원하는 방식으로 받아요</Text>
-            <Text style={styles.description}>할 일, 건강, 커뮤니티 알림을 세분화했어요.</Text>
+            <Text style={styles.title}>받을 알림을 선택해주세요</Text>
+            <Text style={styles.description}>필요한 알림만 선택해서 받을 수 있어요.</Text>
           </View>
 
           {NOTIFICATION_ROWS.map((row) =>
@@ -223,7 +223,7 @@ export function MyPageNotificationsScreen() {
 
           {renderNotificationCard(
             '혜택·이벤트 알림',
-            'PAW 혜택과 이벤트 소식을 받아요',
+            'PAW 혜택과 이벤트 알림을 설정해요',
             marketingConsent,
             (value) => void updateMarketingSetting(value),
             'marketing',
@@ -233,7 +233,9 @@ export function MyPageNotificationsScreen() {
           <View style={styles.doNotDisturbCard}>
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>방해 금지 시간</Text>
-              <Text style={styles.cardDescription}>건강 이상 알림은 받을 수 있어요.</Text>
+              <Text style={styles.cardDescription}>
+                건강 이상 알림은 방해 금지 대상에서 제외돼요.
+              </Text>
               <Pressable
                 accessibilityHint="방해 금지 시작 시간과 종료 시간을 변경합니다."
                 accessibilityLabel={`방해 금지 시간 변경, 현재 ${notificationSettings.doNotDisturbStart}부터 ${notificationSettings.doNotDisturbEnd}까지`}

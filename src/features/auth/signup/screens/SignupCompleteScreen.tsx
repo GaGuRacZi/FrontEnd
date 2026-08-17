@@ -34,7 +34,7 @@ export function SignupCompleteScreen() {
 
       <Text style={styles.title}>회원가입이 완료되었어요!</Text>
       <Text style={styles.description}>
-        {'이제 PAW와 함께\n우리 아이의 건강을 관리해볼까요?'}
+        {'이제 반려동물 정보를\n기록하고 관리할 수 있어요.'}
       </Text>
 
       <AppButton

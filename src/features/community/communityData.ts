@@ -41,7 +41,7 @@ export const MARKET_STATUSES: MarketStatus[] = ['진행 중', '예약 중', '완
 
 export const REVIEW_CATEGORIES: ReviewCategory[] = ['전체', '산책 장소', '병원', '용품샵', '미용실'];
 
-export const COMMUNITY_AD_TEXT = '광고를 통해 수익을 얻을 광고 배너입니다.';
+export const COMMUNITY_AD_TEXT = '우리 아이와 함께한 오늘을 이웃과 나눠보세요.';
 
 export const COMMUNITY_GUEST_ID = 'guest';
 
@@ -153,7 +153,7 @@ const POSTS: CommunityPost[] = [
     author: AUTHOR_NABI,
     baseBookmarkCount: 0,
     baseReactionCounts: { like: 0 },
-    body: '고양이용 L-라이신 영양제를 구해요. 개봉품은 상태 확인 후 가격 협의하고 싶어요.',
+    body: '고양이용 L-라이신 영양제를 구해요. 미개봉 제품이면 유통기한과 가격을 확인하고 싶어요.',
     category: '영양제',
     createdAt: '2026-07-22T10:10:00.000Z',
     id: 'market-lysine',

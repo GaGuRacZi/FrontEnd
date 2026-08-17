@@ -19,7 +19,7 @@ import { TERM_IDS } from '../types';
 
 export function TermsAgreementScreen() {
   const router = useRouter();
-  const { data } = useSignup();
+  const { clearSignupDraft, data } = useSignup();
   const { clearSession, pendingRemoteSignupUserId } = useAuthSession();
   const {
     allSignupTermsSelected,
@@ -57,26 +57,32 @@ export function TermsAgreementScreen() {
     }
   };
 
-  const handleKakaoBack = useCallback(async () => {
+  const handleSignupBack = useCallback(async () => {
     if (saving) return;
-
-    if (!pendingRemoteSignupUserId) {
-      router.replace('/');
-      return;
-    }
 
     setSaving(true);
     setSaveError(undefined);
 
     try {
-      await logoutRemoteSession().catch(() => undefined);
-      await clearSession(pendingRemoteSignupUserId);
+      if (pendingRemoteSignupUserId) {
+        await logoutRemoteSession().catch(() => undefined);
+      }
+      await clearSignupDraft();
+      if (pendingRemoteSignupUserId) {
+        await clearSession(pendingRemoteSignupUserId);
+        return;
+      }
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace(data.method === 'kakao' ? '/' : '/login');
+      }
     } catch (error) {
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
       setSaving(false);
       throw error;
     }
-  }, [clearSession, pendingRemoteSignupUserId, router, saving]);
+  }, [clearSession, clearSignupDraft, data.method, pendingRemoteSignupUserId, router, saving]);
 
   return (
     <FormScreen
@@ -102,7 +108,7 @@ export function TermsAgreementScreen() {
         <TermsHeader
           disabled={saving}
           fallbackRoute={data.method === 'kakao' ? '/' : '/login'}
-          onBack={data.method === 'kakao' ? handleKakaoBack : undefined}
+          onBack={handleSignupBack}
         />
       }
     >
@@ -129,9 +135,9 @@ export function TermsAgreementScreen() {
       {status === 'ready' && (signupTerms.length === 0 || !requiredSignupTermsReady) ? (
         <EmptyState
           actionLabel="다시 불러오기"
-          description="필수 약관을 모두 불러온 뒤 회원가입을 진행할 수 있어요."
+          description="필수 약관을 다시 불러온 뒤 회원가입을 진행해주세요."
           onActionPress={() => void reload()}
-          title="약관이 준비되지 않았어요"
+          title="필수 약관을 불러오지 못했어요"
         />
       ) : null}
 

@@ -1,5 +1,4 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState, LoadingView } from '@/src/components/common';
@@ -11,7 +10,6 @@ import { formatCompactRegion } from '@/src/utils/location';
 import { getPlan } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
 import {
-  ComingSoonModal,
   MyPageCard,
   MyPageDivider,
   MyPageHeader,
@@ -23,7 +21,6 @@ export function MyPageScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const { hasLoadError, isReady, profile, reloadMyPage, subscription } = useMyPageStore();
-  const [comingSoonTitle, setComingSoonTitle] = useState<string | null>(null);
   const plan = subscription ? getPlan(subscription.currentPlanId) : null;
 
   if (!isReady) {
@@ -93,7 +90,7 @@ export function MyPageScreen() {
             <Text style={styles.planStatusText}>이용 중</Text>
           </View>
           <Text style={styles.bannerDescription}>
-            업그레이드 하고 AI 진료 요약과 녹음 무제한 기능을 이용해보세요
+            요금제별 혜택과 가격을 확인해보세요
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -107,30 +104,44 @@ export function MyPageScreen() {
 
         <MyPageCard title="커뮤니티">
           <MyPageRow
-            description="내가 남긴 커뮤니티 활동"
+            description="내가 작성한 소통·장터·리뷰 글"
             iconName="create-outline"
-            onPress={() => setComingSoonTitle('작성글 보기')}
+            onPress={() => navigateOnce(() => router.push('/mypage/activity/authored'))}
             title="작성글 보기"
           />
           <MyPageDivider />
           <MyPageRow
-            description="내가 찜한 커뮤니티 기록"
+            description="좋아요·찜한 소통·장터 글"
             iconName="heart-outline"
-            onPress={() => setComingSoonTitle('찜 보기')}
+            onPress={() =>
+              navigateOnce(() =>
+                router.push({
+                  pathname: '/mypage/activity/engagement',
+                  params: { tab: 'saved' },
+                }),
+              )
+            }
             title="찜 보기"
           />
           <MyPageDivider />
           <MyPageRow
-            description="내가 남긴 댓글 기록"
+            description="댓글·답글을 남긴 소통 글"
             iconName="chatbubble-ellipses-outline"
-            onPress={() => setComingSoonTitle('댓글 보기')}
+            onPress={() =>
+              navigateOnce(() =>
+                router.push({
+                  pathname: '/mypage/activity/engagement',
+                  params: { tab: 'commented' },
+                }),
+              )
+            }
             title="댓글 보기"
           />
         </MyPageCard>
 
         <MyPageCard title="앱 설정">
           <MyPageRow
-            description="할 일, 커뮤니티, AI 분석 알림 관리"
+            description="받을 알림과 방해 금지 시간 관리"
             iconName="notifications-outline"
             onPress={() => navigateOnce(() => router.push('/mypage/notifications'))}
             title="알림 설정"
@@ -141,31 +152,25 @@ export function MyPageScreen() {
           <MyPageRow
             description="PAW 소식과 업데이트"
             iconName="megaphone-outline"
-            onPress={() => setComingSoonTitle('공지사항')}
+            onPress={() => navigateOnce(() => router.push('/mypage/notices'))}
             title="공지사항"
           />
           <MyPageDivider />
           <MyPageRow
             description="서비스 이용 및 개인정보 약관"
             iconName="document-text-outline"
-            onPress={() => setComingSoonTitle('이용약관')}
+            onPress={() => navigateOnce(() => router.push('/mypage/terms'))}
             title="이용약관"
           />
           <MyPageDivider />
           <MyPageRow
-            description="궁금한 점을 PAW 팀에게"
+            description="문의 작성과 최근 내역"
             iconName="help-circle-outline"
-            onPress={() => setComingSoonTitle('문의하기')}
+            onPress={() => navigateOnce(() => router.push('/mypage/inquiries'))}
             title="문의하기"
           />
         </MyPageCard>
       </ScrollView>
-
-      <ComingSoonModal
-        onClose={() => setComingSoonTitle(null)}
-        title={comingSoonTitle ?? ''}
-        visible={Boolean(comingSoonTitle)}
-      />
     </MyPageHeader>
   );
 }

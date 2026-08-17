@@ -180,7 +180,7 @@ export function LoginScreen() {
                     onBlur={() => setEmailError(getEmailError(email))}
                     onChangeText={handleEmailChange}
                     onSubmitEditing={() => passwordInputRef.current?.focus()}
-                    placeholder="lion14@paw.com"
+                    placeholder="example@email.com"
                     returnKeyType="next"
                     textContentType="emailAddress"
                     value={email}
@@ -220,7 +220,11 @@ export function LoginScreen() {
                     value={password}
                   />
                 </View>
-                {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+                {formError ? (
+                  <Text accessibilityLiveRegion="polite" style={styles.formError}>
+                    {formError}
+                  </Text>
+                ) : null}
 
               </View>
             </View>

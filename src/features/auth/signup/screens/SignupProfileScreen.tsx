@@ -13,11 +13,13 @@ import { useSignup } from '../SignupContext';
 export function SignupProfileScreen() {
   const router = useRouter();
   const showAlert = useAppAlert();
-  const { data, updateField } = useSignup();
+  const { data, updateProfileImage } = useSignup();
   const pickerOpen = useRef(false);
 
   const handlePickerResult = useCallback(
-    (result: ImagePicker.ImagePickerResult | ImagePicker.ImagePickerErrorResult | null) => {
+    async (
+      result: ImagePicker.ImagePickerResult | ImagePicker.ImagePickerErrorResult | null,
+    ) => {
       if (!result) return;
 
       if ('code' in result) {
@@ -26,19 +28,19 @@ export function SignupProfileScreen() {
       }
 
       if (!result.canceled && result.assets[0]) {
-        updateField('profileImageUri', result.assets[0].uri);
+        await updateProfileImage(result.assets[0].uri);
       }
     },
-    [showAlert, updateField],
+    [showAlert, updateProfileImage],
   );
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
-    ImagePicker.getPendingResultAsync()
+    void ImagePicker.getPendingResultAsync()
       .then(handlePickerResult)
       .catch(() => {
-        showAlert('사진을 불러오지 못했어요', '사진을 다시 선택해주세요.');
+        showAlert('사진을 저장하지 못했어요', '사진을 다시 선택해주세요.');
       });
   }, [handlePickerResult, showAlert]);
 
@@ -74,9 +76,9 @@ export function SignupProfileScreen() {
         selectionLimit: 1,
       });
 
-      handlePickerResult(result);
+      await handlePickerResult(result);
     } catch {
-      showAlert('사진첩을 열지 못했어요', '잠시 후 다시 시도해주세요.');
+      showAlert('사진을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       pickerOpen.current = false;
     }
@@ -89,7 +91,7 @@ export function SignupProfileScreen() {
       onNext={() =>
         router.push(data.method === 'local' ? '/signup/credentials' : '/signup/user-info')
       }
-      title="프로필을 설정해주세요"
+      title="프로필 사진을 추가해보세요"
     >
       <Pressable
         accessibilityHint="기기에서 프로필 사진을 선택합니다"
@@ -110,8 +112,8 @@ export function SignupProfileScreen() {
         ) : null}
       </Pressable>
 
-      <Text style={styles.guideTitle}>프로필 사진을 등록해주세요</Text>
-      <Text style={styles.guideText}>사진은 언제든 변경할 수 있어요.</Text>
+      <Text style={styles.guideTitle}>프로필 사진은 선택 사항이에요</Text>
+      <Text style={styles.guideText}>사진은 언제든 추가하거나 변경할 수 있어요.</Text>
     </SignupScaffold>
   );
 }

@@ -72,7 +72,7 @@ export function MyPageWithdrawScreen() {
     if (usesKakao) {
       showAlert(
         '카카오 확인이 필요해요',
-        '카카오 재인증 API 연결 후 탈퇴할 수 있어요.',
+        '현재 카카오 계정으로 본인을 확인할 수 없어 탈퇴를 진행할 수 없어요.',
       );
       return;
     }
@@ -83,7 +83,7 @@ export function MyPageWithdrawScreen() {
   const confirmIdentity = async () => {
     if (verifyingRef.current || withdrawing) return;
     if (usesKakao) {
-      setVerificationError('카카오 재인증은 로그인 API 연결 후 사용할 수 있어요.');
+      setVerificationError('현재 카카오 계정으로 본인을 확인할 수 없어요.');
       return;
     }
     if (!verificationValue) return;
@@ -103,7 +103,7 @@ export function MyPageWithdrawScreen() {
 
       setVerificationError(
         result === 'missing'
-          ? '이 계정의 비밀번호 확인 정보가 없어요. API 연결 후 다시 시도해주세요.'
+          ? '이 계정의 비밀번호 확인 정보를 찾지 못했어요.'
           : '비밀번호가 일치하지 않아요.',
       );
     } catch {

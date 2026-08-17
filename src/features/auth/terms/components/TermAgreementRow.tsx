@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppCheckbox } from '@/src/components/form/AppCheckbox';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-import type { TermDefinition } from '../types';
+import { TERM_IDS, type TermDefinition } from '../types';
 
 type TermAgreementRowProps = {
   checked: boolean;
@@ -21,7 +21,12 @@ export function TermAgreementRow({
   onDetailPress,
   term,
 }: TermAgreementRowProps) {
-  const requirement = term.required ? '필수' : '선택';
+  const requirement =
+    term.id === TERM_IDS.age || term.id === TERM_IDS.profilePrivacy
+      ? '필수 확인'
+      : term.required
+        ? '필수'
+        : '선택';
   const detailButton = (
     <Pressable
       accessibilityLabel={`${term.title} 자세히 보기`}

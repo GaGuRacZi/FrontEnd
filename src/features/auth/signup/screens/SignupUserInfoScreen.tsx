@@ -28,7 +28,7 @@ export function SignupUserInfoScreen() {
       currentStep={2}
       nextDisabled={!canContinue}
       onNext={() => router.push('/signup/location')}
-      title={'보호자(회원) 정보를\n입력해주세요'}
+      title={'보호자 정보를\n입력해주세요'}
     >
       <AppInput
         autoComplete="name"

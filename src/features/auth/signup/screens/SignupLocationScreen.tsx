@@ -281,10 +281,10 @@ export function SignupLocationScreen() {
         cancelLocationRequest();
         router.push('/signup/pet-type');
       }}
-      title="위치 정보를 설정해주세요"
+      title="활동 지역을 설정해주세요"
     >
       <Text style={styles.description}>
-        {'지역 기반 병원 검색 및 알림을\n받기 위해 필요해요.'}
+        {'프로필에 표시할 지역을\n선택해주세요.'}
       </Text>
 
       <View style={styles.locationSection}>

@@ -168,14 +168,14 @@ export function LoginStartScreen() {
 
         <AuthActionPanel style={styles.actionPanel}>
           <Text style={styles.title}>파우 시작하기</Text>
-          <Text style={styles.description}>이메일로 로그인하거나 회원가입하세요</Text>
+          <Text style={styles.description}>이메일로 로그인하거나 새 계정을 만들 수 있어요</Text>
 
           <AppButton
             accessibilityHint="로그인 화면으로 이동합니다"
             disabled={submitting}
             onPress={() => navigateOnce(() => router.replace('/login'))}
             size="medium"
-            title="로그인/회원가입 하기"
+            title="이메일로 시작하기"
             variant="secondary"
           />
           <AppButton

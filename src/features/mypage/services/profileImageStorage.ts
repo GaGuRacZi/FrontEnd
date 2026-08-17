@@ -101,8 +101,15 @@ export async function persistProfileImage(userId: string, sourceUri: string) {
     directory,
     `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${getFileExtension(sourceUri)}`,
   );
-  new File(sourceUri).copy(destination);
-  return destination.uri;
+  try {
+    new File(sourceUri).copy(destination);
+    return destination.uri;
+  } catch (error) {
+    try {
+      if (destination.exists) destination.delete();
+    } catch {}
+    throw error;
+  }
 }
 
 export async function removeProfileImage(userId: string, uri: string | null) {

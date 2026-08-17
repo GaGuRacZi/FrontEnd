@@ -125,7 +125,7 @@ function ProfilePhoto({
           <Text style={styles.profileGuide}>사진 삭제</Text>
         </Pressable>
       ) : (
-        <Text style={styles.profileGuide}>사진은 나중에 바꿀 수 있어요</Text>
+        <Text style={styles.profileGuide}>사진은 언제든 추가하거나 변경할 수 있어요</Text>
       )}
     </View>
   );
@@ -211,12 +211,12 @@ export function PetFormFields({
       />
 
       <PetInfoCard
-        description="건강 기록과 알림에 꼭 필요한 정보예요"
+        description="반려동물 프로필에 표시되는 기본 정보예요"
         minHeight={362}
         required
         title="기본 정보"
       >
-        <PetInfoRow label="반려동물">
+        <PetInfoRow label="종류">
           <View accessibilityRole="radiogroup" style={styles.choiceRow}>
             <PetChoiceButton
               disabled={disabled}
@@ -247,7 +247,7 @@ export function PetFormFields({
           />
         </PetInfoRow>
 
-        <PetInfoRow label="견/묘종">
+        <PetInfoRow label="품종">
           <PickerField
             accessibilityLabel="견종 또는 묘종 선택"
             disabled={disabled || !values.type}
@@ -306,7 +306,7 @@ export function PetFormFields({
       </PetInfoCard>
 
       <PetInfoCard
-        description="헌혈 매칭과 병원 기록에 활용돼요"
+        description="성별, 중성화 여부와 혈액형을 기록해요"
         minHeight={264}
         title="성별·의료 정보"
       >
@@ -342,7 +342,7 @@ export function PetFormFields({
             <PetChoiceButton
               compact
               disabled={disabled}
-              label="안함"
+              label="안 함"
               onPress={() => onChange('neutered', false)}
               selected={values.neutered === false}
             />
@@ -358,7 +358,7 @@ export function PetFormFields({
             icon="water-outline"
             onDisabledPress={disabled ? undefined : () => onBlur('type')}
             onPress={onOpenBloodTypes}
-            placeholder="선택 안함"
+            placeholder="선택 안 함"
             value={values.bloodType}
           />
         </PetInfoRow>
@@ -399,7 +399,7 @@ export function PetFormFields({
       </PetInfoCard>
 
       <PetInfoCard
-        description="AI 성분 분석과 건강 추천에 연결돼요"
+        description="먹거리와 관리 정보를 한곳에서 확인할 수 있어요"
         minHeight={335}
         title="먹거리·관리 정보"
       >

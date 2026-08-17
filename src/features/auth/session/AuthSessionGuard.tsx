@@ -29,7 +29,7 @@ export function AuthSessionStateScreen({ loadingLabel }: { loadingLabel: string 
       <AppScreen contentContainerStyle={styles.centered}>
         <EmptyState
           actionLabel="다시 시도"
-          description="저장된 로그인 정보를 다시 확인해주세요."
+          description="잠시 후 다시 시도해주세요."
           onActionPress={retrySessionLoad}
           title="로그인 정보를 불러오지 못했어요."
         />
