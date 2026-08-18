@@ -64,8 +64,9 @@ export function saveActiveSignupDraft(input: {
     const activeDraft = parseStoredSignupDraft(stored);
 
     if (activeDraft && activeDraft.sessionId !== draft.sessionId) {
-      await clearDraftArtifacts(activeDraft.sessionId);
-      await AsyncStorage.removeItem(ACTIVE_SIGNUP_DRAFT_KEY);
+      await AsyncStorage.setItem(ACTIVE_SIGNUP_DRAFT_KEY, JSON.stringify(draft));
+      await clearDraftArtifacts(activeDraft.sessionId).catch(() => undefined);
+      return draft;
     }
 
     await AsyncStorage.setItem(ACTIVE_SIGNUP_DRAFT_KEY, JSON.stringify(draft));

@@ -154,6 +154,7 @@ export function useSignupCompletion() {
             await saveSignupTransaction(transactionOwner, 'committed');
           }
           await clearSignupDraft();
+          signupDraftCleared = true;
           if (transactionOwner.method === 'local') {
             await activateLocalCredential(userId);
           }

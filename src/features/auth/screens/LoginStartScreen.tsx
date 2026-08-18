@@ -35,7 +35,11 @@ export function LoginStartScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
-  const { activateRemoteSession, prepareRemoteSignup } = useAuthSession();
+  const {
+    activateRemoteSession,
+    pendingRemoteSignupUserId,
+    prepareRemoteSignup,
+  } = useAuthSession();
   const { deleteUserProfileData, registerRemoteProfile } = useMyPageStore();
   const { deleteUserPetData } = usePetStore();
   const mountedRef = useRef(true);
@@ -66,22 +70,24 @@ export function LoginStartScreen() {
 
   const finishKakaoLogin = async (session: KakaoSession) => {
     if (session.isNew) {
-      const storedTransaction = await loadSignupTransaction(session.uid);
-      const cleanupResults = await Promise.allSettled([
-        deleteUserPetData(session.uid),
-        deleteUserProfileData(session.uid),
-        consentStore.deleteHistory(session.uid),
-        storedTransaction.transaction
-          ? consentStore.deleteHistory(
-              getSignupConsentUserId(storedTransaction.transaction.sessionId),
-            )
-          : Promise.resolve(),
-      ]);
-      const cleanupFailure = cleanupResults.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      );
-      if (cleanupFailure) throw cleanupFailure.reason;
-      await clearSignupTransaction(session.uid);
+      if (pendingRemoteSignupUserId !== session.uid) {
+        const storedTransaction = await loadSignupTransaction(session.uid);
+        const cleanupResults = await Promise.allSettled([
+          deleteUserPetData(session.uid),
+          deleteUserProfileData(session.uid),
+          consentStore.deleteHistory(session.uid),
+          storedTransaction.transaction
+            ? consentStore.deleteHistory(
+                getSignupConsentUserId(storedTransaction.transaction.sessionId),
+              )
+            : Promise.resolve(),
+        ]);
+        const cleanupFailure = cleanupResults.find(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        if (cleanupFailure) throw cleanupFailure.reason;
+        await clearSignupTransaction(session.uid);
+      }
       await prepareRemoteSignup(session);
       return;
     }
