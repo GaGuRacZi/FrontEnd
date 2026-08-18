@@ -12,6 +12,8 @@ import {
 } from '../src/features/chat/services/chatRepository.ts';
 import { getMultipartImageFile } from '../src/utils/file.ts';
 
+process.env.TZ = 'Asia/Seoul';
+
 assert.equal(normalizeChatSearch('  아리   병원  '), '아리 병원');
 assert.equal(formatChatTime('2026-08-03T04:05:00+09:00'), '오전 4:05');
 assert.equal(formatChatDate('2026-08-03T04:05:00+09:00'), '2026년 8월 3일');
