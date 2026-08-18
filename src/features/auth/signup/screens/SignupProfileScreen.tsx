@@ -19,19 +19,22 @@ export function SignupProfileScreen() {
   const showAlert = useAppAlert();
   const { data, updateProfileImage } = useSignup();
   const pickerOpen = useRef(false);
+  const mounted = useRef(true);
 
   const handlePickerResult = useCallback(
     async (
       result: ImagePicker.ImagePickerResult | ImagePicker.ImagePickerErrorResult | null,
     ) => {
-      if (!result) return;
+      if (!mounted.current || !result) return;
 
       if ('code' in result) {
-        showAlert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
+        if (mounted.current) {
+          showAlert('사진을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
+        }
         return;
       }
 
-      if (!result.canceled && result.assets[0]) {
+      if (mounted.current && !result.canceled && result.assets[0]) {
         await updateProfileImage(result.assets[0].uri);
       }
     },
@@ -39,13 +42,24 @@ export function SignupProfileScreen() {
   );
 
   useEffect(() => {
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (Platform.OS !== 'android') return;
+    if (pickerOpen.current) return;
+    pickerOpen.current = true;
 
     void ImagePicker.getPendingResultAsync()
       .then(handlePickerResult)
       .catch((error) => {
-        if (isSignupCancelled(error)) return;
+        if (!mounted.current || isSignupCancelled(error)) return;
         showAlert('사진을 저장하지 못했어요', '사진을 다시 선택해주세요.');
+      })
+      .finally(() => {
+        pickerOpen.current = false;
       });
   }, [handlePickerResult, showAlert]);
 

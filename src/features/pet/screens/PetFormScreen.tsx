@@ -489,6 +489,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
 
         if (!current) {
           await flushPetImageRemovals().catch(() => undefined);
+          showAlert('사진을 등록하지 못했어요', '잠시 후 다시 시도해주세요.');
           return;
         }
 
@@ -512,7 +513,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         setIsImageMutating(false);
       }
     },
-    [currentUserId, flushPetImageRemovals, queueDraftImagesForRemoval],
+    [currentUserId, flushPetImageRemovals, queueDraftImagesForRemoval, showAlert],
   );
 
   const { pickImage } = usePetImagePicker({

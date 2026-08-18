@@ -381,7 +381,7 @@ export function PetProvider({ children }: PropsWithChildren) {
         await queuePetImageRemovals(
           userId,
           [...collectPetImageUris(drafts)],
-        );
+        ).catch(() => undefined);
         await clearPendingPetImagePicker(userId);
         await petRepository.clearDrafts(userId);
         await flushQueuedPetImageRemovals(

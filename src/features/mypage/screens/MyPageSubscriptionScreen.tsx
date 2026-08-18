@@ -55,7 +55,7 @@ export function MyPageSubscriptionScreen() {
                 disabled={isCurrent}
                 onPress={() =>
                   navigateOnce(() =>
-                    router.push({ pathname: './checkout', params: { planId: plan.id } }),
+                    router.push({ pathname: '/mypage/checkout', params: { planId: plan.id } }),
                   )
                 }
                 size="medium"
