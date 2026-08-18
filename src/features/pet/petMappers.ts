@@ -1,5 +1,6 @@
 import type { SignupData } from '@/src/features/auth/signup/SignupContext';
 
+import type { RemotePet } from './services/petApi';
 import type { PetDraft, PetEntity, PetFormValues } from './types';
 
 function createPetId() {
@@ -105,5 +106,21 @@ export function signupDataToPetEntity(data: SignupData, userId: string): PetEnti
   return {
     ...petDraftToEntity(draft),
     id: `initial-${userId.replace(/[^a-zA-Z0-9_-]/g, '-')}`,
+  };
+}
+
+export function mergeRemotePet(current: PetEntity, remote: RemotePet): PetEntity {
+  return {
+    ...current,
+    birthDate: remote.birthDate.replace(/-/g, '.'),
+    breed: remote.breed,
+    gender: remote.gender,
+    id: remote.id,
+    name: remote.name,
+    neutered: remote.neutered,
+    profileImageUri: remote.profileImageUri,
+    type: remote.type,
+    updatedAt: new Date().toISOString(),
+    weight: remote.weight,
   };
 }

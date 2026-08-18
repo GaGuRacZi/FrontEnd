@@ -167,8 +167,7 @@ function getEditableMarketTradeMethods(post: MarketPost): MarketTradeMethod[] {
   const compatibleMethods = post.tradeType === '나눔'
     ? methods
     : methods.filter((method) => method !== '비대면 나눔');
-  if (compatibleMethods.length) return compatibleMethods;
-  if (post.tradeType === '나눔') return ['직거래', '비대면 나눔'];
+  if (compatibleMethods[0]) return [compatibleMethods[0]];
   return ['직거래'];
 }
 
@@ -813,10 +812,13 @@ export function CommunityWriteScreen() {
       setPriceOffer(draft.priceOffer);
       setExpiresAt(draft.expiresAt);
       setMarketBody(draft.marketBody);
-      setTradeMethods(draft.tradeMethods.filter((method): method is MarketTradeMethod =>
-        MARKET_TRADE_METHODS.includes(method) &&
-        (draft.tradeType === '나눔' || method !== '비대면 나눔'),
-      ));
+      const methods = draft.tradeMethods
+        .filter((method): method is MarketTradeMethod =>
+          MARKET_TRADE_METHODS.includes(method) &&
+          (draft.tradeType === '나눔' || method !== '비대면 나눔'),
+        )
+        .slice(0, 1);
+      setTradeMethods(methods.length ? methods : ['직거래']);
       setTradeLocation(draft.tradeLocation);
       return;
     }
@@ -1748,7 +1750,7 @@ export function CommunityWriteScreen() {
                       const compatible = value === '나눔'
                         ? current
                         : current.filter((method) => method !== '비대면 나눔');
-                      return compatible.length ? compatible : ['직거래'];
+                      return compatible[0] ? [compatible[0]] : ['직거래'];
                     });
                   }}
                   value={tradeType}
@@ -1844,7 +1846,7 @@ export function CommunityWriteScreen() {
                 <Text style={styles.counter}>{marketBody.length} / {MAX_BODY_LENGTH}</Text>
               </FieldCard>
 
-              <FieldCard required title="거래 방법" subtitle="여러 개를 함께 선택할 수 있어요">
+              <FieldCard required title="거래 방법" subtitle="한 가지 방법을 선택해주세요">
                 <View style={styles.chipGroup}>
                   {availableTradeMethods.map((method) => {
                     const selected = tradeMethods.includes(method);
@@ -1852,14 +1854,14 @@ export function CommunityWriteScreen() {
                       <ChoiceChip
                         key={method}
                         label={method}
-                        onPress={() => setTradeMethods(toggleValue(tradeMethods, method))}
+                        onPress={() => setTradeMethods([method])}
                         selected={selected}
                       />
                     );
                   })}
                 </View>
                 {!hasValidTradeMethods ? (
-                  <Text style={styles.errorText}>거래 방법을 1개 이상 선택해주세요.</Text>
+                  <Text style={styles.errorText}>거래 방법을 선택해주세요.</Text>
                 ) : null}
                 {marketNeedsLocation ? (
                   <View style={styles.locationField}>

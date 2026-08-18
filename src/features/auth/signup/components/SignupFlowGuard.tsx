@@ -20,7 +20,11 @@ const ROUTE_ORDER: Record<string, number> = {
 
 export function SignupFlowGuard({ children }: PropsWithChildren) {
   const pathname = usePathname();
-  const { currentUserId, pendingRemoteSignupUserId } = useAuthSession();
+  const {
+    currentUserId,
+    pendingRemoteSignupMethod,
+    pendingRemoteSignupUserId,
+  } = useAuthSession();
   const { committedSignupRecovery, data, signupCompleted } = useSignup();
   const { hasRequiredSignupConsents, status } = useTerms();
   const currentOrder = pathname.startsWith('/signup/terms/')
@@ -33,8 +37,15 @@ export function SignupFlowGuard({ children }: PropsWithChildren) {
     ? ROUTE_ORDER[allowedRoute]
     : ROUTE_ORDER['/signup/terms'];
 
-  if (pendingRemoteSignupUserId && data.method !== 'kakao') {
-    return <Redirect href={{ pathname: '/signup/terms', params: { method: 'kakao' } }} />;
+  if (pendingRemoteSignupUserId && data.method !== pendingRemoteSignupMethod) {
+    return (
+      <Redirect
+        href={{
+          pathname: '/signup/terms',
+          params: { method: pendingRemoteSignupMethod ?? 'kakao' },
+        }}
+      />
+    );
   }
 
   if (!currentUserId && !pendingRemoteSignupUserId && data.method === 'kakao') {

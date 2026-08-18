@@ -30,8 +30,6 @@ export type StoredSignupDraft = {
 
 type SignupDraftSource = PersistedSignupData & {
   emailVerificationCode?: string;
-  emailVerificationId?: string | null;
-  emailVerificationToken?: string | null;
   password?: string;
   passwordConfirm?: string;
 };
@@ -115,7 +113,7 @@ function isStoredSignupDraft(value: unknown): value is StoredSignupDraft {
     (value.method === 'kakao' || value.method === 'local') &&
     (value.remoteUserId === null ||
       (typeof value.remoteUserId === 'string' && Boolean(value.remoteUserId.trim()))) &&
-    (value.method === 'kakao' ? value.remoteUserId !== null : value.remoteUserId === null) &&
+    (value.method === 'kakao' ? value.remoteUserId !== null : true) &&
     isPersistedSignupData(value.data)
   );
 }

@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
-  createInitialCommunityState,
   MARKET_CATEGORIES,
   MARKET_TRADE_METHODS,
   MARKET_TRADE_TYPES,
@@ -58,6 +57,15 @@ function createOperationQueue() {
 const enqueueStateOperation = createOperationQueue();
 const enqueueWriteDraftOperation = createOperationQueue();
 
+function createEmptyState(): StoredCommunityState {
+  return {
+    comments: [],
+    posts: [],
+    reviewPosts: [],
+    viewerStates: {},
+  };
+}
+
 export function getDeletedComment(
   comment: CommunityComment,
   deletedAt = new Date().toISOString(),
@@ -111,81 +119,8 @@ function readStoredState(stored: string) {
   try {
     return normalizeStoredState(JSON.parse(stored));
   } catch {
-    return createInitialCommunityState();
+    return createEmptyState();
   }
-}
-
-function mergeSeedState(storedState: StoredCommunityState) {
-  const seedState = createInitialCommunityState();
-  const storedPostIds = new Set(storedState.posts.map((post) => post.id));
-  const storedCommentIds = new Set(storedState.comments.map((comment) => comment.id));
-  const storedReviewPostIds = new Set(storedState.reviewPosts.map((post) => post.id));
-  const storedEntityIds = new Set([...storedPostIds, ...storedReviewPostIds]);
-  const posts = [
-    ...storedState.posts,
-    ...seedState.posts.filter((post) => !storedEntityIds.has(post.id)),
-  ];
-  const postIds = new Set(posts.map((post) => post.id));
-  const reviewPosts = [
-    ...storedState.reviewPosts,
-    ...seedState.reviewPosts.filter(
-      (post) => !storedEntityIds.has(post.id) && !postIds.has(post.id),
-    ),
-  ];
-  const talkPostIds = new Set(
-    posts.filter((post) => post.kind === 'talk').map((post) => post.id),
-  );
-  const marketPostIds = new Set(
-    posts.filter((post) => post.kind === 'market').map((post) => post.id),
-  );
-  const reviewAuthors = new Map(
-    reviewPosts.map((post) => [post.id, post.author.userId]),
-  );
-  const viewerStates = Object.fromEntries(
-    Object.entries(storedState.viewerStates ?? {}).map(([viewerId, viewerState]) => {
-      const uniqueIds = (values: string[] | undefined, validIds: ReadonlySet<string>) =>
-        [...new Set(values ?? [])].filter((id) => validIds.has(id));
-      const validReviewIds = new Set(
-        [...reviewAuthors]
-          .filter(([, authorId]) => authorId !== viewerId)
-          .map(([postId]) => postId),
-      );
-      const notHelpfulIds = uniqueIds(
-        viewerState.reactionPostIds?.notHelpful,
-        validReviewIds,
-      );
-      const notHelpfulSet = new Set(notHelpfulIds);
-
-      return [
-        viewerId,
-        {
-          ...viewerState,
-          bookmarkedPostIds: uniqueIds(
-            viewerState.bookmarkedPostIds,
-            marketPostIds,
-          ),
-          reactionPostIds: {
-            helpful: uniqueIds(
-              viewerState.reactionPostIds?.helpful,
-              validReviewIds,
-            ).filter((postId) => !notHelpfulSet.has(postId)),
-            like: uniqueIds(viewerState.reactionPostIds?.like, talkPostIds),
-            notHelpful: notHelpfulIds,
-          },
-        },
-      ];
-    }),
-  );
-
-  return {
-    comments: [
-      ...storedState.comments,
-      ...seedState.comments.filter((comment) => !storedCommentIds.has(comment.id)),
-    ],
-    posts,
-    reviewPosts,
-    viewerStates,
-  };
 }
 
 async function writeCommunityState(serialized: string) {
@@ -195,9 +130,9 @@ async function writeCommunityState(serialized: string) {
 function readCommunityState() {
   return enqueueStateOperation(async () => {
     const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
-    if (!stored) return createInitialCommunityState();
+    if (!stored) return createEmptyState();
 
-    const nextState = mergeSeedState(readStoredState(stored));
+    const nextState = readStoredState(stored);
     const serialized = JSON.stringify(nextState);
     if (serialized !== stored) await writeCommunityState(serialized);
     return nextState;
@@ -691,7 +626,7 @@ function uniqueById<T extends { id: string }>(values: T[]) {
 }
 
 function normalizeStoredState(value: unknown): StoredCommunityState {
-  if (!isRecord(value)) return createInitialCommunityState();
+  if (!isRecord(value)) return createEmptyState();
 
   const posts = uniqueById(
     (Array.isArray(value.posts) ? value.posts : []).flatMap((post) => {
@@ -710,7 +645,7 @@ function normalizeStoredState(value: unknown): StoredCommunityState {
     }),
   );
   const talkPostIds = new Set(
-    [...posts, ...createInitialCommunityState().posts]
+    posts
       .filter((post) => post.kind === 'talk')
       .map((post) => post.id),
   );

@@ -22,6 +22,8 @@ jobs:
       - run: npm run check
       - run: npm run check:signup-draft
       - run: npm run check:mypage-activity
+      - run: npm run check:community-api
+      - run: npm run check:mypage-pet-api
       - run: npm run check:mypage-support
       - run: npm run check:mypage-terms
       - run: npm run check:pet-image-removal

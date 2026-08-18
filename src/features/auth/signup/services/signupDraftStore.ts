@@ -74,6 +74,29 @@ export function saveActiveSignupDraft(input: {
   });
 }
 
+export function attachActiveSignupDraftRemoteUserId(sessionId: string, remoteUserId: string) {
+  return enqueueMutation(async () => {
+    const stored = await AsyncStorage.getItem(ACTIVE_SIGNUP_DRAFT_KEY);
+    const draft = parseStoredSignupDraft(stored);
+
+    if (
+      !draft ||
+      draft.sessionId !== sessionId ||
+      draft.method !== 'local' ||
+      draft.remoteUserId !== null
+    ) {
+      return false;
+    }
+
+    const nextDraft = createSignupDraft({
+      ...draft,
+      remoteUserId,
+    });
+    await AsyncStorage.setItem(ACTIVE_SIGNUP_DRAFT_KEY, JSON.stringify(nextDraft));
+    return true;
+  });
+}
+
 export function clearActiveSignupDraft(expectedSessionId?: string) {
   return enqueueMutation(async () => {
     const stored = await AsyncStorage.getItem(ACTIVE_SIGNUP_DRAFT_KEY);

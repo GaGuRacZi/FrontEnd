@@ -15,6 +15,7 @@ import { AppIcon } from '@/src/components/common/AppIcon';
 import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
+import { resolveRemoteLocation } from '@/src/services/locationApi';
 
 import { TERM_IDS, useTerms } from '../../terms';
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
@@ -210,30 +211,9 @@ export function SignupLocationScreen() {
       regionSource: 'search',
     });
 
-    if (data.method !== 'kakao') return;
-
     setIsResolvingAddress(true);
 
     try {
-      if (Platform.OS === 'android') {
-        const permission = await Location.requestForegroundPermissionsAsync();
-
-        if (!isCurrentRequest()) return;
-
-        if (!permission.granted) {
-          setLocationError('선택한 지역을 확인하려면 위치 권한을 허용해주세요.');
-          showAlert(
-            '위치 권한이 필요해요',
-            '선택한 지역의 위치를 확인하려면 앱 설정에서 위치 권한을 허용해주세요.',
-            [
-              { text: '취소', style: 'cancel' },
-              { text: '설정 열기', onPress: () => void Linking.openSettings() },
-            ],
-          );
-          return;
-        }
-      }
-
       const locations = await geocodeAddress(address);
 
       if (!isCurrentRequest()) return;
@@ -248,7 +228,15 @@ export function SignupLocationScreen() {
         return;
       }
 
-      updateFields({ latitude: location.latitude, longitude: location.longitude });
+      const resolved = await resolveRemoteLocation(location.latitude, location.longitude);
+
+      if (!isCurrentRequest()) return;
+
+      updateFields({
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+        region: resolved.regionName,
+      });
     } catch {
       if (isCurrentRequest()) {
         setLocationError('선택한 지역의 위치를 확인하지 못했어요. 다시 검색해주세요.');
@@ -284,7 +272,7 @@ export function SignupLocationScreen() {
       title="활동 지역을 설정해주세요"
     >
       <Text style={styles.description}>
-        {'프로필에 표시할 지역을 선택하고,\n카카오 가입 시 지역 확인에 필요한 좌표를 사용해요.'}
+        {'프로필에 표시할 지역을 선택하고,\n지역 확인에 필요한 좌표를 사용해요.'}
       </Text>
 
       <View style={styles.locationSection}>

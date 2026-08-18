@@ -11,6 +11,7 @@ import {
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import type { RemoteUserProfile } from '@/src/features/auth/services/kakaoAuthContract';
+import { getRemoteUserLocation } from '@/src/services/locationApi';
 
 import {
   getCheckoutPaymentMethod,
@@ -21,12 +22,15 @@ import {
   getUpgradePaymentAmount,
   normalizePaymentMethods,
 } from './mypageData';
-import { createDefaultMyPageState, signupDataToProfile } from './mypageMappers';
+import { mergeRemoteUserProfile } from './mypageMappers';
+import {
+  getRemoteUserProfile,
+  updateRemoteUserProfile,
+} from './services/profileApi';
 import { mypageRepository } from './services/mypageRepository';
 import {
-  persistProfileImage,
+  flushQueuedProfileImageRemovals,
   queueProfileImageRemoval,
-  removeProfileImage,
   removeUserProfileImages,
 } from './services/profileImageStorage';
 import type {
@@ -44,7 +48,7 @@ type MutationResult =
   | { ok: true }
   | {
       ok: false;
-      reason: 'error' | 'invalid' | 'not-ready' | 'payment-method-required';
+      reason: 'error' | 'invalid' | 'not-ready' | 'not-supported' | 'payment-method-required';
     };
 
 export type StoredProfileStatus = 'missing' | 'recoverable' | 'valid';
@@ -59,10 +63,9 @@ type MyPageStoreContextValue = {
   paymentHistory: PaymentHistoryItem[];
   paymentMethods: PaymentMethod[];
   profile: UserProfile | null;
-  registerRemoteProfile: (profile: RemoteUserProfile) => Promise<void>;
-  registerSignupProfile: (
-    data: Parameters<typeof signupDataToProfile>[0],
-    userId: string,
+  registerRemoteProfile: (
+    profile: RemoteUserProfile,
+    method?: 'kakao' | 'local',
   ) => Promise<void>;
   reloadMyPage: () => void;
   scheduleCancelSubscription: () => Promise<MutationResult>;
@@ -138,6 +141,32 @@ export function MyPageProvider({ children }: PropsWithChildren) {
         if (!active || activeUserRef.current !== currentUserId) return;
         readyUserRef.current = currentUserId;
         applyState(loadedState);
+
+        void Promise.all([
+          getRemoteUserProfile(),
+          getRemoteUserLocation().catch(() => null),
+        ])
+          .then(async ([remoteProfile, remoteLocation]) => {
+            if (
+              !active ||
+              activeUserRef.current !== currentUserId ||
+              stateRef.current !== loadedState
+            ) {
+              return;
+            }
+
+            const nextState = {
+              ...loadedState,
+              profile: {
+                ...mergeRemoteUserProfile(loadedState.profile, remoteProfile),
+                location: remoteLocation?.regionName ?? remoteProfile.regionName,
+              },
+            };
+            if (active && activeUserRef.current === currentUserId && stateRef.current === loadedState) {
+              applyState(nextState);
+            }
+          })
+          .catch(() => undefined);
       })
       .catch(() => {
         if (!active || activeUserRef.current !== currentUserId) return;
@@ -206,52 +235,6 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     [currentUserId, enqueueMutation, persist],
   );
 
-  const registerSignupProfile = useCallback(
-    (data: Parameters<typeof signupDataToProfile>[0], userId: string) =>
-      enqueueMutation(async () => {
-        const previous = await mypageRepository.loadState(userId).catch(() =>
-          createDefaultMyPageState(userId),
-        );
-        const profile = signupDataToProfile(data, userId);
-        let profileImageUri: string | null = null;
-
-        try {
-          profileImageUri = profile.profileImageUri
-            ? await persistProfileImage(userId, profile.profileImageUri)
-            : null;
-          const nextState = {
-            ...previous,
-            profile: { ...profile, profileImageUri },
-          };
-
-          await mypageRepository.saveState(userId, nextState);
-
-          if (
-            previous.profile.profileImageUri &&
-            previous.profile.profileImageUri !== profileImageUri
-          ) {
-            await queueProfileImageRemoval(
-              userId,
-              previous.profile.profileImageUri,
-            ).catch(() => undefined);
-          }
-
-          if (activeUserRef.current === userId) {
-            readyUserRef.current = userId;
-            applyState(nextState);
-            setHasLoadError(false);
-            setIsReady(true);
-          }
-        } catch (error) {
-          if (profileImageUri && profileImageUri !== previous.profile.profileImageUri) {
-            await removeProfileImage(userId, profileImageUri).catch(() => undefined);
-          }
-          throw error;
-        }
-      }),
-    [applyState, enqueueMutation],
-  );
-
   const hasStoredUserProfileData = useCallback(
     (userId: string) =>
       enqueueMutation(() => mypageRepository.getStoredStateStatus(userId)),
@@ -259,47 +242,21 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   );
 
   const registerRemoteProfile = useCallback(
-    (remoteProfile: RemoteUserProfile) =>
+    (remoteProfile: RemoteUserProfile, method: 'kakao' | 'local' = 'kakao') =>
       enqueueMutation(async () => {
         const status = await mypageRepository.getStoredStateStatus(remoteProfile.uid);
         const previous = await mypageRepository.loadState(remoteProfile.uid);
         const now = new Date().toISOString();
 
-        if (status === 'valid') {
-          if (previous.profile.loginConnections.some(({ method }) => method === 'kakao')) {
-            return;
-          }
-          const email =
-            remoteProfile.email ||
-            previous.profile.loginConnections.find(({ email }) => email)?.email ||
-            '';
-          await persist(remoteProfile.uid, {
-            ...previous,
-            profile: {
-              ...previous.profile,
-              loginConnections: [
-                ...previous.profile.loginConnections,
-                { email, method: 'kakao' },
-              ],
-              updatedAt: now,
-            },
-          });
-          return;
-        }
-
         const nextState = {
           ...previous,
-          profile: {
-            createdAt: previous.profile.createdAt || now,
-            id: remoteProfile.uid,
-            introduction: remoteProfile.intro,
-            location: remoteProfile.regionName,
-            loginConnections: [{ email: remoteProfile.email, method: 'kakao' as const }],
-            name: remoteProfile.name,
-            nickname: remoteProfile.nickname,
-            profileImageUri: remoteProfile.profileUrl,
-            updatedAt: now,
-          },
+          profile: mergeRemoteUserProfile(
+            status === 'valid'
+              ? previous.profile
+              : { ...previous.profile, createdAt: previous.profile.createdAt || now },
+            remoteProfile,
+            method,
+          ),
         };
 
         await persist(remoteProfile.uid, nextState);
@@ -326,18 +283,36 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           name: profile.name.trim(),
           updatedAt: new Date().toISOString(),
         };
-        const nextState = { ...current, profile: nextProfile };
-
         try {
+          if (previousUri && !nextProfile.profileImageUri) {
+            return { ok: false, reason: 'not-supported' };
+          }
+
+          const remoteProfile = await updateRemoteUserProfile({
+            imageUri:
+              previousUri !== nextProfile.profileImageUri
+                ? nextProfile.profileImageUri
+                : undefined,
+            intro: nextProfile.introduction,
+            name: nextProfile.name,
+            nickname: nextProfile.nickname,
+          });
+          const remoteNextState = {
+            ...current,
+            profile: mergeRemoteUserProfile(nextProfile, remoteProfile),
+          };
           await persist(
             userId,
-            nextState,
-            previousUri && previousUri !== nextProfile.profileImageUri
-              ? () =>
-                  queueProfileImageRemoval(userId, previousUri).catch(
-                    () => undefined,
-                  )
-              : undefined,
+            remoteNextState,
+            async () => {
+              await Promise.all([
+                queueProfileImageRemoval(userId, previousUri),
+                queueProfileImageRemoval(userId, nextProfile.profileImageUri),
+              ]).catch(() => undefined);
+              await flushQueuedProfileImageRemovals(userId, [
+                remoteNextState.profile.profileImageUri,
+              ]).catch(() => undefined);
+            },
           );
 
           return { ok: true };
@@ -462,7 +437,6 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       paymentMethods: visibleState?.paymentMethods ?? EMPTY_PAYMENT_METHODS,
       profile: visibleState?.profile ?? null,
       registerRemoteProfile,
-      registerSignupProfile,
       reloadMyPage,
       scheduleCancelSubscription,
       subscription: visibleState?.subscription ?? null,
@@ -477,7 +451,6 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       hasLoadError,
       hasStoredUserProfileData,
       registerRemoteProfile,
-      registerSignupProfile,
       reloadMyPage,
       scheduleCancelSubscription,
       storeReady,

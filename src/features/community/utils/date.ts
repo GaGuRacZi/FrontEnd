@@ -44,3 +44,10 @@ export function isPastOrTodayDateValue(value: string) {
   const comparison = compareDateWithToday(value);
   return comparison !== null && comparison <= 0;
 }
+
+export function compareNewestFirst(
+  left: { createdAt: string },
+  right: { createdAt: string },
+) {
+  return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+}

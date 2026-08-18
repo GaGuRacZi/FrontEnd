@@ -13,7 +13,6 @@ import { AppState } from 'react-native';
 import { LoadingView } from '@/src/components/common';
 import { AppScreen } from '@/src/components/layout';
 import {
-  getSignupUserId,
   useAuthSession,
   type AuthMethod,
 } from '@/src/features/auth/session/AuthSessionStore';
@@ -47,6 +46,7 @@ type EmailVerificationError = {
 
 type EmailVerificationState = {
   error: EmailVerificationError;
+  requestedEmail: string | null;
   status: EmailVerificationStatus;
 };
 
@@ -55,8 +55,7 @@ export type SignupData = {
   breed: string;
   email: string;
   emailVerificationCode: string;
-  emailVerificationId: string | null;
-  emailVerificationToken: string | null;
+  emailVerified: boolean;
   introduction: string;
   latitude: number | null;
   longitude: number | null;
@@ -81,6 +80,7 @@ type SignupContextValue = {
   committedSignupRecovery: SignupTransaction | null;
   data: SignupData;
   emailVerification: EmailVerificationState;
+  flushSignupDraft: () => Promise<void>;
   markSignupCompleted: () => void;
   signupCompleted: boolean;
   signupSessionId: string;
@@ -98,8 +98,7 @@ function createInitialData(method: SignupMethod): SignupData {
     breed: '',
     email: '',
     emailVerificationCode: '',
-    emailVerificationId: null,
-    emailVerificationToken: null,
+    emailVerified: false,
     introduction: '',
     latitude: null,
     longitude: null,
@@ -124,8 +123,12 @@ type SignupProviderProps = PropsWithChildren<{
 }>;
 
 export function SignupProvider({ children, initialMethod }: SignupProviderProps) {
-  const { isReady, pendingRemoteSignupUserId } = useAuthSession();
-  const signupMethod = pendingRemoteSignupUserId ? 'kakao' : initialMethod;
+  const {
+    isReady,
+    pendingRemoteSignupMethod,
+    pendingRemoteSignupUserId,
+  } = useAuthSession();
+  const signupMethod = pendingRemoteSignupMethod ?? initialMethod;
   const restorationStarted = useRef(false);
   const draftEnabledRef = useRef(true);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -140,6 +143,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     useState<SignupTransaction | null>(null);
   const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
     error: null,
+    requestedEmail: null,
     status: 'idle',
   });
   const [signupReady, setSignupReady] = useState(false);
@@ -168,29 +172,24 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
         const loadedDraft = draftResult.status === 'fulfilled' ? draftResult.value : null;
 
         const isCurrentMethod = (method: SignupMethod) =>
-          pendingRemoteSignupUserId
-            ? method === 'kakao'
+          pendingRemoteSignupMethod
+            ? method === pendingRemoteSignupMethod
             : method === 'local' && (!signupMethod || signupMethod === method);
         const transaction =
           loadedTransaction &&
           isCurrentMethod(loadedTransaction.method) &&
-          (loadedTransaction.method === 'kakao'
+          (pendingRemoteSignupUserId
             ? loadedTransaction.userId === pendingRemoteSignupUserId
-            : getSignupUserId(
-                loadedTransaction.method,
-                loadedTransaction.email,
-                loadedTransaction.sessionId,
-              ) === loadedTransaction.userId)
+            : false)
             ? loadedTransaction
             : null;
-        let draft =
+        const draftMatches =
           loadedDraft &&
           isCurrentMethod(loadedDraft.method) &&
-          (loadedDraft.method === 'kakao'
+          (pendingRemoteSignupUserId
             ? loadedDraft.remoteUserId === pendingRemoteSignupUserId
-            : loadedDraft.remoteUserId === null)
-            ? loadedDraft
-            : null;
+            : loadedDraft.method === 'local' && loadedDraft.remoteUserId === null);
+        let draft = draftMatches ? loadedDraft : null;
 
         if (loadedTransaction && !transaction) {
           await clearActiveSignupTransaction();
@@ -205,14 +204,13 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
             draft &&
             (draft.sessionId !== transaction.sessionId ||
               draft.method !== transaction.method ||
-              draft.remoteUserId !==
-                (transaction.method === 'kakao' ? transaction.userId : null))
+              draft.remoteUserId !== transaction.userId)
           ) {
             await clearActiveSignupDraft(draft.sessionId);
             draft = null;
           }
           const restoredTransaction =
-            transaction.method === 'kakao' && transaction.status === 'pending'
+            transaction.status === 'pending'
               ? await loadRemoteUserProfile()
                   .then((profile) =>
                     !profile.isNew && profile.uid === transaction.userId
@@ -269,7 +267,12 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     return () => {
       active = false;
     };
-  }, [isReady, pendingRemoteSignupUserId, signupMethod]);
+  }, [
+    isReady,
+    pendingRemoteSignupMethod,
+    pendingRemoteSignupUserId,
+    signupMethod,
+  ]);
 
   const flushSignupDraft = useCallback(() => {
     if (draftSaveTimerRef.current) {
@@ -285,7 +288,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     return saveActiveSignupDraft({
       data: currentData,
       method: currentData.method,
-      remoteUserId: currentData.method === 'kakao' ? remoteUserId : null,
+      remoteUserId: remoteUserId ?? null,
       sessionId: signupSessionIdRef.current,
     }).then(() => undefined);
   }, []);
@@ -351,9 +354,8 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
       if (!draftEnabledRef.current) throw new Error('signup-cancelled');
 
       const sessionId = signupSessionIdRef.current;
-      const remoteUserId =
-        dataRef.current.method === 'kakao' ? pendingRemoteSignupUserIdRef.current : null;
-      if (dataRef.current.method === 'kakao' && !remoteUserId) {
+      const remoteUserId = pendingRemoteSignupUserIdRef.current;
+      if (!remoteUserId && dataRef.current.method === 'kakao') {
         throw new Error('signup-session-required');
       }
       const temporaryUserId = getSignupConsentUserId(sessionId);
@@ -372,7 +374,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
         await saveActiveSignupDraft({
           data: dataRef.current,
           method: dataRef.current.method,
-          remoteUserId,
+          remoteUserId: remoteUserId ?? null,
           sessionId,
         });
       } catch (error) {
@@ -407,6 +409,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
       committedSignupRecovery,
       data,
       emailVerification,
+      flushSignupDraft,
       markSignupCompleted,
       signupCompleted,
       signupSessionId,
@@ -421,6 +424,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
       committedSignupRecovery,
       data,
       emailVerification,
+      flushSignupDraft,
       markSignupCompleted,
       signupCompleted,
       signupSessionId,

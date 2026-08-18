@@ -1,5 +1,4 @@
 import type { PetFormValues, PetType } from './types';
-import { MOCK_BREEDS } from './petData';
 
 const BIRTH_DATE_PATTERN = /^(\d{4})\.(\d{2})\.(\d{2})$/;
 
@@ -66,7 +65,7 @@ export function getWeightError(value: string) {
 }
 
 export function isBreedForPet(type: PetType | null, breed: string) {
-  return Boolean(type && MOCK_BREEDS[type].some((option) => option.name === breed));
+  return Boolean(type && breed.trim());
 }
 
 export function formatBirthDate(value: string) {

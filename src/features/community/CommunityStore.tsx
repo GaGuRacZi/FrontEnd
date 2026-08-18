@@ -6,10 +6,26 @@ import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { flushQueuedProfileImageRemovals } from '@/src/features/mypage/services/profileImageStorage';
 
 import { COMMUNITY_GUEST_ID } from './communityData';
+import {
+  createRemoteComment,
+  createRemoteCommunityPost,
+  deleteRemoteComment,
+  deleteRemoteCommunityPost,
+  getRemoteComments,
+  getRemoteCommunityDetail,
+  getRemoteCommunityPage,
+  getRemoteCommunityTags,
+  mapRemotePost,
+  parseRemoteCommentMutation,
+  toggleRemoteTalkLike,
+  updateRemoteComment,
+  updateRemoteCommunityPost,
+  type CommunityIdentity,
+  type RemoteCommunityTag,
+} from './services/communityApi';
 import { queueCommunityImageRemovals } from './services/communityImageStorage';
 import {
   communityRepository,
-  getDeletedComment,
   normalizeCommunityFilterSession,
 } from './services/communityRepository';
 import {
@@ -17,7 +33,7 @@ import {
   isValidMarketPriceLabel,
   isValidMarketTradeMethodSelection,
 } from './utils/marketValidation';
-import { getValidReviewInput, getValidReviewTarget } from './utils/reviewValidation';
+import { compareNewestFirst } from './utils/date';
 import type {
   CommunityAuthorSnapshot,
   CommunityComment,
@@ -33,7 +49,9 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-yours' };
+  | { ok: false; reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-supported' | 'not-yours' };
+
+const mutationError = (): MutationResult => ({ ok: false, reason: 'error' });
 
 type TalkPostForm = Pick<TalkPost, 'body' | 'category' | 'images' | 'showNeighborhood' | 'tags' | 'title'>;
 type MarketPostForm = Pick<
@@ -70,6 +88,7 @@ type CommunityStoreContextValue = {
   getCommentCount: (postId: string) => number;
   getCommentedPosts: (userId?: string) => CommunityPost[];
   getCommentsByPostId: (postId: string) => CommunityComment[];
+  hasMorePosts: Record<'market' | 'talk', boolean>;
   getPostById: (postId: string) => CommunityPost | null;
   getReviewPostById: (postId: string) => ReviewPost | null;
   getReactionCount: (postId: string, kind: ReactionKind) => number;
@@ -77,6 +96,9 @@ type CommunityStoreContextValue = {
   isBookmarked: (postId: string) => boolean;
   isReady: boolean;
   isReacted: (postId: string, kind: ReactionKind) => boolean;
+  loadComments: (postId: string) => Promise<MutationResult>;
+  loadMorePosts: (kind: 'market' | 'talk') => Promise<MutationResult>;
+  loadPostDetail: (postId: string) => Promise<MutationResult>;
   posts: CommunityPost[];
   reloadCommunity: () => Promise<void>;
   reviewPosts: ReviewPost[];
@@ -156,10 +178,6 @@ function toggleValue(values: string[], value: string) {
     : [...values, value];
 }
 
-function createId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 export function CommunityProvider({ children }: PropsWithChildren) {
   const { currentUserId, isReady: sessionReady } = useAuthSession();
   const { profile } = useMyPageStore();
@@ -168,6 +186,10 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   const [hasLoadError, setHasLoadError] = useState(false);
   const [profileSyncRequest, setProfileSyncRequest] = useState(0);
   const [filterSessionGeneration, setFilterSessionGeneration] = useState(0);
+  const [hasMorePosts, setHasMorePosts] = useState<Record<'market' | 'talk', boolean>>({
+    market: false,
+    talk: false,
+  });
   const stateRef = useRef<StoredCommunityState>(EMPTY_STATE);
   const readyRef = useRef(false);
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -177,6 +199,11 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   const profileSyncAttemptsRef = useRef(new Map<string, number>());
   const activeViewerIdRef = useRef(currentUserId ?? COMMUNITY_GUEST_ID);
   const filterSessionGenerationRef = useRef(0);
+  const remoteCursorsRef = useRef<Record<'market' | 'talk', string | null>>({
+    market: null,
+    talk: null,
+  });
+  const communityTagsRef = useRef<RemoteCommunityTag[]>([]);
   const viewerId = currentUserId ?? COMMUNITY_GUEST_ID;
 
   useEffect(() => {
@@ -188,7 +215,38 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     setState(nextState);
   }, []);
 
+  const identity = useMemo<CommunityIdentity>(
+    () => ({ profile, userId: viewerId }),
+    [profile, viewerId],
+  );
+
+  const loadRemoteState = useCallback(async () => {
+    const [storedState, talkPage, marketPage, talkTags, marketTags] = await Promise.all([
+      communityRepository.loadState(),
+      getRemoteCommunityPage('COMMUNICATION'),
+      getRemoteCommunityPage('MARKET'),
+      getRemoteCommunityTags('COMMUNICATION'),
+      getRemoteCommunityTags('MARKET'),
+    ]);
+    remoteCursorsRef.current = {
+      market: marketPage.nextCursor,
+      talk: talkPage.nextCursor,
+    };
+    communityTagsRef.current = [...talkTags, ...marketTags];
+    setHasMorePosts({ market: marketPage.hasNext, talk: talkPage.hasNext });
+
+    return {
+      ...storedState,
+      comments: [],
+      posts: [...talkPage.items, ...marketPage.items]
+        .map((post) => mapRemotePost(post, identity))
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+      reviewPosts: [],
+    };
+  }, [identity]);
+
   const reloadCommunity = useCallback(async () => {
+    if (!sessionReady) return;
     setIsReady(false);
     setHasLoadError(false);
     readyRef.current = false;
@@ -196,7 +254,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     profileSyncAttemptsRef.current.clear();
 
     try {
-      const loadedState = await communityRepository.loadState();
+      const loadedState = await loadRemoteState();
       readyRef.current = true;
       applyState(loadedState);
     } catch {
@@ -205,17 +263,21 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     } finally {
       setIsReady(true);
     }
-  }, [applyState]);
+  }, [applyState, loadRemoteState, sessionReady]);
 
   useEffect(() => {
+    if (!sessionReady) {
+      readyRef.current = false;
+      setIsReady(false);
+      return undefined;
+    }
     let active = true;
     setIsReady(false);
     setHasLoadError(false);
     syncedProfileRef.current = '';
     profileSyncAttemptsRef.current.clear();
 
-    communityRepository
-      .loadState()
+    loadRemoteState()
       .then((loadedState) => {
         if (!active) return;
         readyRef.current = true;
@@ -233,7 +295,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applyState]);
+  }, [applyState, loadRemoteState, sessionReady]);
 
   const enqueueMutation = useCallback(<T,>(mutation: () => Promise<T>) => {
     const result = mutationQueueRef.current.then(mutation, mutation);
@@ -422,13 +484,110 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     (postId: string) =>
       stateRef.current.comments
         .filter((comment) => comment.postId === postId)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
     [],
   );
 
   const getCommentCount = useCallback(
-    (postId: string) => stateRef.current.comments.filter((comment) => comment.postId === postId).length,
+    (postId: string) =>
+      stateRef.current.posts.find((post) => post.id === postId)?.baseCommentCount ?? 0,
     [],
+  );
+
+  const loadMorePosts = useCallback(
+    (kind: 'market' | 'talk') =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current || !hasMorePosts[kind]) {
+          return { ok: true };
+        }
+        const page = await getRemoteCommunityPage(
+          kind === 'talk' ? 'COMMUNICATION' : 'MARKET',
+          remoteCursorsRef.current[kind],
+        );
+        remoteCursorsRef.current[kind] = page.nextCursor;
+        setHasMorePosts((current) => ({ ...current, [kind]: page.hasNext }));
+        const loadedIds = new Set(stateRef.current.posts.map((post) => post.id));
+        applyState({
+          ...stateRef.current,
+          posts: [
+            ...stateRef.current.posts,
+            ...page.items
+              .map((post) => mapRemotePost(post, identity))
+              .filter((post) => !loadedIds.has(post.id)),
+          ].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+        });
+        return { ok: true };
+      }).catch(mutationError),
+    [applyState, enqueueMutation, hasMorePosts, identity, sessionReady],
+  );
+
+  const loadPostDetail = useCallback(
+    (postId: string) =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        const remotePost = await getRemoteCommunityDetail(postId);
+        const post = mapRemotePost(remotePost, identity);
+        const previousViewerState = getViewerStateFromMap(stateRef.current.viewerStates, viewerId);
+        const likedPostIds = previousViewerState.reactionPostIds.like ?? [];
+        const nextLikedPostIds = post.kind !== 'talk'
+          ? likedPostIds
+          : remotePost.likedByMe
+            ? [...new Set([...likedPostIds, post.id])]
+            : likedPostIds.filter((id) => id !== post.id);
+        applyState({
+          ...stateRef.current,
+          posts: [
+            ...stateRef.current.posts.filter((currentPost) => currentPost.id !== post.id),
+            post,
+          ].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+          viewerStates: {
+            ...stateRef.current.viewerStates,
+            [viewerId]: {
+              ...previousViewerState,
+              reactionPostIds: {
+                ...previousViewerState.reactionPostIds,
+                like: nextLikedPostIds,
+              },
+            },
+          },
+        });
+        return { ok: true };
+      }).catch(mutationError),
+    [applyState, enqueueMutation, identity, sessionReady, viewerId],
+  );
+
+  const fetchRemoteComments = useCallback(
+    async (postId: string) => {
+      let cursor: string | null = null;
+      let hasNext = true;
+      const comments: CommunityComment[] = [];
+      while (hasNext) {
+        const page = await getRemoteComments(postId, cursor, identity);
+        comments.push(...page.comments);
+        cursor = page.nextCursor;
+        hasNext = page.hasNext;
+        if (hasNext && !cursor) throw new Error('community-comment-cursor-missing');
+      }
+      return comments;
+    },
+    [identity],
+  );
+
+  const loadComments = useCallback(
+    (postId: string) =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        const comments = await fetchRemoteComments(postId);
+        applyState({
+          ...stateRef.current,
+          comments: [
+            ...stateRef.current.comments.filter((comment) => comment.postId !== postId),
+            ...comments,
+          ],
+        });
+        return { ok: true };
+      }).catch(mutationError),
+    [applyState, enqueueMutation, fetchRemoteComments, sessionReady],
   );
 
   const isReacted = useCallback(
@@ -456,81 +615,90 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   const toggleReaction = useCallback(
     (postId: string, kind: ReactionKind) =>
       runSingleToggle(`reaction:${viewerId}:${postId}:${kind}`, () =>
-        mutateState((current) => {
-          if (kind === 'like') {
-            const talkPost = current.posts.find((post) => post.id === postId);
-            if (!talkPost || talkPost.kind !== 'talk') {
-              return { ok: false, reason: 'not-found' };
-            }
-          } else {
+        kind !== 'like'
+          ? mutateState((current) => {
             const reviewPost = current.reviewPosts.find((post) => post.id === postId);
             if (!reviewPost) return { ok: false, reason: 'not-found' };
             if (reviewPost.author.userId === viewerId) {
               return { ok: false, reason: 'not-yours' };
             }
-          }
 
-          const previous = getViewerStateFromMap(current.viewerStates, viewerId);
-          const exclusiveKind =
-            kind === 'helpful' ? 'notHelpful' : kind === 'notHelpful' ? 'helpful' : null;
-          const nextReactionPostIds = {
-            ...previous.reactionPostIds,
-            ...(exclusiveKind
-              ? {
-                  [exclusiveKind]: (previous.reactionPostIds[exclusiveKind] ?? []).filter(
-                    (id) => id !== postId,
-                  ),
-                }
-              : {}),
-            [kind]: toggleValue(previous.reactionPostIds[kind] ?? [], postId),
-          };
+            const previous = getViewerStateFromMap(current.viewerStates, viewerId);
+            const exclusiveKind =
+              kind === 'helpful' ? 'notHelpful' : kind === 'notHelpful' ? 'helpful' : null;
+            const nextReactionPostIds = {
+              ...previous.reactionPostIds,
+              ...(exclusiveKind
+                ? {
+                    [exclusiveKind]: (previous.reactionPostIds[exclusiveKind] ?? []).filter(
+                      (id) => id !== postId,
+                    ),
+                  }
+                : {}),
+              [kind]: toggleValue(previous.reactionPostIds[kind] ?? [], postId),
+            };
 
-          return {
-            ...current,
-            viewerStates: {
-              ...current.viewerStates,
-              [viewerId]: {
-                ...previous,
-                reactionPostIds: nextReactionPostIds,
+            return {
+              ...current,
+              viewerStates: {
+                ...current.viewerStates,
+                [viewerId]: {
+                  ...previous,
+                  reactionPostIds: nextReactionPostIds,
+                },
               },
-            },
-          };
-        }),
+            };
+          })
+          : enqueueMutation(async (): Promise<MutationResult> => {
+              if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+              const current = stateRef.current;
+              const talkPost = current.posts.find((post) => post.id === postId);
+              if (!talkPost || talkPost.kind !== 'talk') return { ok: false, reason: 'not-found' };
+
+              const result = await toggleRemoteTalkLike(postId);
+              const previous = getViewerStateFromMap(current.viewerStates, viewerId);
+              const likePostIds = result.liked
+                ? [...new Set([...(previous.reactionPostIds.like ?? []), postId])]
+                : (previous.reactionPostIds.like ?? []).filter((id) => id !== postId);
+              return persistMutation({
+                ...current,
+                posts: current.posts.map((post) =>
+                  post.id === postId && post.kind === 'talk'
+                    ? {
+                        ...post,
+                        baseReactionCounts: {
+                          ...post.baseReactionCounts,
+                          like: Math.max(0, result.likeCount - (result.liked ? 1 : 0)),
+                        },
+                      }
+                    : post,
+                ),
+                viewerStates: {
+                  ...current.viewerStates,
+                  [viewerId]: {
+                    ...previous,
+                    reactionPostIds: { ...previous.reactionPostIds, like: likePostIds },
+                  },
+                },
+              });
+            }).catch(mutationError),
       ),
-    [mutateState, runSingleToggle, viewerId],
+    [enqueueMutation, mutateState, persistMutation, runSingleToggle, sessionReady, viewerId],
   );
 
   const toggleBookmark = useCallback(
-    (postId: string) =>
-      runSingleToggle(`bookmark:${viewerId}:${postId}`, () =>
-        mutateState((current) => {
-          const marketPost = current.posts.find((post) => post.id === postId);
-          if (!marketPost || marketPost.kind !== 'market') {
-            return { ok: false, reason: 'not-found' };
-          }
-
-          const previous = getViewerStateFromMap(current.viewerStates, viewerId);
-          return {
-            ...current,
-            viewerStates: {
-              ...current.viewerStates,
-              [viewerId]: {
-                ...previous,
-                bookmarkedPostIds: toggleValue(previous.bookmarkedPostIds, postId),
-              },
-            },
-          };
-        }),
-      ),
-    [mutateState, runSingleToggle, viewerId],
+    async (_postId: string): Promise<MutationResult> => ({ ok: false, reason: 'not-supported' }),
+    [],
   );
 
   const addComment = useCallback(
     (postId: string, body: string, author: CommunityAuthorSnapshot, parentId?: string) =>
-      mutateState((current) => {
+      enqueueMutation(async (): Promise<MutationResult> => {
         const trimmedBody = body.trim();
         if (!trimmedBody) return { ok: false, reason: 'empty' };
         if (author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        const current = stateRef.current;
         const talkPost = current.posts.find((post) => post.id === postId);
         if (!talkPost || talkPost.kind !== 'talk') {
           return { ok: false, reason: 'not-found' };
@@ -544,23 +712,22 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'not-found' };
         }
 
-        const now = new Date().toISOString();
-        const comment: CommunityComment = {
-          author,
-          body: trimmedBody,
-          createdAt: now,
-          id: createId('comment'),
-          parentId: parentComment?.parentId ?? parentComment?.id,
+        const response = await createRemoteComment(
           postId,
-          updatedAt: now,
-        };
+          trimmedBody,
+          parentComment?.parentId ?? parentComment?.id,
+        );
+        const comment = parseRemoteCommentMutation(response, 'COMMENT_CREATE_200', identity);
 
-        return {
+        return persistMutation({
           ...current,
           comments: [...current.comments, comment],
-        };
-      }),
-    [mutateState, viewerId],
+          posts: current.posts.map((post) =>
+            post.id === postId ? { ...post, baseCommentCount: (post.baseCommentCount ?? 0) + 1 } : post,
+          ),
+        });
+      }).catch(mutationError),
+    [enqueueMutation, identity, persistMutation, sessionReady, viewerId],
   );
 
   const addTalkPost = useCallback(
@@ -573,28 +740,29 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const trimmedBody = post.body.trim();
         if (!isValidPostText(trimmedTitle, trimmedBody)) return { ok: false, reason: 'empty' };
 
-        const now = new Date().toISOString();
-        const postId = createId('talk');
-        const saveResult = await persistMutation({
+        const localPost: TalkPost = {
+          ...post,
+          body: trimmedBody,
+          createdAt: new Date().toISOString(),
+          id: '',
+          kind: 'talk',
+          tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
+          title: trimmedTitle,
+          updatedAt: new Date().toISOString(),
+        };
+        const remotePost = await createRemoteCommunityPost(localPost, communityTagsRef.current);
+        const createdPost = mapRemotePost(remotePost, identity);
+        const saveResult = await persistMutationWithImageRemovals({
           ...stateRef.current,
           posts: [
-            {
-              ...post,
-              body: trimmedBody,
-              createdAt: now,
-              id: postId,
-              kind: 'talk',
-              tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
-              title: trimmedTitle,
-              updatedAt: now,
-            },
+            createdPost,
             ...stateRef.current.posts,
           ],
-        });
+        }, viewerId, post.images);
         if (!saveResult.ok) return saveResult;
-        return { ok: true, postId };
+        return { ok: true, postId: createdPost.id };
       }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    [enqueueMutation, identity, persistMutationWithImageRemovals, sessionReady, viewerId],
   );
 
   const addMarketPost = useCallback(
@@ -612,106 +780,91 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'empty' };
         }
 
-        const now = new Date().toISOString();
-        const postId = createId('market');
-        const saveResult = await persistMutation({
+        const localPost: MarketPost = {
+          ...post,
+          body: trimmedBody,
+          createdAt: new Date().toISOString(),
+          id: '',
+          kind: 'market',
+          tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
+          title: trimmedTitle,
+          updatedAt: new Date().toISOString(),
+        };
+        const remotePost = await createRemoteCommunityPost(localPost, communityTagsRef.current);
+        const createdPost = mapRemotePost(remotePost, identity);
+        const saveResult = await persistMutationWithImageRemovals({
           ...stateRef.current,
           posts: [
-            {
-              ...post,
-              body: trimmedBody,
-              createdAt: now,
-              id: postId,
-              kind: 'market',
-              tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
-              title: trimmedTitle,
-              updatedAt: now,
-            },
+            createdPost,
             ...stateRef.current.posts,
           ],
-        });
+        }, viewerId, post.images);
         if (!saveResult.ok) return saveResult;
-        return { ok: true, postId };
+        return { ok: true, postId: createdPost.id };
       }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    [enqueueMutation, identity, persistMutationWithImageRemovals, sessionReady, viewerId],
   );
 
   const addReviewPost = useCallback(
-    (post: Omit<ReviewPost, 'createdAt' | 'id'>) =>
-      enqueueMutation(async (): Promise<MutationResult & { postId?: string }> => {
-        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
-        if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
-
-        const reviewInput = getValidReviewInput(post);
-        const targetName = getValidReviewTarget(post.targetName);
-        if (!reviewInput || !targetName) return { ok: false, reason: 'empty' };
-
-        const now = new Date().toISOString();
-        const postId = createId('review');
-        const saveResult = await persistMutation({
-          ...stateRef.current,
-          reviewPosts: [
-            {
-              ...post,
-              body: reviewInput.body,
-              createdAt: now,
-              id: postId,
-              targetName,
-              title: reviewInput.title,
-              visitedAt: reviewInput.visitedAt,
-            },
-            ...stateRef.current.reviewPosts,
-          ],
-        });
-        if (!saveResult.ok) return saveResult;
-        return { ok: true, postId };
-      }),
-    [enqueueMutation, persistMutation, sessionReady, viewerId],
+    async (_post: Omit<ReviewPost, 'createdAt' | 'id'>): Promise<MutationResult & { postId?: string }> =>
+      ({ ok: false, reason: 'not-supported' }),
+    [],
   );
 
   const updateComment = useCallback(
     (commentId: string, body: string) =>
-      mutateState((current) => {
+      enqueueMutation(async (): Promise<MutationResult> => {
         const trimmedBody = body.trim();
         if (!trimmedBody) return { ok: false, reason: 'empty' };
 
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        const current = stateRef.current;
         const comment = current.comments.find((currentComment) => currentComment.id === commentId);
         if (!comment) return { ok: false, reason: 'not-found' };
         if (comment.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
         if (comment.deletedAt) return { ok: false, reason: 'not-found' };
 
-        return {
+        const response = await updateRemoteComment(commentId, trimmedBody);
+        const updatedComment = parseRemoteCommentMutation(response, 'COMMENT_UPDATE_200', identity);
+        return persistMutation({
           ...current,
           comments: current.comments.map((currentComment) =>
             currentComment.id === commentId
-              ? { ...currentComment, body: trimmedBody, updatedAt: new Date().toISOString() }
+              ? updatedComment
               : currentComment,
           ),
-        };
-      }),
-    [mutateState, viewerId],
+        });
+            }).catch(mutationError),
+    [enqueueMutation, identity, persistMutation, sessionReady, viewerId],
   );
 
   const updateMarketStatus = useCallback(
     (postId: string, status: MarketStatus) =>
-      mutateState((current) => {
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        const current = stateRef.current;
         const post = current.posts.find((currentPost) => currentPost.id === postId);
         if (!post) return { ok: false, reason: 'not-found' };
         if (post.kind !== 'market') return { ok: false, reason: 'not-found' };
         if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
-        if (post.status === status) return current;
+        if (post.status === status) return { ok: true };
         if (post.status === '완료') return { ok: false, reason: 'not-ready' };
 
-        return {
+        const remotePost = await updateRemoteCommunityPost(
+          { ...post, status },
+          communityTagsRef.current,
+        );
+        const updatedPost = mapRemotePost(remotePost, identity);
+        return persistMutation({
           ...current,
           posts: current.posts.map((currentPost) =>
             currentPost.id === postId && currentPost.kind === 'market'
-              ? { ...currentPost, status, updatedAt: new Date().toISOString() }
+              ? updatedPost
               : currentPost,
           ),
-        };
-      }),
-    [mutateState, viewerId],
+        });
+      }).catch(mutationError),
+    [enqueueMutation, identity, persistMutation, sessionReady, viewerId],
   );
 
   const updateTalkPost = useCallback(
@@ -732,22 +885,22 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const nextImages = post.images ?? [];
         const nextImageIds = new Set(nextImages.map((image) => image.assetId));
         const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
-        const now = new Date().toISOString();
-
+        const localPost: TalkPost = {
+          ...previousPost,
+          body: trimmedBody,
+          category: post.category,
+          images: nextImages,
+          showNeighborhood: post.showNeighborhood,
+          tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
+          title: trimmedTitle,
+        };
+        const remotePost = await updateRemoteCommunityPost(localPost, communityTagsRef.current);
+        const updatedPost = mapRemotePost(remotePost, identity);
         const nextState: StoredCommunityState = {
           ...current,
           posts: current.posts.map((currentPost) =>
             currentPost.id === postId && currentPost.kind === 'talk'
-              ? {
-                  ...currentPost,
-                  body: trimmedBody,
-                  category: post.category,
-                  images: nextImages,
-                  showNeighborhood: post.showNeighborhood,
-                  tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
-                  title: trimmedTitle,
-                  updatedAt: now,
-                }
+              ? updatedPost
               : currentPost,
           ),
         };
@@ -759,6 +912,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       }),
     [
       enqueueMutation,
+      identity,
       persistMutationWithImageRemovals,
       sessionReady,
       viewerId,
@@ -788,26 +942,26 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const nextImages = post.images ?? [];
         const nextImageIds = new Set(nextImages.map((image) => image.assetId));
         const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
-        const now = new Date().toISOString();
-
+        const localPost: MarketPost = {
+          ...previousPost,
+          body: trimmedBody,
+          category: post.category,
+          expiresAt: post.expiresAt?.trim() || undefined,
+          imageCount: post.imageCount,
+          images: nextImages,
+          location: post.location.trim(),
+          priceLabel: post.priceLabel.trim(),
+          tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
+          title: trimmedTitle,
+          tradeType: post.tradeType,
+        };
+        const remotePost = await updateRemoteCommunityPost(localPost, communityTagsRef.current);
+        const updatedPost = mapRemotePost(remotePost, identity);
         const nextState: StoredCommunityState = {
           ...current,
           posts: current.posts.map((currentPost) =>
             currentPost.id === postId && currentPost.kind === 'market'
-              ? {
-                  ...currentPost,
-                  body: trimmedBody,
-                  category: post.category,
-                  expiresAt: post.expiresAt?.trim() || undefined,
-                  imageCount: post.imageCount,
-                  images: nextImages,
-                  location: post.location.trim(),
-                  priceLabel: post.priceLabel.trim(),
-                  tags: post.tags.map((tag) => tag.trim()).filter(Boolean),
-                  title: trimmedTitle,
-                  tradeType: post.tradeType,
-                  updatedAt: now,
-                }
+              ? updatedPost
               : currentPost,
           ),
         };
@@ -819,6 +973,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       }),
     [
       enqueueMutation,
+      identity,
       persistMutationWithImageRemovals,
       sessionReady,
       viewerId,
@@ -827,49 +982,30 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
   const deleteComment = useCallback(
     (commentId: string) =>
-      mutateState((current) => {
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        const current = stateRef.current;
         const comment = current.comments.find((currentComment) => currentComment.id === commentId);
         if (!comment) return { ok: false, reason: 'not-found' };
         if (comment.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
         if (comment.deletedAt) return { ok: false, reason: 'not-found' };
 
-        const hasReplies = current.comments.some(
-          (currentComment) =>
-            currentComment.parentId === commentId && !currentComment.deletedAt,
-        );
-        const commentsWithoutTarget = current.comments.filter(
-          (currentComment) => currentComment.id !== commentId,
-        );
-        const deletedParentId = comment.parentId;
-        const deletedParent = deletedParentId
-          ? commentsWithoutTarget.find(
-              (currentComment) => currentComment.id === deletedParentId,
-            )
-          : null;
-        const hasRemainingReplies = deletedParentId
-          ? commentsWithoutTarget.some(
-              (currentComment) =>
-                currentComment.parentId === deletedParentId &&
-                !currentComment.deletedAt,
-            )
-          : false;
-
-        return {
+        await deleteRemoteComment(commentId);
+        const comments = await fetchRemoteComments(comment.postId);
+        return persistMutation({
           ...current,
-          comments: hasReplies
-            ? current.comments.map((currentComment) =>
-                currentComment.id === commentId
-                  ? getDeletedComment(currentComment)
-                  : currentComment,
-              )
-            : deletedParent?.deletedAt && !hasRemainingReplies
-              ? commentsWithoutTarget.filter(
-                  (currentComment) => currentComment.id !== deletedParentId,
-                )
-              : commentsWithoutTarget,
-        };
-      }),
-    [mutateState, viewerId],
+          comments: [
+            ...current.comments.filter((currentComment) => currentComment.postId !== comment.postId),
+            ...comments,
+          ],
+          posts: current.posts.map((post) =>
+            post.id === comment.postId
+              ? { ...post, baseCommentCount: Math.max(0, (post.baseCommentCount ?? 0) - 1) }
+              : post,
+          ),
+        });
+      }).catch(mutationError),
+    [enqueueMutation, fetchRemoteComments, persistMutation, sessionReady, viewerId],
   );
 
   const deletePost = useCallback(
@@ -881,9 +1017,8 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const post = current.posts.find((currentPost) => currentPost.id === postId);
         if (!post) return { ok: false, reason: 'not-found' };
         if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
-        if (post.kind === 'market' && post.status !== '진행 중') {
-          return { ok: false, reason: 'not-ready' };
-        }
+
+        await deleteRemoteCommunityPost(postId);
 
         const viewerStates = Object.fromEntries(
           Object.entries(current.viewerStates).map(([currentViewerId, viewerState]) => [
@@ -918,95 +1053,16 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   );
 
   const updateReviewPost = useCallback(
-    (
-      postId: string,
-      post: Pick<ReviewPost, 'body' | 'detailScores' | 'images' | 'rating' | 'title' | 'visitedAt'>,
-    ) =>
-      enqueueMutation(async (): Promise<MutationResult> => {
-        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
-
-        const current = stateRef.current;
-        const previousPost = current.reviewPosts.find((currentPost) => currentPost.id === postId);
-        if (!previousPost) return { ok: false, reason: 'not-found' };
-        if (previousPost.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
-
-        const reviewInput = getValidReviewInput(post);
-        if (!reviewInput) return { ok: false, reason: 'empty' };
-
-        const nextImages = post.images ?? [];
-        const nextImageIds = new Set(nextImages.map((image) => image.assetId));
-        const removedImages = previousPost.images?.filter((image) => !nextImageIds.has(image.assetId)) ?? [];
-
-        const nextState: StoredCommunityState = {
-          ...current,
-          reviewPosts: current.reviewPosts.map((currentPost) =>
-            currentPost.id === postId
-              ? {
-                  ...currentPost,
-                  body: reviewInput.body,
-                  detailScores: post.detailScores,
-                  images: nextImages,
-                  rating: post.rating,
-                  title: reviewInput.title,
-                  visitedAt: reviewInput.visitedAt,
-                }
-              : currentPost,
-          ),
-        };
-        return persistMutationWithImageRemovals(
-          nextState,
-          viewerId,
-          removedImages,
-        );
-      }),
-    [
-      enqueueMutation,
-      persistMutationWithImageRemovals,
-      sessionReady,
-      viewerId,
-    ],
+    async (
+      _postId: string,
+      _post: Pick<ReviewPost, 'body' | 'detailScores' | 'images' | 'rating' | 'title' | 'visitedAt'>,
+    ): Promise<MutationResult> => ({ ok: false, reason: 'not-supported' }),
+    [],
   );
 
   const deleteReviewPost = useCallback(
-    (postId: string) =>
-      enqueueMutation(async (): Promise<MutationResult> => {
-        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
-
-        const current = stateRef.current;
-        const post = current.reviewPosts.find((currentPost) => currentPost.id === postId);
-        if (!post) return { ok: false, reason: 'not-found' };
-        if (post.author.userId !== viewerId) return { ok: false, reason: 'not-yours' };
-
-        const viewerStates = Object.fromEntries(
-          Object.entries(current.viewerStates).map(([currentViewerId, viewerState]) => [
-            currentViewerId,
-            {
-              ...viewerState,
-              bookmarkedPostIds: viewerState.bookmarkedPostIds.filter((id) => id !== postId),
-              reactionPostIds: Object.fromEntries(
-                Object.entries(viewerState.reactionPostIds).map(([kind, postIds]) => [
-                  kind,
-                  postIds.filter((id) => id !== postId),
-                ]),
-              ),
-            },
-          ]),
-        );
-
-        const nextState: StoredCommunityState = {
-          ...current,
-          comments: current.comments.filter((comment) => comment.postId !== postId),
-          reviewPosts: current.reviewPosts.filter((currentPost) => currentPost.id !== postId),
-          viewerStates,
-        };
-        return persistMutationWithImageRemovals(nextState, viewerId, post.images);
-      }),
-    [
-      enqueueMutation,
-      persistMutationWithImageRemovals,
-      sessionReady,
-      viewerId,
-    ],
+    async (_postId: string): Promise<MutationResult> => ({ ok: false, reason: 'not-supported' }),
+    [],
   );
 
   const getBookmarkedPosts = useCallback(
@@ -1018,7 +1074,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       ).bookmarkedPostIds;
       return stateRef.current.posts
         .filter((post) => bookmarkedPostIds.includes(post.id))
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        .sort(compareNewestFirst);
     },
     [state.viewerStates, viewerId],
   );
@@ -1028,7 +1084,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       const targetViewerId = userId ?? viewerId;
       return stateRef.current.posts
         .filter((post) => post.author.userId === targetViewerId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        .sort(compareNewestFirst);
     },
     [viewerId],
   );
@@ -1043,7 +1099,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       );
       return stateRef.current.posts
         .filter((post) => commentedPostIds.has(post.id))
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        .sort(compareNewestFirst);
     },
     [viewerId],
   );
@@ -1163,10 +1219,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       getPostById,
       getReviewPostById,
       getReactionCount,
+      hasMorePosts,
       hasLoadError,
       isBookmarked,
       isReady,
       isReacted,
+      loadComments,
+      loadMorePosts,
+      loadPostDetail,
       posts: state.posts,
       reloadCommunity,
       reviewPosts: state.reviewPosts,
@@ -1200,10 +1260,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       getPostById,
       getReviewPostById,
       getReactionCount,
+      hasMorePosts,
       hasLoadError,
       isBookmarked,
       isReady,
       isReacted,
+      loadComments,
+      loadMorePosts,
+      loadPostDetail,
       reloadCommunity,
       state.comments,
       state.posts,

@@ -71,7 +71,7 @@ export function hasValidSignupCredentials(data: SignupData) {
 
   return (
     !getEmailError(data.email) &&
-    Boolean(data.emailVerificationToken) &&
+    data.emailVerified &&
     !getPasswordError(data.password) &&
     !getPasswordConfirmError(data.password, data.passwordConfirm)
   );
@@ -100,10 +100,8 @@ export function hasValidSignupPetInfo(data: SignupData) {
 }
 
 export function hasValidSignupLocation(data: SignupData) {
-  if (!data.region.trim()) return false;
-  if (data.method !== 'kakao') return true;
-
   return (
+    Boolean(data.region.trim()) &&
     data.latitude !== null &&
     data.longitude !== null &&
     Number.isFinite(data.latitude) &&

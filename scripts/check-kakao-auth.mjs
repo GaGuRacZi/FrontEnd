@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   assertSuccessfulKakaoEnvelope,
+  assertSuccessfulEmailEnvelope,
   assertSuccessfulLogoutEnvelope,
   KakaoAuthContractError,
   KakaoAuthResponseError,
@@ -21,6 +22,24 @@ const session = {
 assert.deepEqual(
   parseKakaoLoginEnvelope({
     code: 'KAKAO_LOGIN_200_1',
+    isSuccess: true,
+    message: 'ok',
+    result: session,
+  }),
+  { kind: 'authenticated', session },
+);
+assert.deepEqual(
+  parseKakaoLoginEnvelope({
+    code: 'LOCAL_LOGIN_200_2',
+    isSuccess: true,
+    message: 'ok',
+    result: { ...session, isNew: false },
+  }),
+  { kind: 'authenticated', session: { ...session, isNew: false } },
+);
+assert.deepEqual(
+  parseKakaoLoginEnvelope({
+    code: 'LOCAL_SIGNUP_200_1',
     isSuccess: true,
     message: 'ok',
     result: session,
@@ -105,6 +124,28 @@ assert.deepEqual(
   }).kind,
   'link-required',
 );
+assert.deepEqual(
+  parseKakaoLoginEnvelope({
+    code: 'LOGIN_LINK_201',
+    isSuccess: true,
+    message: 'link',
+    result: {
+      email: 'paw@example.com',
+      existingProvider: 'KAKAO',
+      linkToken: '123e4567-e89b-42d3-a456-426614174001',
+    },
+  }).kind,
+  'link-required',
+);
+assert.deepEqual(
+  parseKakaoLoginEnvelope({
+    code: 'LOGIN_LINK_200',
+    isSuccess: true,
+    message: 'linked',
+    result: { ...session, isNew: false },
+  }),
+  { kind: 'authenticated', session: { ...session, isNew: false } },
+);
 assert.throws(
   () =>
     parseKakaoLoginEnvelope({
@@ -122,6 +163,12 @@ assert.doesNotThrow(() =>
     message: 'ok',
     result: null,
   }),
+);
+assert.doesNotThrow(() =>
+  assertSuccessfulEmailEnvelope(
+    { code: 'EMAIL_VERIFY_200', isSuccess: true, message: 'ok', result: null },
+    'EMAIL_VERIFY_200',
+  ),
 );
 assert.throws(
   () =>
@@ -142,14 +189,6 @@ assert.throws(
       result: null,
     }),
   KakaoAuthResponseError,
-);
-assert.doesNotThrow(() =>
-  assertSuccessfulKakaoEnvelope({
-    code: 'ONBOAREDING_200',
-    isSuccess: true,
-    message: 'ok',
-    result: null,
-  }),
 );
 assert.doesNotThrow(() =>
   assertSuccessfulKakaoEnvelope({

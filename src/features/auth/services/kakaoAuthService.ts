@@ -7,6 +7,7 @@ import {
   withTokenRefreshPaused,
 } from '@/src/services/apiClient';
 import { getTokens } from '@/src/services/tokenStorage';
+import { getMultipartImageFile } from '@/src/utils/file';
 
 import {
   assertSuccessfulKakaoEnvelope,
@@ -84,7 +85,7 @@ function getResponseCode(error: unknown) {
 
 function toKakaoAuthError(
   error: unknown,
-  phase: 'confirm-local' | 'login' | 'logout' | 'onboarding',
+  phase: 'confirm-kakao' | 'confirm-local' | 'login' | 'logout' | 'onboarding',
 ) {
   if (error instanceof KakaoAuthError) return error;
 
@@ -95,14 +96,20 @@ function toKakaoAuthError(
     return new KakaoAuthError('invalid-password', '비밀번호가 올바르지 않아요.');
   }
 
-  if (phase === 'confirm-local' && code === 'LOGIN_LINK_400') {
+  if (
+    (phase === 'confirm-local' || phase === 'confirm-kakao') &&
+    code === 'LOGIN_LINK_400'
+  ) {
     return new KakaoAuthError(
       'service-unavailable',
       '계정 연결 시간이 만료됐어요. 카카오 로그인을 다시 시도해 주세요.',
     );
   }
 
-  if (code === 'KAKAO_LOGIN_401' || (phase === 'login' && status === 401)) {
+  if (
+    code === 'KAKAO_LOGIN_401' ||
+    ((phase === 'login' || phase === 'confirm-kakao') && status === 401)
+  ) {
     return new KakaoAuthError(
       'invalid-kakao-token',
       '카카오 로그인 정보가 만료됐어요. 다시 시도해 주세요.',
@@ -182,6 +189,15 @@ function requirePassword(value: unknown) {
   return value;
 }
 
+function createImageFormData(uri: string, fieldName: string) {
+  const formData = new FormData();
+  formData.append(
+    fieldName,
+    getMultipartImageFile(requireNonBlank(uri)) as unknown as Blob,
+  );
+  return formData;
+}
+
 export async function exchangeKakaoAccessToken(accessToken: string): Promise<KakaoLoginOutcome> {
   try {
     const token = requireNonBlank(accessToken);
@@ -198,6 +214,10 @@ export async function exchangeKakaoAccessToken(accessToken: string): Promise<Kak
 }
 
 export async function startKakaoLogin() {
+  return exchangeKakaoAccessToken(await getKakaoAccessToken());
+}
+
+export async function getKakaoAccessToken() {
   let accessToken: string;
 
   try {
@@ -211,7 +231,7 @@ export async function startKakaoLogin() {
     throw toKakaoAuthError(error, 'login');
   }
 
-  return exchangeKakaoAccessToken(accessToken);
+  return accessToken;
 }
 
 export async function confirmKakaoLinkWithLocalPassword(linkToken: string, password: string) {
@@ -231,6 +251,26 @@ export async function confirmKakaoLinkWithLocalPassword(linkToken: string, passw
   }
 }
 
+export async function confirmKakaoLinkWithKakaoAccessToken(
+  linkToken: string,
+  accessToken: string,
+) {
+  try {
+    const response = await kakaoApiRequest<unknown>('/auth/link/confirm/kakao', {
+      authenticated: false,
+      json: {
+        accessToken: requireNonBlank(accessToken),
+        linkToken: requireNonBlank(linkToken),
+      },
+      method: 'POST',
+    });
+
+    return parseKakaoSessionEnvelope(response);
+  } catch (error) {
+    throw toKakaoAuthError(error, 'confirm-kakao');
+  }
+}
+
 export async function completeKakaoOnboarding(input: KakaoOnboardingInput) {
   const request = normalizeKakaoOnboardingInput(input);
 
@@ -243,6 +283,11 @@ export async function completeKakaoOnboarding(input: KakaoOnboardingInput) {
     assertSuccessfulKakaoEnvelope(response);
   } catch (error) {
     if (['NICKNAME_400', 'NICKNAME_409'].includes(getResponseCode(error) ?? '')) {
+      throw toKakaoAuthError(error, 'onboarding');
+    }
+
+    const status = error instanceof ApiError ? error.status : undefined;
+    if (status !== undefined && status < 500) {
       throw toKakaoAuthError(error, 'onboarding');
     }
 
@@ -261,6 +306,18 @@ export async function completeKakaoOnboarding(input: KakaoOnboardingInput) {
   }
 }
 
+export async function uploadRemoteProfileImage(uri: string) {
+  try {
+    const response = await kakaoApiRequest<unknown>('/auth/profile-image', {
+      body: createImageFormData(uri, 'image'),
+      method: 'POST',
+    });
+    return parseRemoteUserProfileEnvelope(response, 'PROFILE_IMAGE_200');
+  } catch (error) {
+    throw toKakaoAuthError(error, 'onboarding');
+  }
+}
+
 export async function loadRemoteUserProfile(accessToken?: string) {
   try {
     const response = await kakaoApiRequest<unknown>('/users/me',
@@ -271,7 +328,7 @@ export async function loadRemoteUserProfile(accessToken?: string) {
           }
         : undefined,
     );
-    return parseRemoteUserProfileEnvelope(response);
+    return parseRemoteUserProfileEnvelope(response, 'USER_PROFILE_200');
   } catch (error) {
     throw toKakaoAuthError(error, 'login');
   }

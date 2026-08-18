@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-import { MOCK_BREEDS } from '../petData';
+import { searchRemoteBreeds, type RemoteBreed } from '../services/petApi';
 import type { PetType } from '../types';
 
 type PetBreedPickerModalProps = {
@@ -24,18 +24,40 @@ export function PetBreedPickerModal({
   visible,
 }: PetBreedPickerModalProps) {
   const [query, setQuery] = useState('');
-  const breeds = MOCK_BREEDS[petType];
-  const popularBreeds = breeds.filter((breed) => breed.popular);
-  const filteredBreeds = useMemo(() => {
-    const normalizedQuery = query.trim().replace(/\s/g, '').toLowerCase();
-    if (!normalizedQuery) return breeds;
-    return breeds.filter((breed) =>
-      breed.name.replace(/\s/g, '').toLowerCase().includes(normalizedQuery),
-    );
-  }, [breeds, query]);
+  const [breeds, setBreeds] = useState<RemoteBreed[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [request, setRequest] = useState(0);
+  const popularBreeds = useMemo(() => breeds.filter((breed) => breed.popular), [breeds]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    let active = true;
+    const timeoutId = setTimeout(() => {
+      setLoading(true);
+      setLoadError(false);
+      void searchRemoteBreeds(petType, query)
+        .then((nextBreeds) => {
+          if (active) setBreeds(nextBreeds);
+        })
+        .catch(() => {
+          if (active) setLoadError(true);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, query.trim() ? 250 : 0);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [petType, query, request, visible]);
 
   const close = () => {
     setQuery('');
+    setLoadError(false);
     onClose();
   };
 
@@ -77,40 +99,44 @@ export function PetBreedPickerModal({
         ) : null}
       </View>
 
-      <Text style={styles.sectionTitle}>인기 품종</Text>
-      <View style={styles.chips}>
-        {popularBreeds.map((breed) => {
-          const selected = breed.name === selectedBreed;
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              key={breed.name}
-              onPress={() => select(breed.name)}
-              style={({ pressed }) => [
-                styles.chip,
-                selected && styles.selectedChip,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.chipText, selected && styles.selectedText]}>{breed.name}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {popularBreeds.length > 0 ? <Text style={styles.sectionTitle}>인기 품종</Text> : null}
+      {popularBreeds.length > 0 ? (
+        <View style={styles.chips}>
+          {popularBreeds.map((breed) => {
+            const selected = breed.name === selectedBreed;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={breed.id}
+                onPress={() => select(breed.name)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  selected && styles.selectedChip,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.chipText, selected && styles.selectedText]}>
+                  {breed.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
       <View style={styles.resultHeader}>
         <Text style={styles.sectionTitle}>검색 결과</Text>
-        <Text style={styles.resultCount}>{filteredBreeds.length}개</Text>
+        <Text style={styles.resultCount}>{breeds.length}개</Text>
       </View>
       <View style={styles.results}>
-        {filteredBreeds.map((breed) => {
+        {breeds.map((breed) => {
           const selected = breed.name === selectedBreed;
           return (
             <Pressable
               accessibilityRole="radio"
               accessibilityState={{ checked: selected }}
-              key={breed.name}
+              key={breed.id}
               onPress={() => select(breed.name)}
               style={({ pressed }) => [
                 styles.result,
@@ -125,7 +151,21 @@ export function PetBreedPickerModal({
             </Pressable>
           );
         })}
-        {filteredBreeds.length === 0 ? (
+        {loading ? (
+          <View style={styles.emptyResult}>
+            <ActivityIndicator color={COLORS.primary} />
+          </View>
+        ) : null}
+        {!loading && loadError ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setRequest((current) => current + 1)}
+            style={styles.emptyResult}
+          >
+            <Text style={styles.emptyText}>품종을 불러오지 못했어요. 다시 시도해주세요.</Text>
+          </Pressable>
+        ) : null}
+        {!loading && !loadError && breeds.length === 0 ? (
           <View style={styles.emptyResult}>
             <Text style={styles.emptyText}>검색 결과가 없어요</Text>
           </View>

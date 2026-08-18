@@ -726,7 +726,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
             ? '반려동물은 최대 10마리까지 등록할 수 있어요.'
             : result.reason === 'conflict'
               ? '다른 화면에서 정보가 변경되었어요. 최신 정보를 확인한 뒤 다시 수정해주세요.'
-              : '반려동물 정보를 저장하지 못했어요.';
+              : result.reason === 'not-supported'
+                ? '등록된 프로필 사진은 새 사진으로 변경할 수 있어요.'
+                : '반려동물 정보를 저장하지 못했어요.';
         showAlert(
           result.reason === 'conflict' ? '정보가 변경되었어요' : '저장할 수 없어요',
           message,
@@ -734,8 +736,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         return;
       }
 
+      const savedEntity = result.pet ?? entity;
       draftCompleted.current = true;
-      const savedDraft = createPetDraft(currentDraft.userId, entity);
+      const savedDraft = createPetDraft(currentDraft.userId, savedEntity);
       baseDraftRef.current = savedDraft;
       draftRef.current = savedDraft;
       isDirtyRef.current = false;
@@ -743,7 +746,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       setDraft(savedDraft);
       const completion = {
         draftId: currentDraft.id,
-        entity,
+        entity: savedEntity,
         fallbackDraft: mode === 'add' ? createPetDraft(currentDraft.userId) : savedDraft,
       };
       setPendingCompletion(completion);

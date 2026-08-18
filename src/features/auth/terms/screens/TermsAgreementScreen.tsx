@@ -181,7 +181,7 @@ export function TermsAgreementScreen() {
             asChild
             href={{
               pathname: '/signup/terms/[termId]',
-              params: { termId: TERM_IDS.privacyPolicy },
+              params: { termId: TERM_IDS.privacy },
             }}
           >
             <Pressable

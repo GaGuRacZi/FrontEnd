@@ -1,14 +1,5 @@
-import { API_BASE_URL, ApiError, apiRequest } from '@/src/services/apiClient';
-
-type RequestEmailVerificationResponse = {
-  expiresInSeconds: number;
-  verificationId: string;
-};
-
-type ConfirmEmailVerificationResponse = {
-  email: string;
-  verificationToken: string;
-};
+import { ApiError, apiRequest } from '@/src/services/apiClient';
+import { assertSuccessfulEmailEnvelope } from '../../services/kakaoAuthContract';
 
 type EmailVerificationError = {
   alreadyRegistered?: true;
@@ -16,8 +7,6 @@ type EmailVerificationError = {
 };
 
 const EMAIL_VERIFICATION_TIMEOUT_MS = 15000;
-const TEMPORARY_EMAIL_VERIFICATION_ENABLED =
-  __DEV__ || process.env.EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK === 'true';
 
 function getErrorCode(error: ApiError) {
   if (typeof error.data !== 'object' || error.data === null) return undefined;
@@ -47,60 +36,25 @@ export function normalizeSignupEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-export function getTemporarySignupEmailVerification(email: string) {
-  if (!TEMPORARY_EMAIL_VERIFICATION_ENABLED && !API_BASE_URL) {
-    throw new Error('EXPO_PUBLIC_API_BASE_URL이 설정되지 않았습니다.');
-  }
-  if (!TEMPORARY_EMAIL_VERIFICATION_ENABLED) return null;
-
-  const normalizedEmail = normalizeSignupEmail(email);
-
-  return {
-    email: normalizedEmail,
-    verificationToken: `temporary:${normalizedEmail}`,
-  };
-}
-
 export async function requestSignupEmailVerification(email: string) {
-  const response = await emailVerificationRequest<RequestEmailVerificationResponse>(
-    '/auth/email-verifications/request',
-    {
-      email: normalizeSignupEmail(email),
-      purpose: 'SIGNUP',
-    },
-  );
+  const normalizedEmail = normalizeSignupEmail(email);
+  const response = await emailVerificationRequest<unknown>('/auth/email/send', {
+    email: normalizedEmail,
+  });
 
-  if (
-    typeof response.verificationId !== 'string' ||
-    !response.verificationId ||
-    !Number.isFinite(response.expiresInSeconds) ||
-    response.expiresInSeconds <= 0
-  ) {
-    throw new Error('Invalid email verification response.');
-  }
-
-  return response;
+  assertSuccessfulEmailEnvelope(response, 'EMAIL_SEND_200');
+  return normalizedEmail;
 }
 
-export async function confirmSignupEmailVerification(verificationId: string, code: string) {
-  const response = await emailVerificationRequest<ConfirmEmailVerificationResponse>(
-    '/auth/email-verifications/confirm',
-    {
-      code,
-      verificationId,
-    },
-  );
+export async function confirmSignupEmailVerification(email: string, code: string) {
+  const normalizedEmail = normalizeSignupEmail(email);
+  const response = await emailVerificationRequest<unknown>('/auth/email/verify', {
+    code,
+    email: normalizedEmail,
+  });
 
-  if (
-    typeof response.email !== 'string' ||
-    !response.email ||
-    typeof response.verificationToken !== 'string' ||
-    !response.verificationToken
-  ) {
-    throw new Error('Invalid email verification response.');
-  }
-
-  return response;
+  assertSuccessfulEmailEnvelope(response, 'EMAIL_VERIFY_200');
+  return normalizedEmail;
 }
 
 export function resolveEmailVerificationError(
@@ -110,14 +64,14 @@ export function resolveEmailVerificationError(
   if (error instanceof ApiError) {
     const code = getErrorCode(error);
 
-    if (code === 'EMAIL_ALREADY_REGISTERED') {
+    if (code === 'LOCAL_SIGNUP_409_1') {
       return {
         alreadyRegistered: true,
         message: '이미 가입된 이메일이에요.',
       };
     }
 
-    if (code === 'VERIFICATION_EXPIRED') {
+    if (code === 'EMAIL_CODE_400') {
       return {
         message: '인증번호가 만료되었어요. 다시 인증해주세요.',
       };
@@ -129,7 +83,7 @@ export function resolveEmailVerificationError(
       };
     }
 
-    if (error.status === 429 || code === 'TOO_MANY_REQUESTS') {
+    if (error.status === 429 || code === 'EMAIL_SEND_429') {
       return {
         message: '요청이 너무 많아요. 잠시 후 다시 시도해주세요.',
       };

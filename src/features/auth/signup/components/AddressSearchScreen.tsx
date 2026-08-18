@@ -1,85 +1,23 @@
 import { useEffect, useState } from 'react';
-import { BackHandler, StyleSheet, Text, View } from 'react-native';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppButton } from '@/src/components/common/AppButton';
-import { AppIcon } from '@/src/components/common/AppIcon';
-import { LoadingView } from '@/src/components/common/LoadingView';
+import { AppIcon, EmptyState } from '@/src/components/common';
 import { AppScreen } from '@/src/components/layout/AppScreen';
 import { TopHeader } from '@/src/components/layout/TopHeader';
-import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { searchRemoteRegions, type RegionSearchResult } from '@/src/services/locationApi';
 
 type AddressSearchScreenProps = {
   onBack: () => void;
   onSelect: (address: string) => void;
 };
 
-const KAKAO_POSTCODE_ORIGIN = 'https://postcode.map.kakao.com';
-
-function isAllowedNavigation(url: string) {
-  return (
-    url === 'about:blank' ||
-    url === KAKAO_POSTCODE_ORIGIN ||
-    url.startsWith(`${KAKAO_POSTCODE_ORIGIN}/`) ||
-    url.startsWith(`${KAKAO_POSTCODE_ORIGIN}?`) ||
-    url.startsWith(`${KAKAO_POSTCODE_ORIGIN}#`)
-  );
-}
-
-const KAKAO_POSTCODE_HTML = `<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <style>
-      html, body, #postcode { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: ${COLORS.background}; }
-    </style>
-  </head>
-  <body>
-    <div id="postcode"></div>
-    <script>
-      function sendMessage(payload) {
-        window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-      }
-
-      function startPostcode() {
-        if (!window.kakao || !window.kakao.Postcode) {
-          sendMessage({ type: 'error' });
-          return;
-        }
-
-        var postcode = new window.kakao.Postcode({
-          oncomplete: function(data) {
-            var address = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
-            sendMessage({
-              type: 'selected',
-              address: address || data.address
-            });
-          },
-          onresize: function() {
-            sendMessage({ type: 'ready' });
-          },
-          width: '100%',
-          height: '100%',
-          maxSuggestItems: 5
-        });
-
-        postcode.embed(document.getElementById('postcode'));
-        sendMessage({ type: 'ready' });
-      }
-    </script>
-    <script
-      src="https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"
-      onload="startPostcode()"
-      onerror="sendMessage({ type: 'error' })"
-    ></script>
-  </body>
-</html>`;
-
 export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenProps) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<RegionSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [request, setRequest] = useState(0);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -91,52 +29,35 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
   }, [onBack]);
 
   useEffect(() => {
-    if (ready || loadError) return;
-
-    const timeoutId = setTimeout(() => setLoadError(true), 15000);
-
-    return () => clearTimeout(timeoutId);
-  }, [loadError, ready, reloadKey]);
-
-  const handleMessage = (event: WebViewMessageEvent) => {
-    try {
-      const message = JSON.parse(event.nativeEvent.data) as unknown;
-
-      if (typeof message !== 'object' || message === null || !('type' in message)) {
-        setLoadError(true);
-        return;
-      }
-
-      if (
-        message.type === 'selected' &&
-        'address' in message &&
-        typeof message.address === 'string'
-      ) {
-        const address = message.address.trim();
-
-        if (address) {
-          onSelect(address);
-          return;
-        }
-      }
-
-      if (message.type === 'ready') {
-        setReady(true);
-        setLoadError(false);
-        return;
-      }
-
-      setLoadError(true);
-    } catch {
-      setLoadError(true);
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      setResults([]);
+      setLoading(false);
+      setLoadError(false);
+      return;
     }
-  };
 
-  const retry = () => {
-    setLoadError(false);
-    setReady(false);
-    setReloadKey((current) => current + 1);
-  };
+    let active = true;
+    const timeoutId = setTimeout(() => {
+      setLoading(true);
+      setLoadError(false);
+      void searchRemoteRegions(normalizedQuery)
+        .then((nextResults) => {
+          if (active) setResults(nextResults);
+        })
+        .catch(() => {
+          if (active) setLoadError(true);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [query, request]);
 
   return (
     <AppScreen edges={['top', 'bottom', 'left', 'right']} padded={false}>
@@ -147,46 +68,69 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
         style={styles.header}
         title="지역 검색"
       />
-      <View style={styles.webViewContainer}>
-        <WebView
-          cacheEnabled
-          domStorageEnabled
-          javaScriptEnabled
-          key={reloadKey}
-          mixedContentMode="never"
-          onError={() => setLoadError(true)}
-          onHttpError={() => setLoadError(true)}
-          onMessage={handleMessage}
-          onShouldStartLoadWithRequest={({ url }) => isAllowedNavigation(url)}
-          originWhitelist={['*']}
-          setSupportMultipleWindows={false}
-          source={{
-            baseUrl: KAKAO_POSTCODE_ORIGIN,
-            html: KAKAO_POSTCODE_HTML,
-          }}
-          style={styles.webView}
-          textZoom={100}
-        />
+      <View style={styles.content}>
+        <View style={styles.searchField}>
+          <AppIcon accessible={false} color={COLORS.gray500} name="search" size={22} />
+          <TextInput
+            accessibilityLabel="지역 검색"
+            autoCorrect={false}
+            autoFocus
+            onChangeText={setQuery}
+            placeholder="시·군·구를 검색해주세요"
+            placeholderTextColor={COLORS.gray500}
+            style={styles.searchInput}
+            value={query}
+          />
+          {query ? (
+            <Pressable
+              accessibilityLabel="검색어 지우기"
+              accessibilityRole="button"
+              hitSlop={SPACING.md}
+              onPress={() => setQuery('')}
+            >
+              <AppIcon color={COLORS.gray500} name="close-circle-outline" size={24} />
+            </Pressable>
+          ) : null}
+        </View>
 
-        {!ready && !loadError ? (
-          <View style={styles.loadingOverlay}>
-            <LoadingView label="주소 검색을 불러오고 있어요." />
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={COLORS.primary} />
           </View>
         ) : null}
 
-        {loadError ? (
-          <View style={styles.error}>
-            <AppIcon color={COLORS.gray500} name="cloud-offline-outline" size={44} />
-            <Text style={styles.errorTitle}>주소 검색을 불러오지 못했어요.</Text>
-            <Text style={styles.errorDescription}>인터넷 연결을 확인해주세요.</Text>
-            <AppButton
-              fullWidth={false}
-              onPress={retry}
-              size="medium"
-              style={styles.retryButton}
-              title="다시 시도"
-            />
-          </View>
+        {!loading && loadError ? (
+          <EmptyState
+            actionLabel="다시 시도"
+            description="인터넷 연결을 확인한 뒤 다시 시도해주세요."
+            onActionPress={() => setRequest((current) => current + 1)}
+            title="지역을 불러오지 못했어요"
+          />
+        ) : null}
+
+        {!loading && !loadError && query.trim() && results.length === 0 ? (
+          <EmptyState title="검색 결과가 없어요" />
+        ) : null}
+
+        {!loading && !loadError && results.length > 0 ? (
+          <ScrollView contentContainerStyle={styles.results} keyboardShouldPersistTaps="handled">
+            {results.map((region) => (
+              <Pressable
+                accessibilityLabel={`${region.name} 선택`}
+                accessibilityRole="button"
+                key={region.code}
+                onPress={() => onSelect(region.name)}
+                style={({ pressed }) => [styles.result, pressed && styles.pressed]}
+              >
+                <Text style={styles.resultName}>{region.name}</Text>
+                {region.dongPreview.length > 0 ? (
+                  <Text numberOfLines={1} style={styles.resultPreview}>
+                    {region.dongPreview.join(' · ')}
+                  </Text>
+                ) : null}
+              </Pressable>
+            ))}
+          </ScrollView>
         ) : null}
       </View>
     </AppScreen>
@@ -197,39 +141,59 @@ const styles = StyleSheet.create({
   header: {
     marginHorizontal: SPACING.xxl,
   },
-  webViewContainer: {
+  content: {
     flex: 1,
-    overflow: 'hidden',
+    gap: SPACING.xxl,
+    paddingHorizontal: SPACING.xxl,
+    paddingTop: SPACING.xl,
   },
-  webView: {
-    backgroundColor: COLORS.background,
-    flex: 1,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  searchField: {
     alignItems: 'center',
-    backgroundColor: COLORS.background,
-    justifyContent: 'center',
+    backgroundColor: COLORS.gray100,
+    borderColor: COLORS.gray300,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    height: SIZE.inputHeight,
+    paddingHorizontal: SPACING.xl,
   },
-  error: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.xxxl,
-  },
-  errorTitle: {
-    ...TYPOGRAPHY.title3,
+  searchInput: {
+    ...TYPOGRAPHY.input,
     color: COLORS.black,
-    marginTop: SPACING.xxl,
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 0,
   },
-  errorDescription: {
-    ...TYPOGRAPHY.body2,
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: SIZE.touchTarget,
+  },
+  results: {
+    gap: SPACING.md,
+    paddingBottom: SPACING.xxxl,
+  },
+  result: {
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.gray300,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    gap: SPACING.xs,
+    minHeight: SIZE.touchTarget,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xxl,
+    paddingVertical: SPACING.lg,
+  },
+  resultName: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.black,
+  },
+  resultPreview: {
+    ...TYPOGRAPHY.caption,
     color: COLORS.gray600,
-    marginTop: SPACING.xs,
   },
-  retryButton: {
-    height: 46,
-    marginTop: SPACING.xxxl,
+  pressed: {
+    opacity: 0.65,
   },
 });

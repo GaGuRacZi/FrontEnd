@@ -31,7 +31,9 @@ export type CommunityImageAsset = {
 
 type CommunityPostBase = {
   author: CommunityAuthorSnapshot;
+  baseCommentCount?: number;
   body: string;
+  categoryCode?: string;
   createdAt: string;
   id: string;
   images?: CommunityImageAsset[];

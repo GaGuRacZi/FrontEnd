@@ -9,88 +9,82 @@ import {
   subscribeToTokenInvalidation,
   type AuthTokens,
 } from '@/src/services/tokenStorage';
-import { clearActiveSignupDraft } from '../signup/services/signupDraftStore';
+import {
+  attachActiveSignupDraftRemoteUserId,
+  clearActiveSignupDraft,
+} from '../signup/services/signupDraftStore';
 import { clearActiveSignupTransaction } from '../signup/services/signupTransactionStore';
 import { isUuid } from '../services/kakaoAuthContract';
 import {
   KakaoAuthError,
+  loadRemoteUserProfile,
   loadRemoteUserIdentity,
 } from '../services/kakaoAuthService';
 import {
-  localCredentialRepository,
-  type LocalCredentialVerification,
-} from './localCredentialRepository';
+  LocalAuthError,
+  signInWithLocalCredentials,
+} from '../services/localAuthService';
+import type { KakaoLoginOutcome } from '../services/kakaoAuthContract';
 
 const SESSION_STORAGE_KEY = 'paw:auth-session';
 const SESSION_CLEAR_STORAGE_KEY = 'paw:auth-session-clear';
 const PENDING_REMOTE_SIGNUP_STORAGE_KEY = 'paw:auth-pending-remote-signup';
-const EMAIL_USER_ID_PREFIX = 'user:email:';
 
 export type AuthMethod = 'kakao' | 'local';
 export type RemoteAuthSession = AuthTokens & { uid: string };
-type LocalSignInResult =
-  | { status: Exclude<LocalCredentialVerification, 'verified'> }
-  | { status: 'verified'; userId: string };
+type PasswordVerification = 'invalid' | 'missing' | 'verified';
+type PendingRemoteSignup = { method: AuthMethod; uid: string };
 
 type AuthSessionContextValue = {
-  activateLocalCredential: (userId: string) => Promise<void>;
   activatePreparedRemoteSignup: (userId: string) => Promise<void>;
   activateRemoteSession: (session: RemoteAuthSession) => Promise<void>;
-  activateSignupUser: (
-    method: AuthMethod,
-    email: string,
-    signupSessionId: string,
-  ) => Promise<string>;
   clearSession: (expectedUserId: string) => Promise<void>;
   currentUserId: string | null;
-  deleteLocalCredential: (userId: string) => Promise<void>;
-  hasLocalCredential: (userId: string) => Promise<boolean>;
   isReady: boolean;
   pendingRemoteSignupUserId: string | null;
-  prepareRemoteSignup: (session: RemoteAuthSession) => Promise<void>;
-  registerLocalCredential: (userId: string, password: string) => Promise<void>;
+  pendingRemoteSignupMethod: AuthMethod | null;
+  prepareRemoteSignup: (
+    session: RemoteAuthSession,
+    method: AuthMethod,
+    signupSessionId?: string,
+  ) => Promise<void>;
   retrySessionLoad: () => void;
   sessionLoadError: boolean;
-  setCurrentUserId: (userId: string) => Promise<void>;
-  signInWithPassword: (email: string, password: string) => Promise<LocalSignInResult>;
-  verifyCurrentUserPassword: (password: string) => Promise<LocalCredentialVerification>;
+  signInWithPassword: (email: string, password: string) => Promise<KakaoLoginOutcome>;
+  verifyCurrentUserPassword: (password: string) => Promise<PasswordVerification>;
 };
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
-function getEmailUserId(email: string) {
-  const normalizedEmail = email.trim().toLowerCase();
-  return normalizedEmail
-    ? `${EMAIL_USER_ID_PREFIX}${encodeURIComponent(normalizedEmail)}`
-    : null;
-}
-
-export function getSignupUserId(
-  method: AuthMethod,
-  email: string,
-  signupSessionId: string,
-) {
-  return getEmailUserId(email) ?? `${method}:u${signupSessionId}`;
-}
-
 function parseSessionUserId(value: string | null) {
   if (!value || value !== value.trim()) return null;
-  if (isUuid(value)) return value;
-  if (/^(local|kakao):u\S+$/.test(value)) return value;
-  if (!value.startsWith(EMAIL_USER_ID_PREFIX)) return null;
+  return isUuid(value) ? value : null;
+}
 
-  const encodedEmail = value.slice(EMAIL_USER_ID_PREFIX.length);
+function parsePendingRemoteSignup(value: string | null): PendingRemoteSignup | null {
+  if (!value) return null;
+
+  if (isUuid(value)) {
+    return { method: 'kakao', uid: value };
+  }
 
   try {
-    const email = decodeURIComponent(encodedEmail);
+    const parsed: unknown = JSON.parse(value);
+
     if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-      email !== email.trim().toLowerCase() ||
-      encodeURIComponent(email) !== encodedEmail
+      !parsed ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      !('method' in parsed) ||
+      !('uid' in parsed) ||
+      (parsed.method !== 'kakao' && parsed.method !== 'local') ||
+      typeof parsed.uid !== 'string' ||
+      !isUuid(parsed.uid)
     ) {
       return null;
     }
-    return value;
+
+    return { method: parsed.method, uid: parsed.uid };
   } catch {
     return null;
   }
@@ -170,11 +164,15 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
   const [pendingRemoteSignupUserId, setPendingRemoteSignupUserIdState] = useState<
     string | null
   >(null);
+  const [pendingRemoteSignupMethod, setPendingRemoteSignupMethodState] = useState<
+    AuthMethod | null
+  >(null);
   const [isReady, setIsReady] = useState(false);
   const [loadRequest, setLoadRequest] = useState(0);
   const [sessionLoadError, setSessionLoadError] = useState(false);
   const currentUserIdRef = useRef<string | null>(null);
   const pendingRemoteSignupUserIdRef = useRef<string | null>(null);
+  const pendingRemoteSignupMethodRef = useRef<AuthMethod | null>(null);
   const pendingSessionClearUserIdRef = useRef<string | null>(null);
   const sessionMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -204,6 +202,8 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
             setCurrentUserIdState(null);
             pendingRemoteSignupUserIdRef.current = null;
             setPendingRemoteSignupUserIdState(null);
+            pendingRemoteSignupMethodRef.current = null;
+            setPendingRemoteSignupMethodState(null);
           }
         }
       };
@@ -214,13 +214,9 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
           AsyncStorage.getItem(PENDING_REMOTE_SIGNUP_STORAGE_KEY),
         ]);
       const restoredUserId = parseSessionUserId(storedUserId);
-      const parsedPendingRemoteSignupUserId = parseSessionUserId(
+      const restoredPendingRemoteSignup = parsePendingRemoteSignup(
         storedPendingRemoteSignupUserId,
       );
-      const restoredPendingRemoteSignupUserId =
-        parsedPendingRemoteSignupUserId && isUuid(parsedPendingRemoteSignupUserId)
-          ? parsedPendingRemoteSignupUserId
-          : null;
 
       if (pendingClearUserId && (!storedUserId || pendingClearUserId === storedUserId)) {
         await clearRestoredSession(pendingClearUserId);
@@ -239,8 +235,8 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
       const remoteUserId =
         restoredUserId && isUuid(restoredUserId)
           ? restoredUserId
-          : !restoredUserId && restoredPendingRemoteSignupUserId
-            ? restoredPendingRemoteSignupUserId
+          : !restoredUserId && restoredPendingRemoteSignup
+            ? restoredPendingRemoteSignup.uid
             : null;
 
       if (remoteUserId) {
@@ -279,7 +275,7 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
       } else if (
         !restoredUserId &&
         storedPendingRemoteSignupUserId &&
-        !restoredPendingRemoteSignupUserId
+        !restoredPendingRemoteSignup
       ) {
         await AsyncStorage.removeItem(PENDING_REMOTE_SIGNUP_STORAGE_KEY);
       }
@@ -289,9 +285,14 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         setCurrentUserIdState(restoredUserId);
         const pendingRemoteUserId = restoredUserId
           ? null
-          : restoredPendingRemoteSignupUserId;
+          : restoredPendingRemoteSignup?.uid ?? null;
         pendingRemoteSignupUserIdRef.current = pendingRemoteUserId;
         setPendingRemoteSignupUserIdState(pendingRemoteUserId);
+        const pendingMethod = restoredUserId
+          ? null
+          : restoredPendingRemoteSignup?.method ?? null;
+        pendingRemoteSignupMethodRef.current = pendingMethod;
+        setPendingRemoteSignupMethodState(pendingMethod);
       }
     })
       .then(() => {
@@ -315,39 +316,25 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
     setLoadRequest((current) => current + 1);
   }, []);
 
-  const setCurrentUserId = useCallback(
-    (userId: string) =>
-      enqueueSessionMutation(async () => {
-        const normalizedUserId = parseSessionUserId(userId);
-        if (!normalizedUserId) throw new Error('invalid-session-user-id');
-
-        await clearTokens();
-        await AsyncStorage.multiRemove([
-          SESSION_STORAGE_KEY,
-          SESSION_CLEAR_STORAGE_KEY,
-          PENDING_REMOTE_SIGNUP_STORAGE_KEY,
-        ]);
-        pendingRemoteSignupUserIdRef.current = null;
-        setPendingRemoteSignupUserIdState(null);
-        await AsyncStorage.setItem(SESSION_STORAGE_KEY, normalizedUserId);
-        pendingSessionClearUserIdRef.current = null;
-        currentUserIdRef.current = normalizedUserId;
-        setCurrentUserIdState(normalizedUserId);
-        setSessionLoadError(false);
-        setIsReady(true);
-      }),
-    [enqueueSessionMutation],
-  );
-
   const prepareRemoteSignup = useCallback(
-    (session: RemoteAuthSession) =>
+    (session: RemoteAuthSession, method: AuthMethod, signupSessionId?: string) =>
       enqueueSessionMutation(async () => {
         const remoteSession = parseRemoteSession(session);
         if (currentUserIdRef.current) throw new Error('auth-session-already-active');
+        if (method !== 'kakao' && method !== 'local') {
+          throw new Error('invalid-auth-method');
+        }
         const preservesPendingSignup =
-          pendingRemoteSignupUserIdRef.current === remoteSession.uid;
+          pendingRemoteSignupUserIdRef.current === remoteSession.uid &&
+          pendingRemoteSignupMethodRef.current === method;
+        const shouldRetainLocalDraft =
+          method === 'local' &&
+          !pendingRemoteSignupUserIdRef.current &&
+          typeof signupSessionId === 'string' &&
+          Boolean(signupSessionId.trim()) &&
+          (await attachActiveSignupDraftRemoteUserId(signupSessionId, remoteSession.uid));
 
-        if (!preservesPendingSignup) {
+        if (!preservesPendingSignup && !shouldRetainLocalDraft) {
           await Promise.allSettled([
             clearActiveSignupDraft(),
             clearActiveSignupTransaction(),
@@ -365,17 +352,24 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         if (!preservesPendingSignup) {
           pendingRemoteSignupUserIdRef.current = null;
           setPendingRemoteSignupUserIdState(null);
+          pendingRemoteSignupMethodRef.current = null;
+          setPendingRemoteSignupMethodState(null);
         }
 
         try {
           await saveTokens(remoteSession);
-          await AsyncStorage.setItem(PENDING_REMOTE_SIGNUP_STORAGE_KEY, remoteSession.uid);
+          await AsyncStorage.setItem(
+            PENDING_REMOTE_SIGNUP_STORAGE_KEY,
+            JSON.stringify({ method, uid: remoteSession.uid }),
+          );
         } catch (error) {
           return rollbackRemoteSession(error);
         }
 
         pendingRemoteSignupUserIdRef.current = remoteSession.uid;
         setPendingRemoteSignupUserIdState(remoteSession.uid);
+        pendingRemoteSignupMethodRef.current = method;
+        setPendingRemoteSignupMethodState(method);
       }),
     [enqueueSessionMutation],
   );
@@ -397,6 +391,8 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         ]);
         pendingRemoteSignupUserIdRef.current = null;
         setPendingRemoteSignupUserIdState(null);
+        pendingRemoteSignupMethodRef.current = null;
+        setPendingRemoteSignupMethodState(null);
 
         try {
           await saveTokens(remoteSession);
@@ -436,6 +432,8 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         await AsyncStorage.removeItem(PENDING_REMOTE_SIGNUP_STORAGE_KEY);
         pendingRemoteSignupUserIdRef.current = null;
         setPendingRemoteSignupUserIdState(null);
+        pendingRemoteSignupMethodRef.current = null;
+        setPendingRemoteSignupMethodState(null);
         pendingSessionClearUserIdRef.current = null;
         currentUserIdRef.current = normalizedUserId;
         setCurrentUserIdState(normalizedUserId);
@@ -445,54 +443,36 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
     [enqueueSessionMutation],
   );
 
-  const activateSignupUser = useCallback(
-    async (method: AuthMethod, email: string, signupSessionId: string) => {
-      const userId = getSignupUserId(method, email, signupSessionId);
-      await setCurrentUserId(userId);
-      return userId;
-    },
-    [setCurrentUserId],
-  );
-
-  const activateLocalCredential = useCallback((userId: string) => {
-    return localCredentialRepository.activate(userId);
-  }, []);
-
-  const registerLocalCredential = useCallback((userId: string, password: string) => {
-    return localCredentialRepository.save(userId, password);
-  }, []);
-
-  const hasLocalCredential = useCallback((userId: string) => {
-    return localCredentialRepository.has(userId);
-  }, []);
-
-  const deleteLocalCredential = useCallback((userId: string) => {
-    return localCredentialRepository.delete(userId);
-  }, []);
-
   const signInWithPassword = useCallback(
-    async (email: string, password: string): Promise<LocalSignInResult> => {
-      const userId = parseSessionUserId(getEmailUserId(email));
-      if (!userId) return { status: 'invalid' };
-
-      const status = await localCredentialRepository.verify(userId, password);
-
-      if (status !== 'verified') return { status };
-
-      await Promise.allSettled([
-        clearActiveSignupDraft(),
-        clearActiveSignupTransaction(),
-      ]);
-      await setCurrentUserId(userId);
-      return { status, userId };
-    },
-    [setCurrentUserId],
+    (email: string, password: string) => signInWithLocalCredentials(email, password),
+    [],
   );
 
-  const verifyCurrentUserPassword = useCallback((password: string) => {
+  const verifyCurrentUserPassword = useCallback(async (password: string) => {
     const userId = currentUserIdRef.current;
-    if (!userId) throw new Error('auth-session-required');
-    return localCredentialRepository.verify(userId, password);
+    if (!userId || !isUuid(userId)) return 'missing' as const;
+
+    try {
+      const profile = await loadRemoteUserProfile();
+      const outcome = await signInWithLocalCredentials(profile.email, password);
+
+      if (
+        outcome.kind !== 'authenticated' ||
+        outcome.session.uid !== userId ||
+        outcome.session.isNew
+      ) {
+        return 'invalid' as const;
+      }
+
+      await saveTokens(outcome.session);
+      return 'verified' as const;
+    } catch (error) {
+      if (error instanceof LocalAuthError && error.kind === 'invalid-credentials') {
+        return 'invalid' as const;
+      }
+
+      throw error;
+    }
   }, []);
 
   const clearSession = useCallback(
@@ -519,6 +499,8 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
           }
           pendingRemoteSignupUserIdRef.current = null;
           setPendingRemoteSignupUserIdState(null);
+          pendingRemoteSignupMethodRef.current = null;
+          setPendingRemoteSignupMethodState(null);
         }
       }),
     [enqueueSessionMutation],
@@ -533,8 +515,10 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         pendingSessionClearUserIdRef.current = userId;
         currentUserIdRef.current = null;
         pendingRemoteSignupUserIdRef.current = null;
+        pendingRemoteSignupMethodRef.current = null;
         setCurrentUserIdState(null);
         setPendingRemoteSignupUserIdState(null);
+        setPendingRemoteSignupMethodState(null);
         setIsReady(true);
         void enqueueSessionMutation(() => clearPersistedSession(userId))
           .then(() => {
@@ -548,40 +532,30 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<AuthSessionContextValue>(
     () => ({
-      activateLocalCredential,
       activatePreparedRemoteSignup,
       activateRemoteSession,
-      activateSignupUser,
       clearSession,
       currentUserId,
-      deleteLocalCredential,
-      hasLocalCredential,
       isReady,
       pendingRemoteSignupUserId,
+      pendingRemoteSignupMethod,
       prepareRemoteSignup,
-      registerLocalCredential,
       retrySessionLoad,
       sessionLoadError,
-      setCurrentUserId,
       signInWithPassword,
       verifyCurrentUserPassword,
     }),
     [
-      activateLocalCredential,
       activatePreparedRemoteSignup,
       activateRemoteSession,
-      activateSignupUser,
       clearSession,
       currentUserId,
-      deleteLocalCredential,
-      hasLocalCredential,
       isReady,
       pendingRemoteSignupUserId,
+      pendingRemoteSignupMethod,
       prepareRemoteSignup,
-      registerLocalCredential,
       retrySessionLoad,
       sessionLoadError,
-      setCurrentUserId,
       signInWithPassword,
       verifyCurrentUserPassword,
     ],

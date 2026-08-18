@@ -29,17 +29,18 @@ assert.equal(isValidConsentRecord(consentRecord, 'user-2'), false);
 assert.equal(isValidConsentRecord({ ...consentRecord, decidedAt: 'invalid' }, 'user-1'), false);
 assert.equal(isValidConsentRecord({ ...consentRecord, agreedAt: null }, 'user-1'), false);
 
-const legalDocuments = readFileSync(
-  new URL('../src/features/auth/terms/legalDocuments.ts', import.meta.url),
+const termsRepository = readFileSync(
+  new URL('../src/features/auth/terms/TermsRepository.ts', import.meta.url),
   'utf8',
 );
 
 assert.match(
-  legalDocuments,
-  /activeTermMeta\('1\.2\.0', '2026-08-15'\)[\s\S]*?id: TERM_IDS\.service,[\s\S]*?title: '서비스 이용약관'/,
+  termsRepository,
+  /apiRequest<unknown>\('\/terms', \{ authenticated: false \}\)/,
 );
 assert.match(
-  legalDocuments,
-  /activeTermMeta\('1\.1\.0', '2026-08-15'\)[\s\S]*?id: TERM_IDS\.privacy,[\s\S]*?title: '개인정보 수집·이용 동의'/,
+  termsRepository,
+  /apiRequest<unknown>\(`\/terms\/\$\{type\}`, \{ authenticated: false \}\)/,
 );
-assert.match(legalDocuments, /카카오 신규 가입 지역 확인: 선택한 지역의 위도·경도/);
+assert.match(termsRepository, /TERMS_LIST_200/);
+assert.match(termsRepository, /TERMS_DETAIL_200/);

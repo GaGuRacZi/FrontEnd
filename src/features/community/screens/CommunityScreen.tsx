@@ -45,6 +45,7 @@ import {
 import { useCommunityStore } from '../CommunityStore';
 import { getCommunityImageUris } from '../services/communityImageStorage';
 import { createCommunityAuthor } from '../utils/author';
+import { compareNewestFirst } from '../utils/date';
 import { getMarketTradeMethods } from '../utils/marketValidation';
 import { getReviewScoreLabels } from '../utils/reviewValidation';
 import type {
@@ -788,6 +789,8 @@ export function CommunityPostDetailScreen({
     isBookmarked,
     isReady,
     isReacted,
+    loadComments,
+    loadPostDetail,
     posts,
     reloadCommunity,
     reviewPosts,
@@ -840,6 +843,7 @@ export function CommunityPostDetailScreen({
   const [reviewDeleteVisible, setReviewDeleteVisible] = useState(false);
   const [reviewDeleting, setReviewDeleting] = useState(false);
   const reviewDeletingRef = useRef(false);
+  const [postLoadError, setPostLoadError] = useState(false);
   const requiresPostKind = defaultOrigin === 'mypage-activity';
   const matchedPost = requiresPostKind
     ? posts.find((post) => post.id === postId && post.kind === postKind) ?? null
@@ -932,6 +936,23 @@ export function CommunityPostDetailScreen({
   useEffect(() => {
     setImageIndex((current) => Math.min(current, selectedMarketImageCount - 1));
   }, [selectedMarketImageCount]);
+
+  useEffect(() => {
+    if (!isReady || postKind === 'review') return;
+    let active = true;
+    setPostLoadError(false);
+    void loadPostDetail(postId).then((result) => {
+      if (active && !result.ok) setPostLoadError(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isReady, loadPostDetail, postId, postKind]);
+
+  useEffect(() => {
+    if (!selectedPost || selectedPost.kind !== 'talk') return;
+    void loadComments(selectedPost.id);
+  }, [loadComments, selectedPost]);
 
   const goBack = useCallback(() => {
     if (resolvedOrigin === 'mypage-activity') {
@@ -1186,6 +1207,31 @@ export function CommunityPostDetailScreen({
           description="잠시 후 다시 게시글을 열어주세요."
           icon={<AppIcon color={COLORS.primary} name="chatbubbles-outline" size={32} />}
           onActionPress={() => void reloadCommunity()}
+          title="게시글을 불러오지 못했어요."
+        />
+      </ScreenLayout>
+    );
+  }
+
+  if (postLoadError) {
+    return (
+      <ScreenLayout
+        headerFullWidth
+        headerVariant="auth"
+        leftAccessibilityLabel={detailBackAccessibilityLabel}
+        onLeftPress={goBack}
+        title="커뮤니티"
+      >
+        <EmptyState
+          actionLabel="다시 시도"
+          description="잠시 후 다시 게시글을 열어주세요."
+          icon={<AppIcon color={COLORS.primary} name="chatbubbles-outline" size={32} />}
+          onActionPress={() => {
+            setPostLoadError(false);
+            void loadPostDetail(postId).then((result) => {
+              if (!result.ok) setPostLoadError(true);
+            });
+          }}
           title="게시글을 불러오지 못했어요."
         />
       </ScreenLayout>
@@ -2334,10 +2380,12 @@ export function CommunityScreen() {
     filterSessionGeneration,
     getCommentCount,
     getReactionCount,
+    hasMorePosts,
     hasLoadError,
     isReady,
     isBookmarked,
     isReacted,
+    loadMorePosts,
     posts,
     reloadCommunity,
     reviewPosts,
@@ -2544,7 +2592,7 @@ export function CommunityScreen() {
       posts
         .filter((post): post is TalkPost => post.kind === 'talk')
         .filter((post) => talkCategory === '전체' || post.category === talkCategory)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        .sort(compareNewestFirst),
     [posts, talkCategory],
   );
 
@@ -2555,7 +2603,7 @@ export function CommunityScreen() {
         .filter((post) => marketCategory === '전체' || post.category === marketCategory)
         .filter((post) => marketTradeTypes.length === 0 || marketTradeTypes.includes(post.tradeType))
         .filter((post) => marketStatuses.length === 0 || marketStatuses.includes(post.status))
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        .sort(compareNewestFirst),
     [marketCategory, marketStatuses, marketTradeTypes, posts],
   );
 
@@ -2566,7 +2614,7 @@ export function CommunityScreen() {
           (post) =>
             reviewCategory === '전체' || post.category === reviewCategory,
         )
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        .sort(compareNewestFirst),
     [reviewCategory, reviewPosts],
   );
 
@@ -2579,7 +2627,7 @@ export function CommunityScreen() {
         .sort((a, b) => {
           const rankDiff = getReviewSearchRank(a, searchQuery) - getReviewSearchRank(b, searchQuery);
           if (rankDiff !== 0) return rankDiff;
-          return b.createdAt.localeCompare(a.createdAt);
+          return compareNewestFirst(a, b);
         })
         .map((post) => ({ kind: 'review', post }));
     }
@@ -2590,7 +2638,7 @@ export function CommunityScreen() {
         .filter((post) =>
           hasCommunityPostSearchMatch(post, searchQuery, resolveAuthor(post.author, profile, viewerId)),
         )
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .sort(compareNewestFirst)
         .map((post) => ({ kind: 'talk', post }));
     }
 
@@ -2599,7 +2647,7 @@ export function CommunityScreen() {
       .filter((post) =>
         hasCommunityPostSearchMatch(post, searchQuery, resolveAuthor(post.author, profile, viewerId)),
       )
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .sort(compareNewestFirst)
       .map((post) => ({ kind: 'market', post }));
   }, [posts, profile, reviewPosts, searchQuery, searchTab, viewerId]);
 
@@ -2652,15 +2700,22 @@ export function CommunityScreen() {
           : activeTab === 'market'
             ? marketPosts.length
             : filteredReviewPosts.length;
+      const hasMoreRemotePosts =
+        activeTab !== 'review' && hasMorePosts[activeTab];
       const hasMore = target === 'search'
         ? searchVisibleCount < searchResults.length
-        : visibleCounts[activeTab] < activeItemCount;
+        : visibleCounts[activeTab] < activeItemCount || hasMoreRemotePosts;
       if (!hasMore || scrollLoadLockRef.current[target]) return;
 
       scrollLoadLockRef.current[target] = true;
       if (target === 'search') {
         setSearchVisibleCount((current) => current + COMMUNITY_BATCH_SIZE);
         return;
+      }
+      if (visibleCounts[activeTab] >= activeItemCount && activeTab !== 'review') {
+        void loadMorePosts(activeTab).finally(() => {
+          scrollLoadLockRef.current.main = false;
+        });
       }
       setVisibleCounts((current) => ({
         ...current,
@@ -2670,6 +2725,8 @@ export function CommunityScreen() {
     [
       activeTab,
       filteredReviewPosts.length,
+      hasMorePosts,
+      loadMorePosts,
       marketPosts.length,
       searchResults.length,
       searchVisibleCount,

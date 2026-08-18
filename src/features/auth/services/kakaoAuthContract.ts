@@ -58,6 +58,9 @@ const LOGIN_SESSION_CODES = new Set([
   'KAKAO_LOGIN_200_1',
   'KAKAO_LOGIN_200_2',
   'LOGIN_LINK_200',
+  'LOCAL_LOGIN_200_1',
+  'LOCAL_LOGIN_200_2',
+  'LOCAL_SIGNUP_200_1',
 ]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NICKNAME_PATTERN = /^[A-Za-z0-9\uAC00-\uD7A3]+$/;
@@ -205,7 +208,15 @@ export function parseKakaoSessionEnvelope(value: unknown) {
 export function assertSuccessfulKakaoEnvelope(value: unknown) {
   const { code } = readEnvelope(value);
 
-  if (code !== 'ONBOARDING_200' && code !== 'ONBOAREDING_200') {
+  if (code !== 'ONBOARDING_200') {
+    throw new KakaoAuthContractError();
+  }
+}
+
+export function assertSuccessfulEmailEnvelope(value: unknown, expectedCode: string) {
+  const { code, result } = readEnvelope(value);
+
+  if (code !== expectedCode || result !== null) {
     throw new KakaoAuthContractError();
   }
 }
@@ -218,8 +229,12 @@ export function assertSuccessfulLogoutEnvelope(value: unknown) {
   }
 }
 
-export function parseRemoteUserProfileEnvelope(value: unknown): RemoteUserProfile {
-  const { result } = readEnvelope(value);
+export function parseRemoteUserProfileEnvelope(
+  value: unknown,
+  expectedCode?: string,
+): RemoteUserProfile {
+  const { code, result } = readEnvelope(value);
+  if (expectedCode && code !== expectedCode) throw new KakaoAuthContractError();
   const profile = readRecord(result);
   const profileUrl = profile.profileUrl;
 
@@ -249,7 +264,8 @@ export function parseRemoteUserProfileEnvelope(value: unknown): RemoteUserProfil
 }
 
 export function parseRemoteUserIdentityEnvelope(value: unknown): RemoteUserIdentity {
-  const { result } = readEnvelope(value);
+  const { code, result } = readEnvelope(value);
+  if (code !== 'USER_PROFILE_200') throw new KakaoAuthContractError();
   const profile = readRecord(result);
 
   return { isNew: readProfileIsNew(profile), uid: readUuid(profile.uid) };

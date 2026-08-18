@@ -11,6 +11,7 @@ import {
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
+import { mergeRemotePet } from './petMappers';
 import {
   clearPendingPetImagePicker,
   collectPetImageUris,
@@ -19,16 +20,17 @@ import {
   queuePetImageRemovals,
   queueUserPetImageRemoval,
 } from './services/petImageStorage';
+import { createRemotePet, updateRemotePet } from './services/petApi';
 import { petRepository } from './services/petRepository';
 import type { PetEntity, StoredPetState } from './types';
 
 export const MAX_PETS_PER_USER = 10;
 
 type PetMutationResult =
-  | { ok: true }
+  | { ok: true; pet?: PetEntity }
   | {
       ok: false;
-      reason: 'conflict' | 'error' | 'invalid' | 'last-pet' | 'limit' | 'not-found' | 'not-ready';
+      reason: 'conflict' | 'error' | 'invalid' | 'last-pet' | 'limit' | 'not-found' | 'not-ready' | 'not-supported';
     };
 
 type PetStoreContextValue = {
@@ -237,8 +239,18 @@ export function PetProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'limit' };
         }
 
-        const nextPets = [...currentPets, pet];
-        return persistMutation(userId, nextPets, pet.id);
+        try {
+          const remotePet = await createRemotePet(pet);
+          const nextPet = mergeRemotePet(pet, remotePet);
+          const nextPets = [...currentPets, nextPet];
+          const result = await persistMutation(userId, nextPets, nextPet.id);
+          if (!result.ok) return result;
+          await queuePetImageRemovals(userId, [pet.profileImageUri]).catch(() => undefined);
+          await flushPetImageRemovals(userId, nextPets).catch(() => undefined);
+          return { ok: true, pet: nextPet };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
       });
     },
     [currentUserId, enqueueMutation, persistMutation],
@@ -260,12 +272,26 @@ export function PetProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'conflict' };
         }
 
-        const nextPets = currentPets.map((current) => (current.id === pet.id ? pet : current));
+        if (previous.profileImageUri && !pet.profileImageUri) {
+          return { ok: false, reason: 'not-supported' };
+        }
+
+        let nextPet: PetEntity;
+        try {
+          nextPet = mergeRemotePet(pet, await updateRemotePet(previous, pet));
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
+
+        const nextPets = currentPets.map((current) => (current.id === pet.id ? nextPet : current));
         const imagesToRemove = [
-          previous.profileImageUri !== pet.profileImageUri
+          previous.profileImageUri !== nextPet.profileImageUri
             ? previous.profileImageUri
             : null,
-          previous.certificateImageUri !== pet.certificateImageUri
+          pet.profileImageUri !== nextPet.profileImageUri
+            ? pet.profileImageUri
+            : null,
+          previous.certificateImageUri !== nextPet.certificateImageUri
             ? previous.certificateImageUri
             : null,
         ];
@@ -281,7 +307,7 @@ export function PetProvider({ children }: PropsWithChildren) {
         );
         if (!saveResult.ok) return saveResult;
         await flushPetImageRemovals(userId, nextPets).catch(() => undefined);
-        return { ok: true };
+        return { ok: true, pet: nextPet };
       });
     },
     [currentUserId, enqueueMutation, persistMutation],
