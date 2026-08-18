@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, AppIcon, AppChip, AppToast } from '@/src/components/common';
+import { AppButton, AppIcon, AppChip } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -37,6 +37,7 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 		setTimeout(() => {
 			setMode('idle');
 			setShowOcrFailedToast(true);
+			setTimeout(() => setShowOcrFailedToast(false), 2500);
 		}, 1800);
 	};
 
@@ -66,133 +67,126 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 		setSelected((current) => current.filter((item) => item.id !== id));
 	};
 
-	return (
-		<AppModal onClose={onClose} variant="bottomSheet" visible={visible}>
-			<View style={styles.header}>
-				<View style={styles.headerLeft}>
-					<View style={styles.headerBadge}>
-						<Image
-							resizeMode="contain"
-							source={require('@/assets/images/modal/MedicationBadge.png')}
-							style={styles.headerBadgeImage}
-						/>
-					</View>
-					<View>
-						<Text style={styles.headerTitle}>약물 추가</Text>
-						{hasSelection ? <Text style={styles.headerSubtitle}>{selected.length}개 선택됨</Text> : null}
-					</View>
-				</View>
-				<Pressable accessibilityLabel="닫기" accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
-					<AppIcon color={COLORS.gray600} name="close" size={22} />
-				</Pressable>
-			</View>
+	const manualToggleButton = (
+		<Pressable
+			accessibilityLabel="검색에 없으면 직접 입력"
+			accessibilityRole="button"
+			onPress={() => setMode(mode === 'manual' ? 'idle' : 'manual')}
+			style={styles.manualToggle}
+		>
+			<Image
+				resizeMode="contain"
+				source={require('@/assets/images/dashboard/Plus.png')}
+				style={styles.manualToggleIcon}
+			/>
+			<Text style={styles.manualToggleText}>검색에 없으면 직접 입력</Text>
+		</Pressable>
+	);
 
-			<View style={styles.searchRow}>
-				<AppInput
-					containerStyle={styles.searchInputContainer}
-					inputContainerStyle={styles.searchInputBox}
-                    inputStyle={styles.searchInputText}
-					onChangeText={setQuery}
-					placeholder="약물명 또는 성분명으로 검색"
-					rightElement={
-						<Pressable
-							accessibilityLabel="처방전 사진으로 검색"
-							accessibilityRole="button"
-							onPress={handleOcrPress}
-							style={styles.cameraButton}
-						>
+	return (
+		<>
+			<AppModal onClose={onClose} variant="bottomSheet" visible={visible}>
+				<View style={styles.header}>
+					<View style={styles.headerLeft}>
+						<View style={styles.headerBadge}>
+							<Image
+								resizeMode="contain"
+								source={require('@/assets/images/modal/MedicationBadge.png')}
+								style={styles.headerBadgeImage}
+							/>
+						</View>
+						<View>
+							<Text style={styles.headerTitle}>약물 추가</Text>
+							{hasSelection ? <Text style={styles.headerSubtitle}>{selected.length}개 선택됨</Text> : null}
+						</View>
+					</View>
+					<Pressable accessibilityLabel="닫기" accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
+						<AppIcon color={COLORS.gray600} name="close" size={22} />
+					</Pressable>
+				</View>
+
+				<View style={styles.searchRow}>
+					<AppInput
+						containerStyle={styles.searchInputContainer}
+						inputContainerStyle={styles.searchInputBox}
+						inputStyle={styles.searchInputText}
+						onChangeText={setQuery}
+						placeholder="약물명 또는 성분명으로 검색"
+						rightElement={
+							<Pressable
+								accessibilityLabel="처방전 사진으로 검색"
+								accessibilityRole="button"
+								onPress={handleOcrPress}
+								style={styles.cameraButton}
+							>
+								<Image
+									resizeMode="contain"
+									source={require('@/assets/images/modal/MedicationCamera.png')}
+									style={styles.cameraIcon}
+								/>
+							</Pressable>
+						}
+						value={query}
+					/>
+
+					<AppButton
+						fullWidth={false}
+						leftIcon={
+							<Image
+								resizeMode="contain"
+								source={require('@/assets/images/modal/Search.png')}
+								style={styles.searchButtonIcon}
+							/>
+						}
+						onPress={() => {
+							// TODO: 실제 약물 검색 API 연동 — 검색 결과 리스트 UI는 참고 화면이 없어서 아직 미구현
+						}}
+						title="검색"
+					/>
+				</View>
+
+				<Text style={styles.helperText}>검색 후 선택하거나 카메라로 처방전을 찍으면 자동으로 담겨요</Text>
+
+				{mode !== 'ocrLoading' ? manualToggleButton : null}
+
+				{mode === 'ocrLoading' ? (
+					<View style={styles.ocrState}>
+						<View style={styles.ocrIconCircle}>
 							<Image
 								resizeMode="contain"
 								source={require('@/assets/images/modal/MedicationCamera.png')}
-								style={styles.cameraIcon}
+								style={styles.ocrIcon}
 							/>
-						</Pressable>
-					}
-					value={query}
-				/>
-
-				<AppButton
-					fullWidth={false}
-					leftIcon={
-						<Image
-							resizeMode="contain"
-							source={require('@/assets/images/modal/Search.png')}
-							style={styles.searchButtonIcon}
-						/>
-					}
-					onPress={() => {
-						// TODO: 실제 약물 검색 API 연동 — 검색 결과 리스트 UI는 참고 화면이 없어서 아직 미구현
-					}}
-					title="검색"
-				/>
-			</View>
-
-			<Text style={styles.helperText}>검색 후 선택하거나 카메라로 처방전을 찍으면 자동으로 담겨요</Text>
-
-			<Pressable
-				accessibilityLabel="검색에 없으면 직접 입력"
-				accessibilityRole="button"
-				onPress={() => setMode(mode === 'manual' ? 'idle' : 'manual')}
-				style={styles.manualToggle}
-			>
-				<Image
-					resizeMode="contain"
-					source={require('@/assets/images/dashboard/Plus.png')}
-					style={styles.manualToggleIcon}
-				/>
-				<Text style={styles.manualToggleText}>검색에 없으면 직접 입력</Text>
-			</Pressable>
-
-			{mode === 'ocrLoading' ? (
-				<View style={styles.ocrState}>
-					<View style={styles.ocrIconCircle}>
-						<Image
-							resizeMode="contain"
-							source={require('@/assets/images/modal/MedicationCamera.png')}
-							style={styles.ocrIcon}
-						/>
+						</View>
+						<Text style={styles.ocrTitle}>처방전 사진 인식 중...</Text>
+						<Text style={styles.ocrSubtitle}>처방전을 화면에 맞춰 찍어주세요</Text>
+						<AppButton fullWidth={false} onPress={() => setMode('idle')} size="medium" title="취소" variant="secondary" />
 					</View>
-					<Text style={styles.ocrTitle}>처방전 사진 인식 중...</Text>
-					<Text style={styles.ocrSubtitle}>처방전을 화면에 맞춰 찍어주세요</Text>
-					<AppButton 
-                        fullWidth={false}
-                        size="medium"
-                        onPress={() => setMode('idle')} 
-                        title="취소" 
-                        variant="secondary" />
-				</View>
-			) : mode === 'manual' ? (
-				<View style={styles.manualForm}>
-					<AppInput
-						onChangeText={(text) => setManualForm((form) => ({ ...form, name: text }))}
-						placeholder="약물 이름 *"
-						value={manualForm.name}
-					/>
-					<AppInput
-						onChangeText={(text) => setManualForm((form) => ({ ...form, ingredient: text }))}
-						placeholder="성분명 (예: Carprofen 25mg)"
-						value={manualForm.ingredient}
-					/>
-					<AppInput
-						onChangeText={(text) => setManualForm((form) => ({ ...form, description: text }))}
-						placeholder="약 설명 (선택)"
-						value={manualForm.description}
-					/>
-					<AppInput
-						onChangeText={(text) => setManualForm((form) => ({ ...form, warningNote: text }))}
-						placeholder="주의할 점 (선택)"
-						value={manualForm.warningNote}
-					/>
-					<AppButton disabled={!manualForm.name.trim()} onPress={handleManualSubmit} title="담기" />
-				</View>
-			) : selected.length === 0 ? (
-				showOcrFailedToast ? (
-					<AppToast
-						message="직접 입력을 통해 기록해주세요."
-						title="입력된 약물을 찾지 못했어요."
-						visible
-					/>
-				) : (
+				) : mode === 'manual' ? (
+					<View style={styles.manualForm}>
+						<AppInput
+							onChangeText={(text) => setManualForm((form) => ({ ...form, name: text }))}
+							placeholder="약물 이름 *"
+							value={manualForm.name}
+						/>
+						<AppInput
+							onChangeText={(text) => setManualForm((form) => ({ ...form, ingredient: text }))}
+							placeholder="성분명 (예: Carprofen 25mg)"
+							value={manualForm.ingredient}
+						/>
+						<AppInput
+							onChangeText={(text) => setManualForm((form) => ({ ...form, description: text }))}
+							placeholder="약 설명 (선택)"
+							value={manualForm.description}
+						/>
+						<AppInput
+							onChangeText={(text) => setManualForm((form) => ({ ...form, warningNote: text }))}
+							placeholder="주의할 점 (선택)"
+							value={manualForm.warningNote}
+						/>
+						<AppButton disabled={!manualForm.name.trim()} onPress={handleManualSubmit} title="담기" />
+					</View>
+				) : selected.length === 0 ? (
 					<View style={styles.emptyState}>
 						<View style={styles.emptyIconCircle}>
 							<Image
@@ -203,36 +197,51 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 						</View>
 						<Text style={styles.emptyText}>위에서 약물을 검색해서 추가해보세요</Text>
 					</View>
-				)
-			) : (
-				<View style={styles.selectedList}>
-					{selected.map((item) => (
-						<SelectedMedicationCard
-							key={item.id}
-							medication={item}
-							onChange={(patch) => updateSelected(item.id, patch)}
-							onRemove={() => removeSelected(item.id)}
-						/>
-					))}
-				</View>
-			)}
+				) : (
+					<View style={styles.selectedList}>
+						{selected.map((item) => (
+							<SelectedMedicationCard
+								key={item.id}
+								medication={item}
+								onChange={(patch) => updateSelected(item.id, patch)}
+								onRemove={() => removeSelected(item.id)}
+							/>
+						))}
+					</View>
+				)}
 
-			<AppButton
-				leftIcon={
-					<Image
-						resizeMode="contain"
-						source={require('@/assets/images/dashboard/Plus.png')}
-						style={styles.bottomButtonIcon}
-					/>
-				}
-				onPress={() => {
-					if (!hasSelection) return;
-					onSubmit(selected);
-				}}
-				style={!hasSelection && styles.bottomButtonInactive}
-				title={hasSelection ? '완료' : '약물을 검색해서 담아주세요'}
-			/>
-		</AppModal>
+				{mode === 'ocrLoading' ? manualToggleButton : null}
+
+				<AppButton
+					onPress={() => {
+						if (!hasSelection) return;
+						onSubmit(selected);
+					}}
+					style={!hasSelection && styles.bottomButtonInactive}
+					title={hasSelection ? '완료' : '약물을 검색해서 담아주세요'}
+				/>
+			</AppModal>
+
+			<Modal
+				animationType="fade"
+				onRequestClose={() => setShowOcrFailedToast(false)}
+				statusBarTranslucent
+				transparent
+				visible={showOcrFailedToast}
+			>
+				<Pressable
+					accessibilityLabel="닫기"
+					accessibilityRole="button"
+					onPress={() => setShowOcrFailedToast(false)}
+					style={styles.ocrFailedBackdrop}
+				>
+					<View style={styles.ocrFailedCard}>
+						<Text style={styles.ocrFailed}>입력된 약물을 찾지 못했어요.</Text>
+						<Text style={styles.ocrFailed}>직접 입력을 통해 기록해주세요.</Text>
+					</View>
+				</Pressable>
+			</Modal>
+		</>
 	);
 }
 
@@ -246,18 +255,26 @@ function SelectedMedicationCard({ medication, onChange, onRemove }: SelectedMedi
 	return (
 		<View style={styles.selectedCard}>
 			<View style={styles.selectedCardHeader}>
-				<View style={styles.selectedTitleGroup}>
+				<View style={styles.selectedTitleRow}>
 					<View style={styles.selectedDot} />
-					<Text style={styles.selectedName}>{medication.name}</Text>
+					<View style={styles.selectedTitleGroup}>
+						<Text style={styles.selectedName}>{medication.name}</Text>
+						{medication.ingredient ? (
+							<Text style={styles.selectedIngredient}>{medication.ingredient}</Text>
+						) : null}
+					</View>
 				</View>
-				<Pressable accessibilityLabel="약물 삭제" accessibilityRole="button" onPress={onRemove}>
+				<Pressable
+					accessibilityLabel="약물 삭제"
+					accessibilityRole="button"
+					onPress={onRemove}
+					style={styles.selectedRemoveButton}
+				>
 					<AppIcon color={COLORS.gray500} name="close" size={16} />
 				</Pressable>
 			</View>
 
-			{medication.ingredient ? <Text style={styles.selectedIngredient}>{medication.ingredient}</Text> : null}
-
-			<View style={styles.quantityRow}>
+			<View style={styles.quantityBox}>
 				<Pressable
 					accessibilityLabel="수량 감소"
 					accessibilityRole="button"
@@ -279,29 +296,38 @@ function SelectedMedicationCard({ medication, onChange, onRemove }: SelectedMedi
 			</View>
 
 			<View style={styles.chipRow}>
-				{FREQUENCY_OPTIONS.map((option) => (
-					<AppChip
-						key={option.value}
-						label={option.label}
-						onPress={() => onChange({ frequency: option.value as MedicationFrequency })}
-						selected={medication.frequency === option.value}
-						size="small"
-					/>
-				))}
+				{FREQUENCY_OPTIONS.map((option) => {
+					const active = medication.frequency === option.value;
+					return (
+						<Pressable
+							key={option.value}
+							accessibilityLabel={option.label}
+							accessibilityRole="button"
+							onPress={() => onChange({ frequency: option.value as MedicationFrequency })}
+							style={[styles.chip, styles.frequencyChip, active && styles.chipActive]}
+						>
+							<Text style={[styles.chipText, active && styles.chipTextActive]}>{option.label}</Text>
+						</Pressable>
+					);
+				})}
 			</View>
 
 			<View style={styles.chipRow}>
-				{TIMING_OPTIONS.map((option) => (
-					<AppChip
-						key={option.value}
-						label={option.label}
-						onPress={() => onChange({ timing: option.value as MedicationTiming })}
-						selected={medication.timing === option.value}
-						size="small"
-					/>
-				))}
-			</View>
-		</View>
+				{TIMING_OPTIONS.map((option) => {
+					const active = medication.timing === option.value;
+					return (
+						<Pressable
+							key={option.value}
+							accessibilityLabel={option.label}
+							accessibilityRole="button"
+							onPress={() => onChange({ timing: option.value as MedicationTiming })}
+							style={[styles.chip, styles.timingChip, active && styles.chipActive]}
+						>
+							<Text style={[styles.chipText, active && styles.chipTextActive]}>{option.label}</Text>
+						</Pressable>
+					);
+				})}
+			</View>		</View>
 	);
 }
 
@@ -317,8 +343,8 @@ const styles = StyleSheet.create({
 		width: 32,
 	},
 	headerBadgeImage: { height: 16, width: 16 },
-	headerTitle: { ...TYPOGRAPHY.title2, color: COLORS.black },
-	headerSubtitle: { ...TYPOGRAPHY.small, color: COLORS.gray500 },
+	headerTitle: { ...TYPOGRAPHY.title3, color: COLORS.black },
+	headerSubtitle: { ...TYPOGRAPHY.caption, color: COLORS.primary, lineHeight: 16 },
 	closeButton: {
 		alignItems: 'center',
 		backgroundColor: COLORS.gray100,
@@ -330,8 +356,16 @@ const styles = StyleSheet.create({
 	searchRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
 	searchInputContainer: { flex: 1 },
 	searchInputBox: { backgroundColor: COLORS.gray100 },
-    searchInputText: { fontFamily: TYPOGRAPHY.selection.fontFamily, fontSize: 14, textAlign: 'center', textAlignVertical: 'center', includeFontPadding: false },
-	searchButtonIcon: { height: 18, width: 18, marginBottom: -2 },
+	searchInputText: {
+		fontFamily: TYPOGRAPHY.selection.fontFamily,
+		fontSize: 14,
+		minHeight: 0,
+		paddingVertical: 0,
+		textAlign: 'center',
+		textAlignVertical: 'bottom',
+		includeFontPadding: false,
+	},
+	searchButtonIcon: { height: 16, marginBottom: -2, tintColor: COLORS.background, width: 16 },
 	cameraButton: {
 		alignItems: 'center',
 		backgroundColor: COLORS.primarySoft,
@@ -341,7 +375,7 @@ const styles = StyleSheet.create({
 		width: 30,
 	},
 	cameraIcon: { height: 16, width: 16 },
-	helperText: { ...TYPOGRAPHY.small, color: COLORS.gray500 },
+	helperText: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
 	manualToggle: {
 		alignItems: 'center',
 		borderColor: COLORS.gray300,
@@ -353,8 +387,8 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		paddingVertical: SPACING.lg,
 	},
-	manualToggleIcon: { height: 14, width: 14, tintColor: COLORS.gray300 },
-	manualToggleText: { ...TYPOGRAPHY.segment, color: COLORS.gray300 },
+	manualToggleIcon: { height: 14, width: 14, tintColor: COLORS.gray500 },
+	manualToggleText: { ...TYPOGRAPHY.segment, color: COLORS.gray500 },
 	ocrState: { alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.xxxl },
 	ocrIconCircle: {
 		alignItems: 'center',
@@ -381,30 +415,82 @@ const styles = StyleSheet.create({
 	emptyIcon: { height: 22, tintColor: COLORS.gray500, width: 22 },
 	emptyText: { ...TYPOGRAPHY.small, color: COLORS.gray500, fontSize: 13 },
 	selectedList: { gap: SPACING.md },
-	selectedCard: {
+		selectedCard: {
 		backgroundColor: COLORS.primarySoft,
 		borderRadius: RADIUS.lg,
 		gap: SPACING.md,
-		padding: SPACING.lg,
+		paddingHorizontal: 14,
+		paddingVertical: SPACING.xl,
 	},
 	selectedCardHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-	selectedTitleGroup: { alignItems: 'center', flexDirection: 'row', gap: SPACING.sm },
-	selectedDot: { backgroundColor: COLORS.primary, borderRadius: 3, height: 6, width: 6 },
-	selectedName: { ...TYPOGRAPHY.body1, color: COLORS.black },
+	selectedTitleRow: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: SPACING.lg },
+	selectedDot: { backgroundColor: COLORS.primary, borderRadius: 5, height: 8, width: 8 },	selectedTitleGroup: { flex: 1, gap: 2 },
+	selectedName: { ...TYPOGRAPHY.segmentActive, color: COLORS.black, lineHeight:18 },
 	selectedIngredient: { ...TYPOGRAPHY.small, color: COLORS.gray600 },
-	quantityRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
+	selectedRemoveButton: {
+		alignItems: 'center',
+		backgroundColor: COLORS.background,
+		borderRadius: RADIUS.round,
+		height: 24,
+		justifyContent: 'center',
+		width: 24,
+	},
+	quantityBox: {
+		alignItems: 'center',
+		alignSelf: 'flex-start',
+		backgroundColor: COLORS.background,
+		borderRadius: 10,
+		flexDirection: 'row',
+		gap: SPACING.xs,
+		paddingHorizontal: SPACING.md,
+		paddingVertical: SPACING.xs,
+	},
 	quantityButton: {
 		alignItems: 'center',
 		backgroundColor: COLORS.background,
 		borderRadius: RADIUS.round,
-		height: 28,
+		height: 24,
 		justifyContent: 'center',
-		width: 28,
+		width: 24,
 	},
-	quantityButtonText: { ...TYPOGRAPHY.body1, color: COLORS.black },
-	quantityValue: { ...TYPOGRAPHY.body1, color: COLORS.black, minWidth: 20, textAlign: 'center' },
-	quantityUnit: { ...TYPOGRAPHY.body2, color: COLORS.gray600 },
-	chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+	quantityButtonText: { ...TYPOGRAPHY.kakaoButton, color: COLORS.gray500 },
+	quantityValue: { ...TYPOGRAPHY.selectionActive, color: COLORS.black, minWidth: 16, textAlign: 'center' },
+	quantityUnit: { ...TYPOGRAPHY.caption, color: COLORS.gray600 },
+	chipRow: { flexDirection: 'row', gap: SPACING.xs },
+	chip: {
+		alignItems: 'center',
+		backgroundColor: COLORS.background,
+		borderRadius: 10,
+		paddingVertical: SPACING.sm,
+	},
+	frequencyChip: {width: 72},
+	timingChip: {width: 43},
+	chipActive: { backgroundColor: COLORS.primary },
+	chipText: { ...TYPOGRAPHY.badge, color: COLORS.gray600, textAlign: 'center' },
+	chipTextActive: { color: COLORS.background },
 	bottomButtonIcon: { height: 16, tintColor: COLORS.background, width: 16 },
 	bottomButtonInactive: { backgroundColor: COLORS.disabledPrimary },
+	ocrFailedBackdrop: {
+		alignItems: 'center',
+		backgroundColor: COLORS.overlay,
+		flex: 1,
+		justifyContent: 'center',
+		paddingHorizontal: SPACING.xxxl,
+	},
+	ocrFailedCard: {
+		alignSelf: 'stretch',
+		backgroundColor: COLORS.gray100,
+		borderColor: COLORS.primary,
+		borderRadius: RADIUS.lg,
+		borderWidth: 1.5,
+		gap: SPACING.xxs,
+		paddingHorizontal: SPACING.xxl,
+		paddingVertical: SPACING.xl,
+	},
+	ocrFailed: {
+		...TYPOGRAPHY.segmentActive,
+		color: COLORS.black,
+		fontFamily: TYPOGRAPHY.button.fontFamily,
+		textAlign: 'center',
+	},
 });
