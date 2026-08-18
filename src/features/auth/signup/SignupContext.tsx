@@ -364,22 +364,21 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
         throw new Error('signup-cancelled');
       }
 
-      const previousData = dataRef.current;
-      const nextData = { ...previousData, profileImageUri };
-      dataRef.current = nextData;
-      setData(nextData);
+      const previousImageUri = dataRef.current.profileImageUri;
+      dataRef.current = { ...dataRef.current, profileImageUri };
+      setData((current) => ({ ...current, profileImageUri }));
 
       try {
         await saveActiveSignupDraft({
-          data: nextData,
-          method: nextData.method,
+          data: dataRef.current,
+          method: dataRef.current.method,
           remoteUserId,
           sessionId,
         });
       } catch (error) {
         if (dataRef.current.profileImageUri === profileImageUri) {
-          dataRef.current = previousData;
-          setData(previousData);
+          dataRef.current = { ...dataRef.current, profileImageUri: previousImageUri };
+          setData((current) => ({ ...current, profileImageUri: previousImageUri }));
         }
         await removeProfileImage(temporaryUserId, profileImageUri).catch(() => undefined);
         throw error;
@@ -387,7 +386,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
 
       await removeProfileImage(
         temporaryUserId,
-        previousData.profileImageUri,
+        previousImageUri,
       ).catch(() => undefined);
     },
     [],

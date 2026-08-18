@@ -80,6 +80,7 @@ export function TermsAgreementScreen() {
     } catch {
       resumeSignupDraft();
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
+    } finally {
       setSaving(false);
     }
   }, [clearSession, clearSignupDraft, data.method, pendingRemoteSignupUserId, resumeSignupDraft, router, saving]);

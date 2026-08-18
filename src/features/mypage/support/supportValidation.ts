@@ -189,6 +189,7 @@ export function createInquiryFromDraft(
 ): Inquiry {
   const error = getInquiryDraftError(draft);
   if (error || !draft.type) throw new Error(error ?? 'invalid-inquiry-draft');
+  const normalizedImages = normalizeImages(images);
 
   return {
     answer: null,
@@ -196,7 +197,7 @@ export function createInquiryFromDraft(
     body: draft.body.trim(),
     createdAt,
     id,
-    images,
+    images: normalizedImages,
     status: 'waiting',
     type: draft.type,
     userId: draft.userId,

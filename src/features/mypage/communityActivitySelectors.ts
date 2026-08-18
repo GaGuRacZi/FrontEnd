@@ -67,7 +67,8 @@ type CommentedPostsInput = {
 };
 
 function getTimestamp(value: string) {
-  return Date.parse(value);
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
 function compareNewest(a: CommunityActivityItem, b: CommunityActivityItem) {

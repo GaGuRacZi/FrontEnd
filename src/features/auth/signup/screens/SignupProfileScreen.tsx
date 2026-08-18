@@ -42,6 +42,8 @@ export function SignupProfileScreen() {
   );
 
   useEffect(() => {
+    mounted.current = true;
+
     return () => {
       mounted.current = false;
     };

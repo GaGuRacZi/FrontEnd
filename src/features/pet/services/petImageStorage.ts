@@ -294,8 +294,8 @@ export function flushQueuedPetImageRemovals(
       }
     }
 
-    const nextPending = (pending.removeDirectory && !retainedManagedUris.size) || remainingUris.length
-      ? { removeDirectory: pending.removeDirectory && !retainedManagedUris.size, uris: remainingUris }
+    const nextPending = pending.removeDirectory || remainingUris.length
+      ? { removeDirectory: pending.removeDirectory, uris: remainingUris }
       : null;
     if (nextPending) fallbackRemovals.set(userId, nextPending);
     else fallbackRemovals.delete(userId);
