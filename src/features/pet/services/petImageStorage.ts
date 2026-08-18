@@ -21,6 +21,7 @@ const PENDING_PICKER_KEY = 'paw:pet-image-picker:pending';
 const PENDING_REMOVAL_PREFIX = 'paw:pet-image-removal:';
 const fallbackRemovals = new Map<string, PendingPetImageRemoval>();
 let removalQueue = Promise.resolve();
+const inFlightPetImages = new Map<string, Set<string>>();
 
 function getUserDirectory(userId: string) {
   const safeUserId = encodeURIComponent(userId);
@@ -102,16 +103,28 @@ export async function persistPetImage(userId: string, sourceUri: string) {
     directory,
     `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${getFileExtension(sourceUri)}`,
   );
-  await queuePetImageRemovals(userId, [destination.uri]);
+  const inFlight = inFlightPetImages.get(userId) ?? new Set<string>();
+  inFlight.add(destination.uri);
+  inFlightPetImages.set(userId, inFlight);
   try {
+    await queuePetImageRemovals(userId, [destination.uri]);
     new File(sourceUri).copy(destination);
     return destination.uri;
   } catch (error) {
     try {
       if (destination.exists) destination.delete();
     } catch {}
+    inFlight.delete(destination.uri);
+    if (!inFlight.size) inFlightPetImages.delete(userId);
     throw error;
   }
+}
+
+export function releasePersistedPetImage(userId: string, uri: string) {
+  const inFlight = inFlightPetImages.get(userId);
+  if (!inFlight) return;
+  inFlight.delete(uri);
+  if (!inFlight.size) inFlightPetImages.delete(userId);
 }
 
 export function collectPetImageUris(
@@ -251,6 +264,7 @@ export function flushQueuedPetImageRemovals(
     const retainedManagedUris = new Set(
       [...retainedUris].filter((uri) => isManagedPetImage(userId, uri)),
     );
+    for (const uri of inFlightPetImages.get(userId) ?? []) retainedManagedUris.add(uri);
     if (pending.removeDirectory && !retainedManagedUris.size) {
       try {
         const directory = getUserDirectory(userId);
@@ -280,8 +294,8 @@ export function flushQueuedPetImageRemovals(
       }
     }
 
-    const nextPending = pending.removeDirectory || remainingUris.length
-      ? { removeDirectory: pending.removeDirectory, uris: remainingUris }
+    const nextPending = (pending.removeDirectory && !retainedManagedUris.size) || remainingUris.length
+      ? { removeDirectory: pending.removeDirectory && !retainedManagedUris.size, uris: remainingUris }
       : null;
     if (nextPending) fallbackRemovals.set(userId, nextPending);
     else fallbackRemovals.delete(userId);

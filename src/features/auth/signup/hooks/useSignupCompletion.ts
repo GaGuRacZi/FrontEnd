@@ -151,7 +151,7 @@ export function useSignupCompletion() {
           if (transaction?.status !== 'committed') {
             await saveSignupTransaction(transactionOwner, 'committed');
           }
-          await clearSignupDraft().catch(() => undefined);
+          await clearSignupDraft();
           if (transactionOwner.method === 'local') {
             await activateLocalCredential(userId);
           }
@@ -273,7 +273,7 @@ export function useSignupCompletion() {
       if (!kakaoLocation) {
         await saveSignupTransaction(transactionOwner, 'committed');
       }
-      await clearSignupDraft().catch(() => undefined);
+      await clearSignupDraft();
       if (transactionOwner.method === 'local') {
         await activateLocalCredential(userId);
       }

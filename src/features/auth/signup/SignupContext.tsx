@@ -353,6 +353,11 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
       if (!draftEnabledRef.current) throw new Error('signup-cancelled');
 
       const sessionId = signupSessionIdRef.current;
+      const remoteUserId =
+        dataRef.current.method === 'kakao' ? pendingRemoteSignupUserIdRef.current : null;
+      if (dataRef.current.method === 'kakao' && !remoteUserId) {
+        throw new Error('signup-session-required');
+      }
       const temporaryUserId = getSignupConsentUserId(sessionId);
       const profileImageUri = await persistProfileImage(temporaryUserId, sourceUri);
 
@@ -370,8 +375,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
         await saveActiveSignupDraft({
           data: nextData,
           method: nextData.method,
-          remoteUserId:
-            nextData.method === 'kakao' ? pendingRemoteSignupUserId : null,
+          remoteUserId,
           sessionId,
         });
       } catch (error) {
@@ -388,7 +392,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
         previousData.profileImageUri,
       ).catch(() => undefined);
     },
-    [pendingRemoteSignupUserId],
+    [],
   );
 
   const updateEmailVerification = useCallback((state: Partial<EmailVerificationState>) => {

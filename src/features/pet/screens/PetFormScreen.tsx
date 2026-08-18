@@ -33,6 +33,7 @@ import {
   flushQueuedPetImageRemovals,
   type PetImageField,
   persistPetImage,
+  releasePersistedPetImage,
   queuePetImageRemovals,
 } from '../services/petImageStorage';
 import { petRepository } from '../services/petRepository';
@@ -479,8 +480,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       if (!currentUserId || imageMutationLock.current || submitLocked.current) return;
       imageMutationLock.current = true;
       setIsImageMutating(true);
+      let managedUri: string | null = null;
       try {
-        const managedUri = await persistPetImage(currentUserId, sourceUri);
+        managedUri = await persistPetImage(currentUserId, sourceUri);
         const current = draftRef.current;
         const base = baseDraftRef.current;
         const previousUri = current?.[field] ?? null;
@@ -505,6 +507,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         setDraft(nextDraft);
         await flushPetImageRemovals().catch(() => undefined);
       } finally {
+        if (managedUri) releasePersistedPetImage(currentUserId, managedUri);
         imageMutationLock.current = false;
         setIsImageMutating(false);
       }

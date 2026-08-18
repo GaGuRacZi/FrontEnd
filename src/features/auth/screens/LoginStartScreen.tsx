@@ -171,7 +171,7 @@ export function LoginStartScreen() {
           <Text style={styles.description}>이메일로 로그인하거나 새 계정을 만들 수 있어요</Text>
 
           <AppButton
-            accessibilityHint="로그인 화면으로 이동합니다"
+        accessibilityHint="이메일 로그인 또는 회원가입 화면으로 이동합니다"
             disabled={submitting}
             onPress={() => navigateOnce(() => router.replace('/login'))}
             size="medium"

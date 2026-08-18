@@ -345,7 +345,7 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         const remoteSession = parseRemoteSession(session);
         if (currentUserIdRef.current) throw new Error('auth-session-already-active');
 
-        await Promise.all([
+        await Promise.allSettled([
           clearActiveSignupDraft(),
           clearActiveSignupTransaction(),
         ]);
@@ -376,7 +376,7 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         const remoteSession = parseRemoteSession(session);
         if (currentUserIdRef.current) throw new Error('auth-session-already-active');
 
-        await Promise.all([
+        await Promise.allSettled([
           clearActiveSignupDraft(),
           clearActiveSignupTransaction(),
         ]);
@@ -469,7 +469,7 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
 
       if (status !== 'verified') return { status };
 
-      await Promise.all([
+      await Promise.allSettled([
         clearActiveSignupDraft(),
         clearActiveSignupTransaction(),
       ]);

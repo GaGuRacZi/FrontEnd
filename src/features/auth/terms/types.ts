@@ -88,13 +88,22 @@ export function isValidConsentRecord(value: unknown, userId: string): value is C
   }
 
   if (record.agreed) {
-    return record.agreedAt === record.decidedAt && record.withdrawnAt === null;
+    return (
+      typeof record.agreedAt === 'string' &&
+      !Number.isNaN(Date.parse(record.agreedAt)) &&
+      record.withdrawnAt === null
+    );
   }
 
   return (
     record.agreedAt === null &&
-    (record.withdrawnAt === null || record.withdrawnAt === record.decidedAt)
+    (record.withdrawnAt === null ||
+      (typeof record.withdrawnAt === 'string' && !Number.isNaN(Date.parse(record.withdrawnAt))))
   );
+}
+
+export function isConfirmationOnlyTerm(term: Pick<TermDefinition, 'id'>) {
+  return term.id === TERM_IDS.age || term.id === TERM_IDS.profilePrivacy;
 }
 
 export function getTermLabel(term: TermDefinition) {

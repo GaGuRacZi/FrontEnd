@@ -11,7 +11,7 @@ import { SIGNUP_COMPLETION_PATHS } from '@/src/features/auth/session/AuthSession
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 
 import { useTerms } from '../TermsContext';
-import { TERM_IDS, type TermDefinition, type TermId } from '../types';
+import { isConfirmationOnlyTerm, type TermDefinition, type TermId } from '../types';
 import { TermAgreementRow } from './TermAgreementRow';
 import { TermDetailScreen } from '../screens/TermDetailScreen';
 
@@ -54,7 +54,7 @@ function RequiredTermsPrompt({
   const allSelected = terms.every(({ id }) => selectedTermIds.has(id));
   const busy = saving || loggingOut;
   const confirmationOnly = terms.every(
-    ({ id }) => id === TERM_IDS.age || id === TERM_IDS.profilePrivacy,
+    (term) => isConfirmationOnlyTerm(term),
   );
 
   const toggleTerm = (termId: TermId, selected: boolean) => {

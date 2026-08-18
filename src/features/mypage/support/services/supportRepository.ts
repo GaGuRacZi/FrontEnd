@@ -11,7 +11,10 @@ function storageKey(userId: string) {
 }
 
 function copyNotice(notice: Notice) {
-  return { ...notice };
+  return {
+    ...notice,
+    isNew: Date.now() - Date.parse(notice.createdAt) <= 14 * 24 * 60 * 60 * 1000,
+  };
 }
 
 export const supportRepository = {
@@ -20,8 +23,9 @@ export const supportRepository = {
   },
 
   async getNotices() {
-    return NOTICE_MOCKS.map(copyNotice).sort((first, second) =>
-      second.createdAt.localeCompare(first.createdAt));
+    return NOTICE_MOCKS.map(copyNotice).sort(
+      (first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt),
+    );
   },
 
   async loadState(userId: string): Promise<StoredSupportState> {

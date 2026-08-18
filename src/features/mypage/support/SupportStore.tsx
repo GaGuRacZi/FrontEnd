@@ -84,6 +84,15 @@ export function SupportProvider({ children }: PropsWithChildren) {
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const sessionGeneration = loadGenerationRef.current;
 
+  const enqueueMutation = useCallback(<T,>(operation: () => Promise<T>) => {
+    const result = mutationQueueRef.current.then(operation, operation);
+    mutationQueueRef.current = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }, []);
+
   const applyState = useCallback((nextState: StoredSupportState | null) => {
     stateRef.current = nextState;
     setState(nextState);
@@ -123,7 +132,7 @@ export function SupportProvider({ children }: PropsWithChildren) {
         setNotices(loadedNotices);
         applyState(loadedState);
         setStatus('ready');
-        void (async () => {
+        void enqueueMutation(async () => {
           if (!loadedState.draft.images.length) {
             await clearDraftInquiryImages(userId).catch(() => undefined);
           }
@@ -131,7 +140,7 @@ export function SupportProvider({ children }: PropsWithChildren) {
             userId,
             getRetainedInquiryImageAssetKeys(loadedState),
           ).catch(() => undefined);
-        })();
+        });
       })
       .catch(() => {
         if (
@@ -146,16 +155,7 @@ export function SupportProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applyState, currentUserId, loadRequest, sessionReady]);
-
-  const enqueueMutation = useCallback(<T,>(operation: () => Promise<T>) => {
-    const result = mutationQueueRef.current.then(operation, operation);
-    mutationQueueRef.current = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }, []);
+  }, [applyState, currentUserId, enqueueMutation, loadRequest, sessionReady]);
 
   const applyDraftMutationState = useCallback(
     (
