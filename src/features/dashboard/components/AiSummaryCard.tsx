@@ -33,10 +33,7 @@ export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
 
 			<View style={styles.divider} />
 			<View style={styles.summaryBox}>
-				<Text 
-					// @ts-expect-error — filter
-					style={[styles.summaryText, !summary && styles.summaryTextBlurred]}
-				>
+				<Text style={[styles.summaryText, !summary && styles.summaryTextBlurred]}>
 					{summary ?? PLACEHOLDER_SUMMARY}
 				</Text>
 			</View>
@@ -90,6 +87,6 @@ const styles = StyleSheet.create({
 		padding: SPACING.xl,
 	},
 	summaryText: { ...TYPOGRAPHY.body2, color: COLORS.gray800 },
-	summaryTextBlurred: {filter: [{ blur: 4 }],},
+	summaryTextBlurred: { opacity: 0.45 },
 	hintText: { ...TYPOGRAPHY.small, color: COLORS.gray500, textAlign: 'center' },
 });
