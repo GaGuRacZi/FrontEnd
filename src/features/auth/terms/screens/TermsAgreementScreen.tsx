@@ -1,5 +1,5 @@
 import { Link, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/common/AppButton';
@@ -35,31 +35,34 @@ export function TermsAgreementScreen() {
     toggleAllSignupTerms,
   } = useTerms();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string>();
   const hasSelectedSignupTerm = signupTerms.some(
     ({ id }) => signupSelections[id] === true,
   );
 
   const handleNext = async () => {
-    if (saving || !hasRequiredSignupSelections) return;
+    if (savingRef.current || !hasRequiredSignupSelections) return;
 
+    savingRef.current = true;
     setSaving(true);
     setSaveError(undefined);
 
     try {
       await commitSignupConsents();
-
-      setSaving(false);
       router.push('/signup');
     } catch {
       setSaveError('동의 내용을 저장하지 못했어요. 다시 시도해주세요.');
+    } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   const handleSignupBack = useCallback(async () => {
-    if (saving) return;
+    if (savingRef.current) return;
 
+    savingRef.current = true;
     setSaving(true);
     setSaveError(undefined);
 
@@ -81,9 +84,10 @@ export function TermsAgreementScreen() {
       resumeSignupDraft();
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
-  }, [clearSession, clearSignupDraft, data.method, pendingRemoteSignupUserId, resumeSignupDraft, router, saving]);
+  }, [clearSession, clearSignupDraft, data.method, pendingRemoteSignupUserId, resumeSignupDraft, router]);
 
   return (
     <FormScreen

@@ -11,6 +11,7 @@
     "check": "npm run typecheck && npm run lint",
     "typecheck": "tsc --noEmit",
     "check:mypage-activity": "node scripts/check-mypage-activity.mjs",
+    "check:signup-draft": "node scripts/check-signup-draft.mjs",
     "check:mypage-support": "node scripts/check-mypage-support.mjs",
     "check:mypage-terms": "node scripts/check-mypage-terms.mjs",
     "check:pet-image-removal": "node scripts/check-pet-image-removal.mjs"

@@ -7,9 +7,7 @@ import {
   TERM_IDS,
 } from '../src/features/auth/terms/types.ts';
 
-process.env.TZ = 'Asia/Seoul';
-
-const localBoundary = new Date(2026, 7, 14, 0, 30).toISOString();
+const localBoundary = '2026-08-13T15:30:00.000Z';
 
 assert.equal(formatTermDecisionDate(localBoundary), '2026.08.14');
 assert.equal(formatTermDecisionDate('invalid'), '');

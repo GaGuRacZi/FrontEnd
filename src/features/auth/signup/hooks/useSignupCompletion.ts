@@ -44,6 +44,7 @@ export function useSignupCompletion() {
     committedSignupRecovery,
     data,
     markSignupCompleted,
+    resumeSignupDraft,
     signupSessionId,
   } = useSignup();
   const {
@@ -91,6 +92,7 @@ export function useSignupCompletion() {
     let ownsTransaction = false;
     let remoteOnboardingAttempted = false;
     let remoteOnboardingCompleted = false;
+    let signupDraftCleared = false;
 
     try {
       if (!currentUserId) throw new Error('missing-remote-signup-session');
@@ -274,6 +276,7 @@ export function useSignupCompletion() {
         await saveSignupTransaction(transactionOwner, 'committed');
       }
       await clearSignupDraft();
+      signupDraftCleared = true;
       if (transactionOwner.method === 'local') {
         await activateLocalCredential(userId);
       }
@@ -292,6 +295,7 @@ export function useSignupCompletion() {
       );
       router.push('/signup/complete');
     } catch (error) {
+      if (!signupDraftCleared) resumeSignupDraft();
       const preserveRemoteOnboarding =
         transactionOwner.method === 'kakao' &&
         (remoteOnboardingCompleted ||
@@ -349,6 +353,7 @@ export function useSignupCompletion() {
     registerSignupPet,
     registerSignupProfile,
     registerLocalCredential,
+    resumeSignupDraft,
     router,
     showAlert,
     signupIdentityFinalized,

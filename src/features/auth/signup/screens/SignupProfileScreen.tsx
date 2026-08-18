@@ -99,7 +99,7 @@ export function SignupProfileScreen() {
 
       await handlePickerResult(result);
     } catch (error) {
-      if (isSignupCancelled(error)) return;
+      if (!mounted.current || isSignupCancelled(error)) return;
       showAlert('사진을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       pickerOpen.current = false;
