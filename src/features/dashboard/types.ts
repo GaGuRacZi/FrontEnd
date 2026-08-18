@@ -1,12 +1,21 @@
 export type DiagnosisStatus = 'completed' | 'summarizing';
 
-export type DiagnosisListItem = {
+type BaseDiagnosisListItem = {
 	date: string; // '2026.07.04' 형태의 표시용 라벨
 	diagnosisTitle: string; // '관절염 정기 진료'
 	id: string;
-	status: DiagnosisStatus;
-	summaryNote?: string; // completed일 때만 노출
+	petId?: string;
 };
+
+export type DiagnosisListItem =
+	| (BaseDiagnosisListItem & {
+			status: 'completed';
+			summaryNote: string;
+	  })
+	| (BaseDiagnosisListItem & {
+			status: 'summarizing';
+			summaryNote?: never;
+	  });
 
 export type DiagnosisMedicationTiming = 'bedtime' | 'dinner' | 'lunch' | 'morning';
 

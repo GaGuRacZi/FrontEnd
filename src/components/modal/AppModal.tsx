@@ -46,7 +46,6 @@ type AppModalProps = PropsWithChildren<{
 }>;
 
 export function AppModal({
-  animateSheetOnly = false,
   children,
   closeOnBackdropPress = true,
   contentContainerStyle,
@@ -76,68 +75,88 @@ export function AppModal({
     initialHeight === undefined ? maxHeight : initialHeight + bottomInsetAdjustment,
     maxHeight,
   );
+
+  const [modalVisible, setModalVisible] = useState(visible);
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
   const sheetHeight = useRef(new Animated.Value(collapsedHeight)).current;
   const sheetOffset = useRef(new Animated.Value(windowHeight)).current;
-  const sheetTravelDistance = useRef(windowHeight);
-  const sheetAnimation = useRef<Animated.CompositeAnimation | null>(null);
-  const sheetMounted = useRef(visible);
-  const [sheetModalVisible, setSheetModalVisible] = useState(visible);
+  const centerScale = useRef(new Animated.Value(0.9)).current;
   const currentHeight = useRef(collapsedHeight);
   const dragStartHeight = useRef(collapsedHeight);
   const canDrag = isBottomSheet && resizable;
   const canResize = canDrag && maxHeight > collapsedHeight;
   const [isExpanded, setIsExpanded] = useState(false);
-  const usesIndependentSheetAnimation = isBottomSheet && animateSheetOnly;
 
   useEffect(() => {
-    sheetTravelDistance.current = windowHeight;
-  }, [windowHeight]);
-
-  useEffect(() => {
-    if (!usesIndependentSheetAnimation) return;
-
-    let animationFrame: number | undefined;
-    sheetAnimation.current?.stop();
-
     if (visible) {
-      const alreadyMounted = sheetMounted.current;
-      sheetMounted.current = true;
-      setSheetModalVisible(true);
-
-      if (!alreadyMounted) {
-        sheetOffset.setValue(sheetTravelDistance.current);
+      setModalVisible(true);
+      if (isBottomSheet) {
+        sheetOffset.setValue(windowHeight);
+        Animated.parallel([
+          Animated.timing(backdropOpacity, {
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            toValue: 1,
+            useNativeDriver: true,
+          }),
+          Animated.timing(sheetOffset, {
+            duration: 250,
+            easing: Easing.out(Easing.cubic),
+            toValue: 0,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      } else {
+        Animated.parallel([
+          Animated.timing(backdropOpacity, {
+            duration: 180,
+            toValue: 1,
+            useNativeDriver: true,
+          }),
+          Animated.spring(centerScale, {
+            bounciness: 4,
+            speed: 16,
+            toValue: 1,
+            useNativeDriver: true,
+          }),
+        ]).start();
       }
-
-      animationFrame = requestAnimationFrame(() => {
-        const animation = Animated.timing(sheetOffset, {
-          duration: 280,
-          easing: Easing.out(Easing.cubic),
-          toValue: 0,
-          useNativeDriver: false,
+    } else {
+      if (isBottomSheet) {
+        Animated.parallel([
+          Animated.timing(backdropOpacity, {
+            duration: 180,
+            easing: Easing.in(Easing.quad),
+            toValue: 0,
+            useNativeDriver: true,
+          }),
+          Animated.timing(sheetOffset, {
+            duration: 200,
+            easing: Easing.in(Easing.cubic),
+            toValue: windowHeight,
+            useNativeDriver: true,
+          }),
+        ]).start(({ finished }) => {
+          if (finished) setModalVisible(false);
         });
-        sheetAnimation.current = animation;
-        animation.start();
-      });
-    } else if (sheetMounted.current) {
-      const animation = Animated.timing(sheetOffset, {
-        duration: 220,
-        easing: Easing.in(Easing.cubic),
-        toValue: sheetTravelDistance.current,
-        useNativeDriver: false,
-      });
-      sheetAnimation.current = animation;
-      animation.start(({ finished }) => {
-        if (!finished) return;
-        sheetMounted.current = false;
-        setSheetModalVisible(false);
-      });
+      } else {
+        Animated.parallel([
+          Animated.timing(backdropOpacity, {
+            duration: 150,
+            toValue: 0,
+            useNativeDriver: true,
+          }),
+          Animated.timing(centerScale, {
+            duration: 150,
+            toValue: 0.9,
+            useNativeDriver: true,
+          }),
+        ]).start(({ finished }) => {
+          if (finished) setModalVisible(false);
+        });
+      }
     }
-
-    return () => {
-      if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
-      sheetAnimation.current?.stop();
-    };
-  }, [sheetOffset, usesIndependentSheetAnimation, visible]);
+  }, [backdropOpacity, centerScale, isBottomSheet, sheetOffset, visible, windowHeight]);
 
   const animateHeight = useCallback(
     (height: number, expanded: boolean) => {
@@ -216,7 +235,7 @@ export function AppModal({
 
   return (
     <Modal
-      animationType={usesIndependentSheetAnimation ? 'none' : isBottomSheet ? 'slide' : 'fade'}
+      animationType="none"
       navigationBarTranslucent
       onRequestClose={() => {
         if (onRequestClose) onRequestClose();
@@ -224,17 +243,24 @@ export function AppModal({
       }}
       statusBarTranslucent
       transparent
-      visible={usesIndependentSheetAnimation ? sheetModalVisible : visible}
+      visible={modalVisible}
     >
       <View style={styles.root}>
-        <Pressable
-          accessibilityLabel={closeOnBackdropPress ? '모달 닫기' : undefined}
-          accessibilityRole={closeOnBackdropPress ? 'button' : undefined}
-          accessible={closeOnBackdropPress}
-          disabled={!closeOnBackdropPress}
-          onPress={closeOnBackdropPress ? onClose : undefined}
-          style={styles.backdrop}
-        />
+        <Animated.View
+          style={[
+            styles.backdrop,
+            { opacity: backdropOpacity },
+          ]}
+        >
+          <Pressable
+            accessibilityLabel={closeOnBackdropPress ? '모달 닫기' : undefined}
+            accessibilityRole={closeOnBackdropPress ? 'button' : undefined}
+            accessible={closeOnBackdropPress}
+            disabled={!closeOnBackdropPress}
+            onPress={closeOnBackdropPress ? onClose : undefined}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -249,9 +275,9 @@ export function AppModal({
               styles.surface,
               isBottomSheet ? styles.bottomSheet : styles.centerModal,
               canResize ? { height: sheetHeight } : undefined,
-              usesIndependentSheetAnimation
+              isBottomSheet
                 ? { transform: [{ translateY: sheetOffset }] }
-                : undefined,
+                : { transform: [{ scale: centerScale }] },
               {
                 maxHeight,
                 paddingBottom: isBottomSheet

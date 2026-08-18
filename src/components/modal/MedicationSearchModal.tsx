@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, AppIcon, AppChip } from '@/src/components/common';
+import { AppButton, AppIcon } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -28,17 +29,53 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 	const [manualForm, setManualForm] = useState({ name: '', ingredient: '', description: '', warningNote: '' });
 	const [showOcrFailedToast, setShowOcrFailedToast] = useState(false);
 
+	const ocrTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const clearTimers = () => {
+		if (ocrTimerRef.current) clearTimeout(ocrTimerRef.current);
+		if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+	};
+
+	useEffect(() => {
+		if (!visible) {
+			clearTimers();
+			setMode('idle');
+			setShowOcrFailedToast(false);
+		}
+		return () => clearTimers();
+	}, [visible]);
+
 	const hasSelection = selected.length > 0;
 
-	const handleOcrPress = () => {
-		setMode('ocrLoading');
-		setShowOcrFailedToast(false);
-		// TODO: 실제 OCR 연동 전까지는 인식 실패로 mock 처리
-		setTimeout(() => {
+	const handleOcrPress = async () => {
+		try {
+			const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+			if (status !== 'granted') {
+				return;
+			}
+
+			const result = await ImagePicker.launchImageLibraryAsync({
+				mediaTypes: ImagePicker.MediaTypeOptions.Images,
+				quality: 0.8,
+				allowsEditing: false,
+			});
+
+			if (result.canceled) return;
+
+			setMode('ocrLoading');
+			setShowOcrFailedToast(false);
+			clearTimers();
+
+			// TODO: 실제 OCR 연동 전까지는 인식 실패 목업 처리
+			ocrTimerRef.current = setTimeout(() => {
+				setMode('idle');
+				setShowOcrFailedToast(true);
+				toastTimerRef.current = setTimeout(() => setShowOcrFailedToast(false), 2500);
+			}, 1800);
+		} catch {
 			setMode('idle');
-			setShowOcrFailedToast(true);
-			setTimeout(() => setShowOcrFailedToast(false), 2500);
-		}, 1800);
+		}
 	};
 
 	const handleManualSubmit = () => {
@@ -139,7 +176,7 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 							/>
 						}
 						onPress={() => {
-							// TODO: 실제 약물 검색 API 연동 — 검색 결과 리스트 UI는 참고 화면이 없어서 아직 미구현
+							// TODO: 실제 약물 검색 API 연동
 						}}
 						title="검색"
 					/>
@@ -327,7 +364,8 @@ function SelectedMedicationCard({ medication, onChange, onRemove }: SelectedMedi
 						</Pressable>
 					);
 				})}
-			</View>		</View>
+			</View>
+		</View>
 	);
 }
 
@@ -415,7 +453,7 @@ const styles = StyleSheet.create({
 	emptyIcon: { height: 22, tintColor: COLORS.gray500, width: 22 },
 	emptyText: { ...TYPOGRAPHY.small, color: COLORS.gray500, fontSize: 13 },
 	selectedList: { gap: SPACING.md },
-		selectedCard: {
+	selectedCard: {
 		backgroundColor: COLORS.primarySoft,
 		borderRadius: RADIUS.lg,
 		gap: SPACING.md,
@@ -424,8 +462,9 @@ const styles = StyleSheet.create({
 	},
 	selectedCardHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
 	selectedTitleRow: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: SPACING.lg },
-	selectedDot: { backgroundColor: COLORS.primary, borderRadius: 5, height: 8, width: 8 },	selectedTitleGroup: { flex: 1, gap: 2 },
-	selectedName: { ...TYPOGRAPHY.segmentActive, color: COLORS.black, lineHeight:18 },
+	selectedDot: { backgroundColor: COLORS.primary, borderRadius: 5, height: 8, width: 8 },
+	selectedTitleGroup: { flex: 1, gap: 2 },
+	selectedName: { ...TYPOGRAPHY.segmentActive, color: COLORS.black, lineHeight: 18 },
 	selectedIngredient: { ...TYPOGRAPHY.small, color: COLORS.gray600 },
 	selectedRemoveButton: {
 		alignItems: 'center',
@@ -463,8 +502,8 @@ const styles = StyleSheet.create({
 		borderRadius: 10,
 		paddingVertical: SPACING.sm,
 	},
-	frequencyChip: {width: 72},
-	timingChip: {width: 43},
+	frequencyChip: { width: 72 },
+	timingChip: { width: 43 },
 	chipActive: { backgroundColor: COLORS.primary },
 	chipText: { ...TYPOGRAPHY.badge, color: COLORS.gray600, textAlign: 'center' },
 	chipTextActive: { color: COLORS.background },

@@ -20,7 +20,11 @@ export function DiagnosisListCard({ diagnosis, onPress, petName }: DiagnosisList
 
 	return (
 		<Pressable
-			accessibilityLabel={`${petName} ${diagnosis.diagnosisTitle} 진료 요약 보기`}
+			accessibilityLabel={
+				isCompleted
+					? `${petName} ${diagnosis.diagnosisTitle} 진료 요약 보기`
+					: `${petName} ${diagnosis.diagnosisTitle} 진료 요약 생성 중 안내 확인`
+			}
 			accessibilityRole="button"
 			onPress={onPress}
 			style={({ pressed }) => [styles.card, pressed && styles.pressed]}
