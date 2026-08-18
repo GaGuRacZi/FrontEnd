@@ -234,7 +234,7 @@ export function MyPageNotificationsScreen() {
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>방해 금지 시간</Text>
               <Text style={styles.cardDescription}>
-                건강 이상 알림은 방해 금지 대상에서 제외돼요.
+                설정한 시간에는 선택한 알림을 잠시 쉬어요.
               </Text>
               <Pressable
                 accessibilityHint="방해 금지 시작 시간과 종료 시간을 변경합니다."

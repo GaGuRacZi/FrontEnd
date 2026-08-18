@@ -1340,8 +1340,8 @@ export function CommunityWriteScreen() {
         initialTab,
         isEditMode ? postId : undefined,
       );
-      setPendingSubmittedPostId(null);
       openSubmittedPost(savedPostId);
+      setPendingSubmittedPostId(null);
       return true;
     } catch {
       showAlert(

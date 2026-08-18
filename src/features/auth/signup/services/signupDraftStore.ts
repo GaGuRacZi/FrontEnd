@@ -24,10 +24,11 @@ function enqueueMutation<T>(operation: () => Promise<T>) {
 
 async function clearDraftArtifacts(sessionId: string) {
   const temporaryUserId = getSignupConsentUserId(sessionId);
-  await Promise.all([
+  const results = await Promise.allSettled([
     consentStore.deleteHistory(temporaryUserId),
     removeUserProfileImages(temporaryUserId),
   ]);
+  if (results[0].status === 'rejected') throw results[0].reason;
 }
 
 export function loadActiveSignupDraft() {

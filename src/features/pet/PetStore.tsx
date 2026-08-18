@@ -384,7 +384,10 @@ export function PetProvider({ children }: PropsWithChildren) {
         );
         await clearPendingPetImagePicker(userId);
         await petRepository.clearDrafts(userId);
-        await flushQueuedPetImageRemovals(userId, collectPetImageUris(state.pets));
+        await flushQueuedPetImageRemovals(
+          userId,
+          collectPetImageUris(state.pets),
+        ).catch(() => undefined);
       });
     },
     [currentUserId, enqueueMutation],

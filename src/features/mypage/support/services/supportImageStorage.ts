@@ -96,14 +96,13 @@ export async function persistDraftInquiryImage(
   const destination = new File(directory, `${assetId}.${getFileExtension(sourceUri)}`);
   try {
     new File(sourceUri).copy(destination);
+    removeTemporaryInquiryFiles([sourceUri]);
     return { assetId, localUri: destination.uri };
   } catch (error) {
     try {
       if (destination.exists) destination.delete();
     } catch {}
     throw error;
-  } finally {
-    removeTemporaryInquiryFiles([sourceUri]);
   }
 }
 

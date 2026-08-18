@@ -77,6 +77,7 @@ export type SignupData = {
 
 type SignupContextValue = {
   clearSignupDraft: () => Promise<void>;
+  resumeSignupDraft: () => void;
   committedSignupRecovery: SignupTransaction | null;
   data: SignupData;
   emailVerification: EmailVerificationState;
@@ -348,6 +349,10 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     await clearActiveSignupDraft(signupSessionIdRef.current);
   }, []);
 
+  const resumeSignupDraft = useCallback(() => {
+    draftEnabledRef.current = true;
+  }, []);
+
   const updateProfileImage = useCallback(
     async (sourceUri: string) => {
       if (!draftEnabledRef.current) throw new Error('signup-cancelled');
@@ -406,6 +411,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
   const value = useMemo<SignupContextValue>(
     () => ({
       clearSignupDraft,
+      resumeSignupDraft,
       committedSignupRecovery,
       data,
       emailVerification,
@@ -419,6 +425,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     }),
     [
       clearSignupDraft,
+      resumeSignupDraft,
       committedSignupRecovery,
       data,
       emailVerification,

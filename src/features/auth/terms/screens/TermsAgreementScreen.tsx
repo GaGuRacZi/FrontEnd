@@ -19,7 +19,7 @@ import { TERM_IDS } from '../types';
 
 export function TermsAgreementScreen() {
   const router = useRouter();
-  const { clearSignupDraft, data } = useSignup();
+  const { clearSignupDraft, data, resumeSignupDraft } = useSignup();
   const { clearSession, pendingRemoteSignupUserId } = useAuthSession();
   const {
     allSignupTermsSelected,
@@ -77,12 +77,12 @@ export function TermsAgreementScreen() {
       } else {
         router.replace(data.method === 'kakao' ? '/' : '/login');
       }
-    } catch (error) {
+    } catch {
+      resumeSignupDraft();
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
       setSaving(false);
-      throw error;
     }
-  }, [clearSession, clearSignupDraft, data.method, pendingRemoteSignupUserId, router, saving]);
+  }, [clearSession, clearSignupDraft, data.method, pendingRemoteSignupUserId, resumeSignupDraft, router, saving]);
 
   return (
     <FormScreen

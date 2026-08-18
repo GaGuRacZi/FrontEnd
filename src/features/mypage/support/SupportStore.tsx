@@ -20,7 +20,6 @@ import {
   queueSupportImageRemovals,
   removeCommittedInquiryImages,
   removeDraftInquiryImage,
-  removeTemporaryInquiryFiles,
   removeUserInquiryImages,
 } from './services/supportImageStorage';
 import { supportRepository } from './services/supportRepository';
@@ -242,8 +241,7 @@ export function SupportProvider({ children }: PropsWithChildren) {
   const addDraftImages = useCallback(
     (sourceUris: string[]) =>
       enqueueMutation(async (): Promise<MutationResult> => {
-        try {
-          const userId = currentUserId;
+        const userId = currentUserId;
           const current = stateRef.current;
           if (
             !userId ||
@@ -295,9 +293,6 @@ export function SupportProvider({ children }: PropsWithChildren) {
             }
             return { ok: false, reason: 'error' };
           }
-        } finally {
-          removeTemporaryInquiryFiles(sourceUris);
-        }
       }),
     [
       applyDraftMutationState,
