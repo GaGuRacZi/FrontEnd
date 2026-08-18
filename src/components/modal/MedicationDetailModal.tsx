@@ -1,7 +1,7 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
-import { AppModal } from '@/src/components/modal';
+import { AppModal } from './AppModal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 type MedicationDetailModalProps = {

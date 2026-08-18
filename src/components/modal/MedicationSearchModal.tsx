@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, AppIcon, AppChip } from '@/src/components/common';
+import { AppButton, AppIcon } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
-import { AppModal } from '@/src/components/modal';
+import { AppModal } from './AppModal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import {
 	FREQUENCY_OPTIONS,
@@ -327,7 +327,8 @@ function SelectedMedicationCard({ medication, onChange, onRemove }: SelectedMedi
 						</Pressable>
 					);
 				})}
-			</View>		</View>
+			</View>
+		</View>
 	);
 }
 

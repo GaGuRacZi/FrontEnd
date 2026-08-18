@@ -30,7 +30,9 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
-      "permissions": ["android.permission.SCHEDULE_EXACT_ALARM"],
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ],
       "package": "com.gaguraczi.paw",
       "googleServicesFile": "./google-services.json",
       "versionCode": 1,
@@ -89,6 +91,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "161e7309-40dc-4434-8465-73544396a9dc"
+      }
+    },
+    "owner": "ah_young"
   }
 }

@@ -3,11 +3,9 @@ import type { Href } from 'expo-router';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppIcon } from '@/src/components/common';
 import { MedicationDetailModal, MedicationSaveConfirmModal, MedicationSearchModal } from '@/src/components/modal';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { PetAvatar } from '@/src/features/pet/components/PetAvatar';
 import { usePetStore } from '@/src/features/pet/PetStore';
 import type { MedicationEntry } from '@/src/types/medication';
 

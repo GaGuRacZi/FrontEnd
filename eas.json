@@ -16,7 +16,7 @@
     "mock": {
       "extends": "preview",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "",
+        "EXPO_PUBLIC_API_BASE_URL": "https://issueissyu-ai.cloud",
         "EXPO_PUBLIC_EMAIL_VERIFICATION_MOCK": "true"
       }
     },
