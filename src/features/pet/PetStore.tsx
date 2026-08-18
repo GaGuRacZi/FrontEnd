@@ -402,7 +402,7 @@ export function PetProvider({ children }: PropsWithChildren) {
       return enqueueMutation(async () => {
         invalidateActiveState(userId);
         try {
-          await queueUserPetImageRemoval(userId);
+          await queueUserPetImageRemoval(userId).catch(() => undefined);
           await petRepository.deleteUser(userId);
           await Promise.all([
             flushQueuedPetImageRemovals(userId, new Set()).catch(() => undefined),

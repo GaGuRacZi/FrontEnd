@@ -9,7 +9,11 @@
     "web": "expo start --web",
     "lint": "eslint app src",
     "check": "npm run typecheck && npm run lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:mypage-activity": "node scripts/check-mypage-activity.mjs",
+    "check:mypage-support": "node scripts/check-mypage-support.mjs",
+    "check:mypage-terms": "node scripts/check-mypage-terms.mjs",
+    "check:pet-image-removal": "node scripts/check-pet-image-removal.mjs"
   },
   "dependencies": {
     "@expo/env": "2.0.12",
@@ -54,5 +58,8 @@
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "engines": {
+    "node": ">=22.18.0"
+  }
 }

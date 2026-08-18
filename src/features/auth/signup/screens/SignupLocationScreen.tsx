@@ -284,7 +284,7 @@ export function SignupLocationScreen() {
       title="활동 지역을 설정해주세요"
     >
       <Text style={styles.description}>
-        {'프로필에 표시할 지역을\n선택해주세요.'}
+        {'프로필에 표시할 지역을 선택하고,\n카카오 가입 시 지역 확인에 필요한 좌표를 사용해요.'}
       </Text>
 
       <View style={styles.locationSection}>
