@@ -11,7 +11,7 @@ import { SIGNUP_COMPLETION_PATHS } from '@/src/features/auth/session/AuthSession
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 
 import { useTerms } from '../TermsContext';
-import type { TermDefinition, TermId } from '../types';
+import { isConfirmationOnlyTerm, type TermDefinition, type TermId } from '../types';
 import { TermAgreementRow } from './TermAgreementRow';
 import { TermDetailScreen } from '../screens/TermDetailScreen';
 
@@ -53,6 +53,9 @@ function RequiredTermsPrompt({
 
   const allSelected = terms.every(({ id }) => selectedTermIds.has(id));
   const busy = saving || loggingOut;
+  const confirmationOnly = terms.every(
+    (term) => isConfirmationOnlyTerm(term),
+  );
 
   const toggleTerm = (termId: TermId, selected: boolean) => {
     setSelectedTermIds((current) => {
@@ -75,7 +78,11 @@ function RequiredTermsPrompt({
         await recordConsent(id, true);
       }
     } catch {
-      setSaveError('동의 내용을 저장하지 못했어요. 다시 시도해주세요.');
+      setSaveError(
+        confirmationOnly
+          ? '확인 내용을 저장하지 못했어요. 다시 시도해주세요.'
+          : '동의 내용을 저장하지 못했어요. 다시 시도해주세요.',
+      );
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -96,7 +103,7 @@ function RequiredTermsPrompt({
             disabled={!allSelected || loggingOut}
             loading={saving}
             onPress={() => void save()}
-            title="동의하고 계속하기"
+            title={confirmationOnly ? '확인하고 계속하기' : '동의하고 계속하기'}
           />
           <AppButton
             disabled={saving}
@@ -110,10 +117,14 @@ function RequiredTermsPrompt({
     >
       <View style={styles.heading}>
         <Text accessibilityRole="header" style={styles.title}>
-          {'변경된 필수 약관을\n확인해주세요'}
+          {confirmationOnly
+            ? '변경된 필수 내용을\n확인해주세요'
+            : '변경된 필수 약관을\n확인해주세요'}
         </Text>
         <Text style={styles.description}>
-          서비스를 계속 이용하려면 변경된 내용에 동의해야 해요.
+          {confirmationOnly
+            ? '서비스를 계속 이용하려면 변경된 내용을 확인해주세요.'
+            : '서비스를 계속 이용하려면 변경된 내용에 동의해야 해요.'}
         </Text>
       </View>
 

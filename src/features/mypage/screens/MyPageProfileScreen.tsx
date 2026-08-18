@@ -222,7 +222,7 @@ export function MyPageProfileScreen() {
   if (!isReady) {
     return (
       <MyPageHeader title="프로필 정보">
-        <LoadingView label="프로필을 준비하고 있어요." />
+        <LoadingView label="프로필을 불러오고 있어요." />
       </MyPageHeader>
     );
   }
@@ -238,7 +238,7 @@ export function MyPageProfileScreen() {
   if (!draft) {
     return (
       <MyPageHeader title="프로필 정보">
-        <LoadingView label="프로필을 준비하고 있어요." />
+        <LoadingView label="프로필을 불러오고 있어요." />
       </MyPageHeader>
     );
   }
@@ -446,7 +446,7 @@ export function MyPageProfileScreen() {
         <View style={styles.formCard}>
           <AppInput
             error={errors.name}
-            label="사용자 이름"
+            label="이름"
             maxLength={MAX_NAME_LENGTH}
             onChangeText={(name) => setDraft((current) => current && { ...current, name })}
             value={draft.name}
@@ -482,7 +482,7 @@ export function MyPageProfileScreen() {
               <View style={styles.locationTextBox}>
                 <Text style={styles.locationLabel}>주소 검색</Text>
                 <Text numberOfLines={1} style={styles.locationText}>
-                  {draft.location || '동네나 지역명을 직접 선택해요'}
+                  {draft.location || '동네나 지역명을 검색해 선택해요'}
                 </Text>
               </View>
               <AppIcon name="chevron-forward" size={20} />
@@ -503,7 +503,7 @@ export function MyPageProfileScreen() {
               <View style={styles.locationTextBox}>
                 <Text style={styles.locationLabel}>현재 위치로 설정</Text>
                 <Text style={styles.locationText}>
-                  {locating ? '현재 위치를 확인하고 있어요' : '휴대폰 위치 권한을 사용해요'}
+                  {locating ? '현재 위치를 확인하고 있어요' : '휴대폰의 현재 위치를 사용해요'}
                 </Text>
               </View>
             </Pressable>

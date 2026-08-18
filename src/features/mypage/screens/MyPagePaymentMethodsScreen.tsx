@@ -105,9 +105,7 @@ export function MyPagePaymentMethodsScreen() {
                 </View>
                 <View style={styles.methodText}>
                   <Text style={styles.methodTitle}>{method.label}</Text>
-                  <Text style={styles.methodMeta}>
-                    {method.last4 === '등록 대기' ? '간편결제 연결 전' : method.last4}
-                  </Text>
+                  <Text style={styles.methodMeta}>{method.last4}</Text>
                 </View>
                 <View style={styles.methodActions}>
                   {method.isDefault ? (

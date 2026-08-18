@@ -689,7 +689,7 @@ const styles = StyleSheet.create({
     color: COLORS.gray600,
   },
   messageRow: {
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: SPACING.md,
     marginBottom: SPACING.xxl,

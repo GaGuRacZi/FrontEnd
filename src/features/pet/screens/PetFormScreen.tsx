@@ -29,9 +29,12 @@ import {
 } from '../petValidation';
 import { MAX_PETS_PER_USER, usePetStore } from '../PetStore';
 import {
+  collectRetainedPetImageUris,
+  flushQueuedPetImageRemovals,
   type PetImageField,
   persistPetImage,
-  removePetImage,
+  releasePersistedPetImage,
+  queuePetImageRemovals,
 } from '../services/petImageStorage';
 import { petRepository } from '../services/petRepository';
 import type { PetDraft, PetEntity, PetFormValues, PetSelectionField } from '../types';
@@ -118,6 +121,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const [bloodTypeVisible, setBloodTypeVisible] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [isImageMutating, setIsImageMutating] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [pendingBirthDate, setPendingBirthDate] = useState(new Date());
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
   const [pendingCompletion, setPendingCompletion] = useState<PendingPetCompletion | null>(null);
@@ -128,6 +132,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const baseDraftRef = useRef<PetDraft | null>(null);
   const isDirtyRef = useRef(false);
   const imageMutationLock = useRef(false);
+  const leavingRef = useRef(false);
   const initializedFormKeyRef = useRef<string | null>(null);
   const skipFocusedDraftReload = useRef(true);
   const reachedPetLimit = mode === 'add' && pets.length >= MAX_PETS_PER_USER;
@@ -156,27 +161,20 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     router.replace('/mypage');
   }, [router, showAlert]);
 
-  const removeUnreferencedImages = useCallback(
+  const flushPetImageRemovals = useCallback(async () => {
+    if (!currentUserId) return;
+    const [state, drafts] = await Promise.all([
+      petRepository.loadState(currentUserId),
+      petRepository.loadDrafts(currentUserId),
+    ]);
+    const retainedUris = collectRetainedPetImageUris(state.pets, drafts);
+    await flushQueuedPetImageRemovals(currentUserId, retainedUris);
+  }, [currentUserId]);
+
+  const queueDraftImagesForRemoval = useCallback(
     async (...uris: (string | null)[]) => {
       if (!currentUserId) return;
-      const candidates = Array.from(new Set(uris.filter((uri): uri is string => Boolean(uri))));
-      if (!candidates.length) return;
-
-      const state = await petRepository.loadState(currentUserId).catch(() => null);
-      if (!state) return;
-      const savedImages = new Set(
-        state.pets.flatMap((item) =>
-          [item.profileImageUri, item.certificateImageUri].filter(
-            (uri): uri is string => Boolean(uri),
-          ),
-        ),
-      );
-
-      await Promise.allSettled(
-        candidates.map((uri) =>
-          savedImages.has(uri) ? Promise.resolve() : removePetImage(currentUserId, uri),
-        ),
-      );
+      await queuePetImageRemovals(currentUserId, uris);
     },
     [currentUserId],
   );
@@ -290,17 +288,16 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         const restoredDraft = canRestore && storedDraft ? storedDraft : initialDraft;
 
         if (storedDraft && !canRestore) {
-          await Promise.allSettled([
-            removeUnreferencedImages(
-              storedDraft.profileImageUri !== initialDraft.profileImageUri
-                ? storedDraft.profileImageUri
-                : null,
-              storedDraft.certificateImageUri !== initialDraft.certificateImageUri
-                ? storedDraft.certificateImageUri
-                : null,
-            ),
-            petRepository.deleteDraft(currentUserId, storedDraft.id),
-          ]);
+          await queueDraftImagesForRemoval(
+            storedDraft.profileImageUri !== initialDraft.profileImageUri
+              ? storedDraft.profileImageUri
+              : null,
+            storedDraft.certificateImageUri !== initialDraft.certificateImageUri
+              ? storedDraft.certificateImageUri
+              : null,
+          );
+          await petRepository.deleteDraft(currentUserId, storedDraft.id);
+          await flushPetImageRemovals().catch(() => undefined);
         }
 
         if (!active) return;
@@ -333,15 +330,19 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     pet,
     petsReady,
     reachedPetLimit,
-    removeUnreferencedImages,
+    flushPetImageRemovals,
     sessionReady,
+    queueDraftImagesForRemoval,
   ]);
 
   useEffect(() => {
     if (!isDraftReady || !draft || !currentUserId) return;
 
     if (!isDirty) {
-      void petRepository.deleteDraft(currentUserId, draft.id).catch(() => undefined);
+      void petRepository
+        .deleteDraft(currentUserId, draft.id)
+        .then(flushPetImageRemovals)
+        .catch(() => undefined);
       return;
     }
 
@@ -356,7 +357,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       }
     }, 180);
     return () => clearTimeout(timeout);
-  }, [currentUserId, draft, isDirty, isDraftReady]);
+  }, [currentUserId, draft, flushPetImageRemovals, isDirty, isDraftReady]);
 
   useEffect(
     () => () => {
@@ -371,66 +372,76 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     [currentUserId, draftId],
   );
 
-  const cleanUnusedDraftImages = useCallback(async () => {
+  const queueUnusedDraftImages = useCallback(async () => {
     const current = draftRef.current;
     const base = baseDraftRef.current;
     if (!current || !currentUserId) return;
 
-    await removeUnreferencedImages(
+    await queueDraftImagesForRemoval(
       current.profileImageUri !== base?.profileImageUri ? current.profileImageUri : null,
       current.certificateImageUri !== base?.certificateImageUri
         ? current.certificateImageUri
         : null,
     );
-  }, [currentUserId, removeUnreferencedImages]);
+  }, [currentUserId, queueDraftImagesForRemoval]);
 
   const discardDraftAndLeave = useCallback(() => {
     const exitAction = pendingExitAction;
-    if (!exitAction) return;
+    if (!exitAction || leavingRef.current) return;
 
-    setPendingExitAction(null);
+    leavingRef.current = true;
+    setIsLeaving(true);
     void (async () => {
       draftCompleted.current = true;
       let discarded = !currentUserId;
 
       if (currentUserId) {
-        try {
-          await petRepository.deleteDraft(currentUserId, draftId);
-          discarded = true;
-        } catch {
-          const fallbackDraft =
-            mode === 'add'
-              ? createPetDraft(currentUserId)
-              : baseDraftRef.current;
-          if (fallbackDraft) {
-            discarded = await petRepository
-              .saveDraft(fallbackDraft)
-              .then(() => true)
-              .catch(() => false);
+        const imagesQueued = await queueUnusedDraftImages()
+          .then(() => true)
+          .catch(() => false);
+        if (imagesQueued) {
+          try {
+            await petRepository.deleteDraft(currentUserId, draftId);
+            discarded = true;
+          } catch {
+            const fallbackDraft =
+              mode === 'add'
+                ? createPetDraft(currentUserId)
+                : baseDraftRef.current;
+            if (fallbackDraft) {
+              discarded = await petRepository
+                .saveDraft(fallbackDraft)
+                .then(() => true)
+                .catch(() => false);
+            }
           }
         }
       }
 
       if (!discarded) {
         draftCompleted.current = false;
+        leavingRef.current = false;
+        setIsLeaving(false);
         showAlert(
-          '작성 내용을 정리하지 못했어요',
+          '작성 화면을 종료하지 못했어요',
           '잠시 후 다시 시도해주세요.',
         );
         return;
       }
 
-      await cleanUnusedDraftImages().catch(() => undefined);
+      await flushPetImageRemovals().catch(() => undefined);
       allowNavigation.current = true;
+      setPendingExitAction(null);
       navigation.dispatch(exitAction);
     })();
   }, [
-    cleanUnusedDraftImages,
     currentUserId,
     draftId,
+    flushPetImageRemovals,
     mode,
     navigation,
     pendingExitAction,
+    queueUnusedDraftImages,
     showAlert,
   ]);
 
@@ -455,7 +466,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       if (pendingCompletion) {
         showAlert(
           '정보는 저장했어요',
-          '임시 작성 내용을 정리한 뒤 이동할 수 있어요. 완료하기를 다시 눌러주세요.',
+          '저장은 완료됐지만 화면을 이동하지 못했어요. 완료하기를 다시 눌러주세요.',
         );
         return;
       }
@@ -469,38 +480,42 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       if (!currentUserId || imageMutationLock.current || submitLocked.current) return;
       imageMutationLock.current = true;
       setIsImageMutating(true);
+      let managedUri: string | null = null;
+      let cleanupAfterRelease = false;
       try {
-        const managedUri = await persistPetImage(currentUserId, sourceUri);
+        managedUri = await persistPetImage(currentUserId, sourceUri);
         const current = draftRef.current;
         const base = baseDraftRef.current;
         const previousUri = current?.[field] ?? null;
 
         if (!current) {
-          await removePetImage(currentUserId, managedUri);
+          cleanupAfterRelease = true;
+          showAlert('사진을 등록하지 못했어요', '잠시 후 다시 시도해주세요.');
           return;
         }
 
         const nextDraft = { ...current, [field]: managedUri };
 
         try {
+          await queueDraftImagesForRemoval(previousUri);
           await petRepository.saveDraft(nextDraft);
         } catch (error) {
-          await removePetImage(currentUserId, managedUri);
+          cleanupAfterRelease = true;
           throw error;
         }
 
         draftRef.current = nextDraft;
         isDirtyRef.current = !isSameDraft(nextDraft, base);
         setDraft(nextDraft);
-        if (previousUri && previousUri !== base?.[field]) {
-          await removeUnreferencedImages(previousUri);
-        }
+        await flushPetImageRemovals().catch(() => undefined);
       } finally {
+        if (managedUri) releasePersistedPetImage(currentUserId, managedUri);
+        if (cleanupAfterRelease) await flushPetImageRemovals().catch(() => undefined);
         imageMutationLock.current = false;
         setIsImageMutating(false);
       }
     },
-    [currentUserId, removeUnreferencedImages],
+    [currentUserId, flushPetImageRemovals, queueDraftImagesForRemoval, showAlert],
   );
 
   const { pickImage } = usePetImagePicker({
@@ -523,13 +538,12 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       const nextDraft = { ...current, [field]: null };
 
       try {
+        await queueDraftImagesForRemoval(uri);
         await petRepository.saveDraft(nextDraft);
         draftRef.current = nextDraft;
         isDirtyRef.current = !isSameDraft(nextDraft, base);
         setDraft(nextDraft);
-        if (uri && uri !== base?.[field] && currentUserId) {
-          await removeUnreferencedImages(uri);
-        }
+        await flushPetImageRemovals().catch(() => undefined);
       } catch {
         showAlert('사진을 삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
       } finally {
@@ -537,7 +551,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         setIsImageMutating(false);
       }
     },
-    [currentUserId, removeUnreferencedImages, showAlert],
+    [flushPetImageRemovals, queueDraftImagesForRemoval, showAlert],
   );
 
   const updateField = useCallback(
@@ -647,10 +661,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
     try {
       await petRepository.deleteDraft(completion.entity.userId, completion.draftId);
     } catch {
-      await petRepository
-        .saveDraft(completion.fallbackDraft)
-        .catch(() => undefined);
+      await petRepository.saveDraft(completion.fallbackDraft);
     }
+    await flushPetImageRemovals().catch(() => undefined);
 
     setPendingCompletion(null);
     allowNavigation.current = true;
@@ -671,7 +684,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       } catch {
         showAlert(
           '정보는 저장했어요',
-          '임시 작성 내용을 정리하지 못했어요. 잠시 후 완료하기를 다시 눌러주세요.',
+          '저장은 완료됐지만 화면을 이동하지 못했어요. 완료하기를 다시 눌러주세요.',
         );
       } finally {
         submitLocked.current = false;
@@ -739,7 +752,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       } catch {
         showAlert(
           '정보는 저장했어요',
-          '임시 작성 내용을 정리하지 못했어요. 잠시 후 완료하기를 다시 눌러주세요.',
+          '저장은 완료됐지만 화면을 이동하지 못했어요. 완료하기를 다시 눌러주세요.',
         );
       }
     } catch {
@@ -910,13 +923,19 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       ) : null}
 
       <AppModal
-        onClose={() => setPendingExitAction(null)}
+        closeOnBackdropPress={!isLeaving}
+        onClose={() => {
+          if (!isLeaving) setPendingExitAction(null);
+        }}
         primaryAction={{
+          disabled: isLeaving,
           label: '나가기',
+          loading: isLeaving,
           onPress: discardDraftAndLeave,
           variant: 'danger',
         }}
         secondaryAction={{
+          disabled: isLeaving,
           label: '계속 작성',
           onPress: () => setPendingExitAction(null),
         }}

@@ -1,8 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 import {
   BackHandler,
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -38,6 +39,12 @@ export function LoginScreen() {
   const [formError, setFormError] = useState<string>();
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios' && formError) {
+      AccessibilityInfo.announceForAccessibility(formError);
+    }
+  }, [formError]);
 
   const canSubmit = email.trim().length > 0 && password.length > 0;
 
@@ -180,7 +187,7 @@ export function LoginScreen() {
                     onBlur={() => setEmailError(getEmailError(email))}
                     onChangeText={handleEmailChange}
                     onSubmitEditing={() => passwordInputRef.current?.focus()}
-                    placeholder="lion14@paw.com"
+                    placeholder="example@email.com"
                     returnKeyType="next"
                     textContentType="emailAddress"
                     value={email}
@@ -220,7 +227,11 @@ export function LoginScreen() {
                     value={password}
                   />
                 </View>
-                {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+                {formError ? (
+                  <Text accessibilityLiveRegion="polite" style={styles.formError}>
+                    {formError}
+                  </Text>
+                ) : null}
 
               </View>
             </View>

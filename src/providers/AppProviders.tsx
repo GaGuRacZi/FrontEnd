@@ -21,6 +21,7 @@ import {
   MyPageProvider,
   useMyPageStore,
 } from '@/src/features/mypage/MyPageStore';
+import { SupportProvider } from '@/src/features/mypage/support';
 import { PetProvider } from '@/src/features/pet/PetStore';
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 
@@ -150,16 +151,18 @@ function SessionProviders({ children }: PropsWithChildren) {
     <TermsProvider scope="session" userId={termsUserId}>
       <PetProvider>
         <MyPageProvider>
-          <CommunityProvider>
-            <ChatProvider>
-              <AccountDataGuard>
-                <ChatDataBridge />
-                <RequiredTermsGuard userId={termsUserId}>
-                  {children}
-                </RequiredTermsGuard>
-              </AccountDataGuard>
-            </ChatProvider>
-          </CommunityProvider>
+          <SupportProvider>
+            <CommunityProvider>
+              <ChatProvider>
+                <AccountDataGuard>
+                  <ChatDataBridge />
+                  <RequiredTermsGuard userId={termsUserId}>
+                    {children}
+                  </RequiredTermsGuard>
+                </AccountDataGuard>
+              </ChatProvider>
+            </CommunityProvider>
+          </SupportProvider>
         </MyPageProvider>
       </PetProvider>
     </TermsProvider>

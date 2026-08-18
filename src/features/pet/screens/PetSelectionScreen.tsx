@@ -340,7 +340,7 @@ export function PetSelectionScreen() {
           })
         ) : (
           <EmptyState
-            description="직접 입력은 추후 지원할 예정이에요."
+            description="다른 검색어로 다시 찾아보세요."
             title="검색 결과가 없어요"
           />
         )}

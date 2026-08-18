@@ -35,7 +35,11 @@ export function LoginStartScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
-  const { activateRemoteSession, prepareRemoteSignup } = useAuthSession();
+  const {
+    activateRemoteSession,
+    pendingRemoteSignupUserId,
+    prepareRemoteSignup,
+  } = useAuthSession();
   const { deleteUserProfileData, registerRemoteProfile } = useMyPageStore();
   const { deleteUserPetData } = usePetStore();
   const mountedRef = useRef(true);
@@ -66,22 +70,24 @@ export function LoginStartScreen() {
 
   const finishKakaoLogin = async (session: KakaoSession) => {
     if (session.isNew) {
-      const storedTransaction = await loadSignupTransaction(session.uid);
-      const cleanupResults = await Promise.allSettled([
-        deleteUserPetData(session.uid),
-        deleteUserProfileData(session.uid),
-        consentStore.deleteHistory(session.uid),
-        storedTransaction.transaction
-          ? consentStore.deleteHistory(
-              getSignupConsentUserId(storedTransaction.transaction.sessionId),
-            )
-          : Promise.resolve(),
-      ]);
-      const cleanupFailure = cleanupResults.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      );
-      if (cleanupFailure) throw cleanupFailure.reason;
-      await clearSignupTransaction(session.uid);
+      if (pendingRemoteSignupUserId !== session.uid) {
+        const storedTransaction = await loadSignupTransaction(session.uid);
+        const cleanupResults = await Promise.allSettled([
+          deleteUserPetData(session.uid),
+          deleteUserProfileData(session.uid),
+          consentStore.deleteHistory(session.uid),
+          storedTransaction.transaction
+            ? consentStore.deleteHistory(
+                getSignupConsentUserId(storedTransaction.transaction.sessionId),
+              )
+            : Promise.resolve(),
+        ]);
+        const cleanupFailure = cleanupResults.find(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        if (cleanupFailure) throw cleanupFailure.reason;
+        await clearSignupTransaction(session.uid);
+      }
       await prepareRemoteSignup(session);
       return;
     }
@@ -168,14 +174,14 @@ export function LoginStartScreen() {
 
         <AuthActionPanel style={styles.actionPanel}>
           <Text style={styles.title}>파우 시작하기</Text>
-          <Text style={styles.description}>이메일로 로그인하거나 회원가입하세요</Text>
+          <Text style={styles.description}>이메일로 로그인하거나 새 계정을 만들 수 있어요</Text>
 
           <AppButton
-            accessibilityHint="로그인 화면으로 이동합니다"
+            accessibilityHint="이메일 로그인 또는 회원가입 화면으로 이동합니다"
             disabled={submitting}
             onPress={() => navigateOnce(() => router.replace('/login'))}
             size="medium"
-            title="로그인/회원가입 하기"
+            title="이메일로 시작하기"
             variant="secondary"
           />
           <AppButton

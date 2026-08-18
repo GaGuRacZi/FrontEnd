@@ -22,7 +22,7 @@ export function MyPageStateGuard({ children }: PropsWithChildren) {
       <AppScreen contentContainerStyle={styles.centered}>
         <EmptyState
           actionLabel="다시 시도"
-          description="저장된 계정 정보를 다시 확인해주세요."
+          description="잠시 후 다시 시도해주세요."
           onActionPress={reloadMyPage}
           title="계정 정보를 불러오지 못했어요."
         />

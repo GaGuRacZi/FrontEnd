@@ -35,6 +35,7 @@ type AppModalProps = PropsWithChildren<{
   contentContainerStyle?: StyleProp<ViewStyle>;
   initialHeight?: number;
   onClose: () => void;
+  onRequestClose?: () => void;
   primaryAction?: ModalAction;
   resizable?: boolean;
   secondaryAction?: ModalAction;
@@ -51,6 +52,7 @@ export function AppModal({
   contentContainerStyle,
   initialHeight,
   onClose,
+  onRequestClose,
   primaryAction,
   resizable = false,
   secondaryAction,
@@ -217,7 +219,8 @@ export function AppModal({
       animationType={usesIndependentSheetAnimation ? 'none' : isBottomSheet ? 'slide' : 'fade'}
       navigationBarTranslucent
       onRequestClose={() => {
-        if (closeOnBackdropPress) onClose();
+        if (onRequestClose) onRequestClose();
+        else if (closeOnBackdropPress) onClose();
       }}
       statusBarTranslucent
       transparent

@@ -48,9 +48,11 @@ export function ParticipantAvatar({ participant, size = 56 }: ParticipantAvatarP
           style={styles.image}
         />
       ) : (
-        <Text style={[styles.initial, { fontSize: Math.max(13, Math.round(size * 0.34)) }]}>
-          {initial}
-        </Text>
+        <View pointerEvents="none" style={styles.initialContainer}>
+          <Text style={[styles.initial, { fontSize: Math.max(13, Math.round(size * 0.34)) }]}>
+            {initial}
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -68,8 +70,16 @@ const styles = StyleSheet.create({
     height: '100%',
     width: '100%',
   },
+  initialContainer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   initial: {
     color: COLORS.gray800,
     fontFamily: FONT_FAMILY.bold,
+    includeFontPadding: false,
+    textAlign: 'center',
+    textAlignVertical: 'center',
   },
 });

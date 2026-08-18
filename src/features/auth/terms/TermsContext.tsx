@@ -15,6 +15,7 @@ import type { TermsRepository } from './TermsRepository';
 import { termsRepository as defaultTermsRepository } from './TermsRepository';
 import {
   changeMarketingConsent,
+  getLatestConsent,
   hasCurrentRequiredSignupConsents,
   hasCurrentTermConsent,
   recordTermDecision,
@@ -31,6 +32,7 @@ type TermsContextValue = {
   commitSignupConsents: () => Promise<void>;
   deleteConsentHistory: () => Promise<void>;
   error: string | null;
+  getLatestConsentRecord: (termId: TermId) => ConsentRecord | undefined;
   getTerm: (termId: TermId) => TermDefinition | undefined;
   hasCurrentConsent: (termId: TermId) => boolean;
   hasRequiredSignupConsents: boolean;
@@ -185,6 +187,11 @@ export function TermsProvider({
   const getTerm = useCallback(
     (termId: TermId) => terms.find(({ id }) => id === termId),
     [terms],
+  );
+
+  const getLatestConsentRecord = useCallback(
+    (termId: TermId) => getLatestConsent(currentConsentHistory, termId),
+    [currentConsentHistory],
   );
 
   const hasCurrentConsent = useCallback(
@@ -425,6 +432,7 @@ export function TermsProvider({
       deleteConsentHistory,
       error: currentError,
       finalizeSignupConsents,
+      getLatestConsentRecord,
       getTerm,
       hasCurrentConsent,
       hasRequiredSignupConsents,
@@ -451,6 +459,7 @@ export function TermsProvider({
       currentStatus,
       deleteConsentHistory,
       finalizeSignupConsents,
+      getLatestConsentRecord,
       getTerm,
       hasCurrentConsent,
       hasRequiredSignupConsents,

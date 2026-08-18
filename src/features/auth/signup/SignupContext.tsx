@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { LoadingView } from '@/src/components/common';
 import { AppScreen } from '@/src/components/layout';
@@ -18,8 +19,17 @@ import {
 } from '@/src/features/auth/session/AuthSessionStore';
 import { loadRemoteUserProfile } from '@/src/features/auth/services/kakaoAuthService';
 import { getSignupConsentUserId, TermsProvider } from '@/src/features/auth/terms';
+import {
+  persistProfileImage,
+  removeProfileImage,
+} from '@/src/features/mypage/services/profileImageStorage';
 import type { PetGender, PetType } from '@/src/features/pet/types';
 
+import {
+  clearActiveSignupDraft,
+  loadActiveSignupDraft,
+  saveActiveSignupDraft,
+} from './services/signupDraftStore';
 import {
   clearActiveSignupTransaction,
   loadActiveSignupTransaction,
@@ -66,12 +76,15 @@ export type SignupData = {
 };
 
 type SignupContextValue = {
+  clearSignupDraft: () => Promise<void>;
+  resumeSignupDraft: () => void;
   committedSignupRecovery: SignupTransaction | null;
   data: SignupData;
   emailVerification: EmailVerificationState;
   markSignupCompleted: () => void;
   signupCompleted: boolean;
   signupSessionId: string;
+  updateProfileImage: (sourceUri: string) => Promise<void>;
   updateField: <Key extends keyof SignupData>(key: Key, value: SignupData[Key]) => void;
   updateEmailVerification: (state: Partial<EmailVerificationState>) => void;
   updateFields: (fields: Partial<SignupData>) => void;
@@ -111,13 +124,18 @@ type SignupProviderProps = PropsWithChildren<{
 }>;
 
 export function SignupProvider({ children, initialMethod }: SignupProviderProps) {
-  const { pendingRemoteSignupUserId } = useAuthSession();
+  const { isReady, pendingRemoteSignupUserId } = useAuthSession();
   const signupMethod = pendingRemoteSignupUserId ? 'kakao' : initialMethod;
   const restorationStarted = useRef(false);
+  const draftEnabledRef = useRef(true);
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [signupSessionId, setSignupSessionId] = useState(
     () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`,
   );
   const [data, setData] = useState<SignupData>(() => createInitialData(signupMethod ?? 'local'));
+  const dataRef = useRef(data);
+  const signupSessionIdRef = useRef(signupSessionId);
+  const pendingRemoteSignupUserIdRef = useRef(pendingRemoteSignupUserId);
   const [committedSignupRecovery, setCommittedSignupRecovery] =
     useState<SignupTransaction | null>(null);
   const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
@@ -128,25 +146,71 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
   const [signupCompleted, setSignupCompleted] = useState(false);
 
   useEffect(() => {
-    if (restorationStarted.current) return;
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
+    pendingRemoteSignupUserIdRef.current = pendingRemoteSignupUserId;
+  }, [pendingRemoteSignupUserId]);
+
+  useEffect(() => {
+    if (!isReady || restorationStarted.current) return;
 
     restorationStarted.current = true;
     let active = true;
 
-    void loadActiveSignupTransaction(signupMethod)
-      .then(async (transaction) => {
+    void Promise.allSettled([loadActiveSignupTransaction(), loadActiveSignupDraft()])
+      .then(async ([transactionResult, draftResult]) => {
         if (!active) return;
 
-        if (
-          transaction &&
-          (transaction.method === 'kakao'
-            ? transaction.userId === pendingRemoteSignupUserId
+        const loadedTransaction =
+          transactionResult.status === 'fulfilled' ? transactionResult.value : null;
+        const loadedDraft = draftResult.status === 'fulfilled' ? draftResult.value : null;
+
+        const isCurrentMethod = (method: SignupMethod) =>
+          pendingRemoteSignupUserId
+            ? method === 'kakao'
+            : method === 'local' && (!signupMethod || signupMethod === method);
+        const transaction =
+          loadedTransaction &&
+          isCurrentMethod(loadedTransaction.method) &&
+          (loadedTransaction.method === 'kakao'
+            ? loadedTransaction.userId === pendingRemoteSignupUserId
             : getSignupUserId(
-                transaction.method,
-                transaction.email,
-                transaction.sessionId,
-              ) === transaction.userId)
-        ) {
+                loadedTransaction.method,
+                loadedTransaction.email,
+                loadedTransaction.sessionId,
+              ) === loadedTransaction.userId)
+            ? loadedTransaction
+            : null;
+        let draft =
+          loadedDraft &&
+          isCurrentMethod(loadedDraft.method) &&
+          (loadedDraft.method === 'kakao'
+            ? loadedDraft.remoteUserId === pendingRemoteSignupUserId
+            : loadedDraft.remoteUserId === null)
+            ? loadedDraft
+            : null;
+
+        if (loadedTransaction && !transaction) {
+          await clearActiveSignupTransaction();
+        }
+        if (loadedDraft && !draft) {
+          await clearActiveSignupDraft(loadedDraft.sessionId);
+        }
+        if (!active) return;
+
+        if (transaction) {
+          if (
+            draft &&
+            (draft.sessionId !== transaction.sessionId ||
+              draft.method !== transaction.method ||
+              draft.remoteUserId !==
+                (transaction.method === 'kakao' ? transaction.userId : null))
+          ) {
+            await clearActiveSignupDraft(draft.sessionId);
+            draft = null;
+          }
           const restoredTransaction =
             transaction.method === 'kakao' && transaction.status === 'pending'
               ? await loadRemoteUserProfile()
@@ -157,27 +221,45 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
                   )
                   .catch(() => transaction)
               : transaction;
-          setSignupSessionId(transaction.sessionId);
-          setData({
+          if (!active) return;
+          const restoredData = {
             ...createInitialData(transaction.method),
+            ...(draft?.data ?? {}),
             email: transaction.email,
-          });
+            method: transaction.method,
+          };
+          signupSessionIdRef.current = transaction.sessionId;
+          setSignupSessionId(transaction.sessionId);
+          setData(restoredData);
           if (restoredTransaction.status === 'committed') {
             setCommittedSignupRecovery(restoredTransaction);
           }
           return;
         }
 
-        if (transaction) {
-          await clearActiveSignupTransaction();
+        if (draft) {
+          const restoredData = {
+            ...createInitialData(draft.method),
+            ...draft.data,
+            method: draft.method,
+          };
+          signupSessionIdRef.current = draft.sessionId;
+          setSignupSessionId(draft.sessionId);
+          setData(restoredData);
+          return;
         }
+
         if (signupMethod) {
-          setData((current) => ({ ...current, method: signupMethod }));
+          setData((current) => {
+            return { ...current, method: signupMethod };
+          });
         }
       })
       .catch(() => {
         if (active && signupMethod) {
-          setData((current) => ({ ...current, method: signupMethod }));
+          setData((current) => {
+            return { ...current, method: signupMethod };
+          });
         }
       })
       .finally(() => {
@@ -187,7 +269,58 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     return () => {
       active = false;
     };
-  }, [pendingRemoteSignupUserId, signupMethod]);
+  }, [isReady, pendingRemoteSignupUserId, signupMethod]);
+
+  const flushSignupDraft = useCallback(() => {
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    if (!draftEnabledRef.current) return Promise.resolve();
+
+    const currentData = dataRef.current;
+    const remoteUserId = pendingRemoteSignupUserIdRef.current;
+    if (currentData.method === 'kakao' && !remoteUserId) return Promise.resolve();
+
+    return saveActiveSignupDraft({
+      data: currentData,
+      method: currentData.method,
+      remoteUserId: currentData.method === 'kakao' ? remoteUserId : null,
+      sessionId: signupSessionIdRef.current,
+    }).then(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!signupReady || signupCompleted || !draftEnabledRef.current) return undefined;
+
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = setTimeout(() => {
+      draftSaveTimerRef.current = null;
+      void flushSignupDraft().catch(() => undefined);
+    }, 250);
+
+    return () => {
+      if (draftSaveTimerRef.current) {
+        clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+    };
+  }, [data, flushSignupDraft, signupCompleted, signupReady]);
+
+  useEffect(() => {
+    if (!signupReady) return undefined;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        void flushSignupDraft().catch(() => undefined);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      void flushSignupDraft().catch(() => undefined);
+    };
+  }, [flushSignupDraft, signupReady]);
 
   const updateField = useCallback(
     <Key extends keyof SignupData>(key: Key, fieldValue: SignupData[Key]) => {
@@ -200,6 +333,65 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     setData((current) => ({ ...current, ...fields }));
   }, []);
 
+  const clearSignupDraft = useCallback(async () => {
+    draftEnabledRef.current = false;
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    await clearActiveSignupDraft(signupSessionIdRef.current);
+  }, []);
+
+  const resumeSignupDraft = useCallback(() => {
+    draftEnabledRef.current = true;
+  }, []);
+
+  const updateProfileImage = useCallback(
+    async (sourceUri: string) => {
+      if (!draftEnabledRef.current) throw new Error('signup-cancelled');
+
+      const sessionId = signupSessionIdRef.current;
+      const remoteUserId =
+        dataRef.current.method === 'kakao' ? pendingRemoteSignupUserIdRef.current : null;
+      if (dataRef.current.method === 'kakao' && !remoteUserId) {
+        throw new Error('signup-session-required');
+      }
+      const temporaryUserId = getSignupConsentUserId(sessionId);
+      const profileImageUri = await persistProfileImage(temporaryUserId, sourceUri);
+
+      if (!draftEnabledRef.current || signupSessionIdRef.current !== sessionId) {
+        await removeProfileImage(temporaryUserId, profileImageUri).catch(() => undefined);
+        throw new Error('signup-cancelled');
+      }
+
+      const previousImageUri = dataRef.current.profileImageUri;
+      dataRef.current = { ...dataRef.current, profileImageUri };
+      setData((current) => ({ ...current, profileImageUri }));
+
+      try {
+        await saveActiveSignupDraft({
+          data: dataRef.current,
+          method: dataRef.current.method,
+          remoteUserId,
+          sessionId,
+        });
+      } catch (error) {
+        if (dataRef.current.profileImageUri === profileImageUri) {
+          dataRef.current = { ...dataRef.current, profileImageUri: previousImageUri };
+          setData((current) => ({ ...current, profileImageUri: previousImageUri }));
+        }
+        await removeProfileImage(temporaryUserId, profileImageUri).catch(() => undefined);
+        throw error;
+      }
+
+      await removeProfileImage(
+        temporaryUserId,
+        previousImageUri,
+      ).catch(() => undefined);
+    },
+    [],
+  );
+
   const updateEmailVerification = useCallback((state: Partial<EmailVerificationState>) => {
     setEmailVerification((current) => ({ ...current, ...state }));
   }, []);
@@ -210,23 +402,29 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
 
   const value = useMemo<SignupContextValue>(
     () => ({
+      clearSignupDraft,
+      resumeSignupDraft,
       committedSignupRecovery,
       data,
       emailVerification,
       markSignupCompleted,
       signupCompleted,
       signupSessionId,
+      updateProfileImage,
       updateEmailVerification,
       updateField,
       updateFields,
     }),
     [
+      clearSignupDraft,
+      resumeSignupDraft,
       committedSignupRecovery,
       data,
       emailVerification,
       markSignupCompleted,
       signupCompleted,
       signupSessionId,
+      updateProfileImage,
       updateEmailVerification,
       updateField,
       updateFields,

@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { AppModal, useAppAlert } from '@/src/components/modal';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageCard, MyPageDivider, MyPageHeader, MyPageRow } from '../components';
 import { getPlan } from '../mypageData';
@@ -14,6 +15,7 @@ const CANCEL_ERROR_MESSAGE = '잠시 후 다시 시도해주세요.';
 
 export function MyPagePlanScreen() {
   const router = useRouter();
+  const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const { scheduleCancelSubscription, subscription } = useMyPageStore();
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
@@ -64,12 +66,12 @@ export function MyPagePlanScreen() {
 
         <MyPageCard>
           <MyPageRow
-            onPress={() => router.push('/mypage/subscription')}
+            onPress={() => navigateOnce(() => router.push('/mypage/subscription'))}
             title="요금제 변경하기"
           />
           <MyPageDivider />
           <MyPageRow
-            onPress={() => router.push('/mypage/payment-history')}
+            onPress={() => navigateOnce(() => router.push('/mypage/payment-history'))}
             title="결제 내역"
           />
           {canCancel ? (

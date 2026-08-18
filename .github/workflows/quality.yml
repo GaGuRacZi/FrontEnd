@@ -1,0 +1,30 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22.18.0
+      - run: npm ci
+      - run: npm run check
+      - run: npm run check:signup-draft
+      - run: npm run check:mypage-activity
+      - run: npm run check:mypage-support
+      - run: npm run check:mypage-terms
+      - run: npm run check:pet-image-removal
+      - run: node scripts/check-kakao-auth.mjs
+      - run: node scripts/check-api-refresh.mjs
+      - run: node scripts/check-chat-format.mjs

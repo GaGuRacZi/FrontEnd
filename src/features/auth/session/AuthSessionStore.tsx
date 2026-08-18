@@ -9,6 +9,7 @@ import {
   subscribeToTokenInvalidation,
   type AuthTokens,
 } from '@/src/services/tokenStorage';
+import { clearActiveSignupDraft } from '../signup/services/signupDraftStore';
 import { clearActiveSignupTransaction } from '../signup/services/signupTransactionStore';
 import { isUuid } from '../services/kakaoAuthContract';
 import {
@@ -144,6 +145,7 @@ async function clearPersistedSession(userId: string) {
 
   const results = await Promise.allSettled([
     clearTokens(),
+    clearActiveSignupDraft(),
     clearActiveSignupTransaction(),
     AsyncStorage.removeItem(SESSION_STORAGE_KEY),
     AsyncStorage.removeItem(PENDING_REMOTE_SIGNUP_STORAGE_KEY),
@@ -342,14 +344,28 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
       enqueueSessionMutation(async () => {
         const remoteSession = parseRemoteSession(session);
         if (currentUserIdRef.current) throw new Error('auth-session-already-active');
+        const preservesPendingSignup =
+          pendingRemoteSignupUserIdRef.current === remoteSession.uid;
 
-        await AsyncStorage.multiRemove([
-          SESSION_STORAGE_KEY,
-          SESSION_CLEAR_STORAGE_KEY,
-          PENDING_REMOTE_SIGNUP_STORAGE_KEY,
-        ]);
-        pendingRemoteSignupUserIdRef.current = null;
-        setPendingRemoteSignupUserIdState(null);
+        if (!preservesPendingSignup) {
+          await Promise.allSettled([
+            clearActiveSignupDraft(),
+            clearActiveSignupTransaction(),
+          ]);
+        }
+        await AsyncStorage.multiRemove(
+          preservesPendingSignup
+            ? [SESSION_STORAGE_KEY, SESSION_CLEAR_STORAGE_KEY]
+            : [
+                SESSION_STORAGE_KEY,
+                SESSION_CLEAR_STORAGE_KEY,
+                PENDING_REMOTE_SIGNUP_STORAGE_KEY,
+              ],
+        );
+        if (!preservesPendingSignup) {
+          pendingRemoteSignupUserIdRef.current = null;
+          setPendingRemoteSignupUserIdState(null);
+        }
 
         try {
           await saveTokens(remoteSession);
@@ -370,6 +386,10 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         const remoteSession = parseRemoteSession(session);
         if (currentUserIdRef.current) throw new Error('auth-session-already-active');
 
+        await Promise.allSettled([
+          clearActiveSignupDraft(),
+          clearActiveSignupTransaction(),
+        ]);
         await AsyncStorage.multiRemove([
           SESSION_STORAGE_KEY,
           SESSION_CLEAR_STORAGE_KEY,
@@ -459,6 +479,10 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
 
       if (status !== 'verified') return { status };
 
+      await Promise.allSettled([
+        clearActiveSignupDraft(),
+        clearActiveSignupTransaction(),
+      ]);
       await setCurrentUserId(userId);
       return { status, userId };
     },

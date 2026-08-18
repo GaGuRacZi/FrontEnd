@@ -45,9 +45,20 @@ export function MyPageWithdrawScreen() {
 
   const requiresSubscriptionAction =
     subscription.currentPlanId !== 'baby-jelly' && subscription.pendingType !== 'cancel';
-  const canWithdraw = isReady && checked && !requiresSubscriptionAction && !withdrawing;
   const usesKakao = profile.loginConnections.some((connection) => connection.method === 'kakao');
-  const loginMethodLabel = usesKakao ? '카카오 재인증' : '비밀번호 확인';
+  if (usesKakao) {
+    return (
+      <MyPageHeader title="탈퇴 확인">
+        <EmptyState
+          description="현재 카카오 계정으로는 본인 확인을 진행할 수 없어 탈퇴를 지원하지 않아요."
+          title="카카오 계정 탈퇴는 지원하지 않아요"
+        />
+      </MyPageHeader>
+    );
+  }
+
+  const canWithdraw = isReady && checked && !requiresSubscriptionAction && !withdrawing;
+  const loginMethodLabel = '비밀번호 확인';
   const modalBusy = verifying || withdrawing;
 
   const resetVerification = () => {
@@ -69,23 +80,12 @@ export function MyPageWithdrawScreen() {
       showAlert('구독 해지가 먼저 필요해요', '내 요금제에서 구독 해지를 예약한 뒤 탈퇴할 수 있어요.');
       return;
     }
-    if (usesKakao) {
-      showAlert(
-        '카카오 확인이 필요해요',
-        '카카오 재인증 API 연결 후 탈퇴할 수 있어요.',
-      );
-      return;
-    }
     resetVerification();
     setModalVisible(true);
   };
 
   const confirmIdentity = async () => {
     if (verifyingRef.current || withdrawing) return;
-    if (usesKakao) {
-      setVerificationError('카카오 재인증은 로그인 API 연결 후 사용할 수 있어요.');
-      return;
-    }
     if (!verificationValue) return;
 
     verifyingRef.current = true;
@@ -103,7 +103,7 @@ export function MyPageWithdrawScreen() {
 
       setVerificationError(
         result === 'missing'
-          ? '이 계정의 비밀번호 확인 정보가 없어요. API 연결 후 다시 시도해주세요.'
+          ? '이 계정의 비밀번호 확인 정보를 찾지 못했어요.'
           : '비밀번호가 일치하지 않아요.',
       );
     } catch {
@@ -198,20 +198,15 @@ export function MyPageWithdrawScreen() {
         onClose={closeModal}
         primaryAction={{
           disabled:
-            modalBusy ||
-            (!withdrawError && !reauthenticated && !usesKakao && !verificationValue),
+            modalBusy || (!withdrawError && !reauthenticated && !verificationValue),
           label: withdrawError
             ? '다시 시도'
             : reauthenticated
               ? '탈퇴하기'
-              : usesKakao
-                ? '카카오로 확인'
-                : '확인',
+              : '확인',
           loading: modalBusy,
           onPress:
-            withdrawError || reauthenticated
-              ? confirmWithdraw
-              : () => void confirmIdentity(),
+            withdrawError || reauthenticated ? confirmWithdraw : () => void confirmIdentity(),
           variant: withdrawError || reauthenticated ? 'danger' : 'primary',
         }}
         secondaryAction={{
@@ -224,9 +219,7 @@ export function MyPageWithdrawScreen() {
             ? '탈퇴를 완료하지 못했어요'
             : reauthenticated
               ? '정말 탈퇴할까요?'
-              : usesKakao
-                ? '카카오 계정을 확인해주세요'
-                : '비밀번호를 확인해주세요'
+              : '비밀번호를 확인해주세요'
         }
         variant="center"
         visible={modalVisible}
@@ -237,17 +230,6 @@ export function MyPageWithdrawScreen() {
               ? '계정 정보를 모두 삭제하지 못했어요.\n잠시 후 다시 시도해주세요.'
               : '탈퇴 후에는 현재 계정 데이터를 되돌릴 수 없어요.'}
           </Text>
-        ) : usesKakao ? (
-          <View style={styles.modalMessage}>
-            <Text style={styles.modalDescription}>
-              카카오 계정으로 본인 확인을 진행해주세요.
-            </Text>
-            {verificationError ? (
-              <Text accessibilityLiveRegion="polite" style={styles.modalError}>
-                {verificationError}
-              </Text>
-            ) : null}
-          </View>
         ) : (
           <AppInput
             autoCapitalize="none"
@@ -333,9 +315,6 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body2,
     color: COLORS.gray600,
     textAlign: 'center',
-  },
-  modalMessage: {
-    gap: SPACING.md,
   },
   modalError: {
     color: COLORS.error,

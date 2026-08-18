@@ -40,9 +40,11 @@ export function useSignupCompletion() {
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const {
+    clearSignupDraft,
     committedSignupRecovery,
     data,
     markSignupCompleted,
+    resumeSignupDraft,
     signupSessionId,
   } = useSignup();
   const {
@@ -90,6 +92,7 @@ export function useSignupCompletion() {
     let ownsTransaction = false;
     let remoteOnboardingAttempted = false;
     let remoteOnboardingCompleted = false;
+    let signupDraftCleared = false;
 
     try {
       if (!currentUserId) throw new Error('missing-remote-signup-session');
@@ -150,6 +153,8 @@ export function useSignupCompletion() {
           if (transaction?.status !== 'committed') {
             await saveSignupTransaction(transactionOwner, 'committed');
           }
+          await clearSignupDraft();
+          signupDraftCleared = true;
           if (transactionOwner.method === 'local') {
             await activateLocalCredential(userId);
           }
@@ -205,7 +210,19 @@ export function useSignupCompletion() {
             { text: '닫기', style: 'cancel' },
             {
               text: '로그인하기',
-              onPress: () => navigateOnce(() => router.replace('/login')),
+              onPress: () =>
+                navigateOnce(async () => {
+                  try {
+                    await clearSignupDraft();
+                    router.replace('/login');
+                  } catch (error) {
+                    showAlert(
+                      '회원가입을 종료하지 못했어요',
+                      '잠시 후 다시 시도해주세요.',
+                    );
+                    throw error;
+                  }
+                }),
             },
           ]);
           throw new Error('signup-account-exists');
@@ -259,6 +276,8 @@ export function useSignupCompletion() {
       if (!kakaoLocation) {
         await saveSignupTransaction(transactionOwner, 'committed');
       }
+      await clearSignupDraft();
+      signupDraftCleared = true;
       if (transactionOwner.method === 'local') {
         await activateLocalCredential(userId);
       }
@@ -277,6 +296,7 @@ export function useSignupCompletion() {
       );
       router.push('/signup/complete');
     } catch (error) {
+      if (!signupDraftCleared) resumeSignupDraft();
       const preserveRemoteOnboarding =
         transactionOwner.method === 'kakao' &&
         (remoteOnboardingCompleted ||
@@ -317,6 +337,7 @@ export function useSignupCompletion() {
     activateLocalCredential,
     activatePreparedRemoteSignup,
     activateSignupUser,
+    clearSignupDraft,
     committedSignupRecovery,
     data,
     deleteLocalCredential,
@@ -333,6 +354,7 @@ export function useSignupCompletion() {
     registerSignupPet,
     registerSignupProfile,
     registerLocalCredential,
+    resumeSignupDraft,
     router,
     showAlert,
     signupIdentityFinalized,

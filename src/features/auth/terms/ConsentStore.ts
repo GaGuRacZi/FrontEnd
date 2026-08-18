@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { ConsentDecisionInput, ConsentRecord } from './types';
-import { isTermId } from './types';
+import { isValidConsentRecord } from './types';
 
 export interface ConsentStore {
   deleteExpiredSignupHistories(activeSignupUserId: string): Promise<void>;
@@ -45,29 +45,7 @@ function storageKey(userId: string) {
   return `${CONSENT_STORAGE_KEY_PREFIX}${encodeURIComponent(userId)}`;
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === 'string';
-}
-
-function isConsentRecord(value: unknown): value is ConsentRecord {
-  if (!value || typeof value !== 'object') return false;
-
-  const record = value as Partial<ConsentRecord>;
-
-  return (
-    typeof record.agreed === 'boolean' &&
-    isNullableString(record.agreedAt) &&
-    typeof record.decidedAt === 'string' &&
-    typeof record.id === 'string' &&
-    typeof record.termId === 'string' &&
-    isTermId(record.termId) &&
-    typeof record.termVersion === 'string' &&
-    typeof record.userId === 'string' &&
-    isNullableString(record.withdrawnAt)
-  );
-}
-
-function parseHistory(value: string | null) {
+function parseHistory(value: string | null, userId: string) {
   if (!value) return [];
 
   const parsed: unknown = JSON.parse(value);
@@ -81,7 +59,7 @@ function parseHistory(value: string | null) {
   if (
     stored.schemaVersion !== CONSENT_SCHEMA_VERSION ||
     !Array.isArray(stored.records) ||
-    !stored.records.every(isConsentRecord)
+    !stored.records.every((record) => isValidConsentRecord(record, userId))
   ) {
     throw new Error('동의 이력 형식이 올바르지 않습니다.');
   }
@@ -111,8 +89,15 @@ export class LocalConsentStore implements ConsentStore {
   }
 
   private async readHistory(userId: string) {
-    const stored = await AsyncStorage.getItem(storageKey(userId));
-    return parseHistory(stored);
+    const key = storageKey(userId);
+    const stored = await AsyncStorage.getItem(key);
+
+    try {
+      return parseHistory(stored, userId);
+    } catch {
+      await AsyncStorage.removeItem(key);
+      return [];
+    }
   }
 
   async deleteExpiredSignupHistories(activeSignupUserId: string) {
@@ -134,7 +119,8 @@ export class LocalConsentStore implements ConsentStore {
       const storedHistories = await AsyncStorage.multiGet(signupStorageKeys);
       const expiredKeys = storedHistories.flatMap(([key, value]) => {
         try {
-          const history = parseHistory(value);
+          const userId = decodeURIComponent(key.slice(CONSENT_STORAGE_KEY_PREFIX.length));
+          const history = parseHistory(value, userId);
           const latestDecision = history.reduce(
             (latest, { decidedAt }) => Math.max(latest, Date.parse(decidedAt)),
             0,

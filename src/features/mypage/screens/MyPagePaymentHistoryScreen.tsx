@@ -8,9 +8,9 @@ import { useMyPageStore } from '../MyPageStore';
 import type { PaymentStatus } from '../types';
 
 const STATUS_LABELS: Record<PaymentStatus, string> = {
-  canceled: '결제취소',
-  failed: '결제실패',
-  paid: '결제완료',
+  canceled: '결제 취소',
+  failed: '결제 실패',
+  paid: '결제 완료',
 };
 
 const STATUS_BADGES: Record<PaymentStatus, { backgroundColor: string; color: string }> = {

@@ -4,12 +4,19 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 type AppChipProps = {
   label: string;
+  minWidth?: number;
   onPress?: () => void;
   selected?: boolean;
   size?: 'medium' | 'small';
 };
 
-export function AppChip({ label, onPress, selected = false, size = 'medium' }: AppChipProps) {
+export function AppChip({
+  label,
+  minWidth,
+  onPress,
+  selected = false,
+  size = 'medium',
+}: AppChipProps) {
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : 'text'}
@@ -20,6 +27,7 @@ export function AppChip({ label, onPress, selected = false, size = 'medium' }: A
       style={({ pressed }) => [
         styles.chip,
         size === 'small' ? styles.small : styles.medium,
+        minWidth ? { minWidth } : undefined,
         selected && styles.selectedChip,
         pressed && styles.pressed,
       ]}

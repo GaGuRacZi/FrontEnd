@@ -9,7 +9,7 @@ export default function IndexRoute() {
     useAuthSession();
 
   if (!isReady || sessionLoadError) {
-    return <AuthSessionStateScreen loadingLabel="PAW를 준비하고 있어요." />;
+    return <AuthSessionStateScreen loadingLabel="PAW를 불러오고 있어요." />;
   }
 
   if (currentUserId) {

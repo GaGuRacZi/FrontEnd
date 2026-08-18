@@ -180,7 +180,7 @@ export function EmailVerificationField() {
   };
 
   const actionTitle = (() => {
-    if (isVerified) return '인증완료';
+    if (isVerified) return '인증 완료';
     if (emailVerification.status === 'requesting') return '전송 중';
     if (hasPendingVerification) return '재전송';
 

@@ -6,6 +6,7 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppButton, AppIcon, EmptyState } from '@/src/components/common';
 import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageCard, MyPageHeader, MyPageRow } from '../components';
 import {
@@ -33,6 +34,7 @@ function formatWon(amount: number) {
 
 export function MyPageCheckoutScreen() {
   const router = useRouter();
+  const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const { planId } = useLocalSearchParams();
   const { paymentMethods, subscription, switchPlan } = useMyPageStore();
@@ -40,9 +42,11 @@ export function MyPageCheckoutScreen() {
   const submittingRef = useRef(false);
   const [paymentGuideVisible, setPaymentGuideVisible] = useState(false);
   const [resultVisible, setResultVisible] = useState(false);
+  const [submittedUpgradeStatus, setSubmittedUpgradeStatus] =
+    useState<PaymentStatus | null>(null);
 
   usePreventRemove(submitting, () => {
-    showAlert('처리 중이에요', '완료 안내가 표시될 때까지 잠시 기다려주세요.');
+    showAlert('처리 중이에요', '처리가 끝날 때까지 잠시 기다려주세요.');
   });
 
   if (!isPlanId(planId)) {
@@ -63,6 +67,8 @@ export function MyPageCheckoutScreen() {
   const isCancel = !isSamePlan && selectedRank < currentRank && selectedPlan.id === 'baby-jelly';
   const paymentAmount = isUpgrade ? getUpgradePaymentAmount(currentPlan.id, selectedPlan.id) : 0;
   const paymentStatus = isUpgrade ? getMockPaymentStatus() : 'paid';
+  const resultIsUpgrade = submittedUpgradeStatus !== null || isUpgrade;
+  const resultPaymentStatus = submittedUpgradeStatus ?? paymentStatus;
   const buttonTitle = isSamePlan
     ? '현재 이용 중'
     : isUpgrade
@@ -73,21 +79,21 @@ export function MyPageCheckoutScreen() {
   const paymentLabel = defaultMethod?.label ?? '결제 수단 등록';
   const paymentMeta = defaultMethod?.last4 ?? '연결된 결제 수단이 없어요';
   const resultTitle =
-    isUpgrade && paymentStatus === 'failed'
+    resultIsUpgrade && resultPaymentStatus === 'failed'
       ? '결제에 실패했어요'
-      : isUpgrade && paymentStatus === 'canceled'
+      : resultIsUpgrade && resultPaymentStatus === 'canceled'
         ? '결제가 취소됐어요'
-        : isUpgrade
+        : resultIsUpgrade
           ? '결제가 완료됐어요'
           : isCancel
             ? '구독 해지를 예약했어요'
             : '요금제 변경을 예약했어요';
   const resultDescription =
-    isUpgrade && paymentStatus === 'failed'
+    resultIsUpgrade && resultPaymentStatus === 'failed'
       ? '결제 수단을 확인한 뒤 다시 시도해주세요.'
-      : isUpgrade && paymentStatus === 'canceled'
+      : resultIsUpgrade && resultPaymentStatus === 'canceled'
         ? '결제가 진행되지 않았어요. 다시 결제할 수 있어요.'
-        : isUpgrade
+        : resultIsUpgrade
           ? `${selectedPlan.name} 혜택을 바로 사용할 수 있어요.`
           : isCancel
             ? '다음 결제일부터 아기 젤리로 변경돼요.'
@@ -101,7 +107,8 @@ export function MyPageCheckoutScreen() {
         : '다음 결제일부터 낮은 요금제가 적용돼요.';
   const closeResult = () => {
     setResultVisible(false);
-    if (!isUpgrade || paymentStatus === 'paid') router.dismissTo('/mypage');
+    setSubmittedUpgradeStatus(null);
+    if (!resultIsUpgrade || resultPaymentStatus === 'paid') router.dismissTo('/mypage');
   };
 
   const submit = () => {
@@ -127,6 +134,7 @@ export function MyPageCheckoutScreen() {
           return;
         }
 
+        if (isUpgrade) setSubmittedUpgradeStatus(paymentStatus);
         setResultVisible(true);
       } catch {
         showAlert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
@@ -150,7 +158,7 @@ export function MyPageCheckoutScreen() {
           <MyPageRow
             description={paymentMeta}
             iconName="wallet-outline"
-            onPress={() => router.push('/mypage/payment-methods')}
+            onPress={() => navigateOnce(() => router.push('/mypage/payment-methods'))}
             title={paymentLabel}
           />
         </MyPageCard>
@@ -195,7 +203,7 @@ export function MyPageCheckoutScreen() {
           label: '결제 수단 관리',
           onPress: () => {
             setPaymentGuideVisible(false);
-            router.push('/mypage/payment-methods');
+            navigateOnce(() => router.push('/mypage/payment-methods'));
           },
         }}
         secondaryAction={{
@@ -214,6 +222,7 @@ export function MyPageCheckoutScreen() {
       <AppModal
         closeOnBackdropPress={false}
         onClose={closeResult}
+        onRequestClose={closeResult}
         primaryAction={{
           label: '확인',
           onPress: closeResult,
@@ -226,19 +235,19 @@ export function MyPageCheckoutScreen() {
           <View
             style={[
               styles.resultIcon,
-              paymentStatus === 'failed' && styles.resultIconFailed,
-              paymentStatus === 'canceled' && styles.resultIconCanceled,
+              resultPaymentStatus === 'failed' && styles.resultIconFailed,
+              resultPaymentStatus === 'canceled' && styles.resultIconCanceled,
             ]}
           >
             <AppIcon
               color={
-                paymentStatus === 'failed'
+                resultPaymentStatus === 'failed'
                   ? COLORS.danger
-                  : paymentStatus === 'canceled'
+                  : resultPaymentStatus === 'canceled'
                     ? COLORS.gray600
                     : COLORS.primary
               }
-              name={paymentStatus === 'paid' ? 'checkmark' : 'close'}
+              name={resultPaymentStatus === 'paid' ? 'checkmark' : 'close'}
               size={26}
             />
           </View>

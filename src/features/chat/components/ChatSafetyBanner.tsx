@@ -16,9 +16,9 @@ export function ChatSafetyBanner({ compact = false, onGuidePress }: ChatSafetyBa
       </View>
       <View style={styles.textContainer}>
         <Text style={styles.title}>{compact ? 'PAW 안전 채팅' : '안전한 PAW 채팅'}</Text>
-        <Text numberOfLines={compact ? 1 : 2} style={styles.description}>
+        <Text numberOfLines={2} style={styles.description}>
           {compact
-            ? '개인정보와 전문의약품 거래는 주의해주세요.'
+            ? '개인정보 공유 주의 · 전문의약품 거래 금지'
             : '거래·산책 약속은 앱 안에서 안전하게 남겨요.'}
         </Text>
       </View>
@@ -50,8 +50,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
   },
   compactContainer: {
-    minHeight: 52,
-    paddingVertical: SPACING.xs,
+    minHeight: 64,
+    paddingVertical: SPACING.sm,
   },
   iconContainer: {
     alignItems: 'center',
