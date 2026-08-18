@@ -2,17 +2,20 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppModal } from '@/src/components/modal';
+import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageCard, MyPageDivider, MyPageHeader, MyPageRow } from '../components';
+import { useMyPageStore } from '../MyPageStore';
 
 export function MyPageSettingsScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
+  const showAlert = useAppAlert();
   const { logOut } = useAccountLifecycle();
+  const { profile } = useMyPageStore();
   const [logoutVisible, setLogoutVisible] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -81,7 +84,16 @@ export function MyPageSettingsScreen() {
           <MyPageRow
             description="계정 탈퇴 절차"
             iconName="trash-outline"
-            onPress={() => navigateOnce(() => router.push('/mypage/withdraw'))}
+            onPress={() => {
+              if (profile?.loginConnections.some(({ method }) => method === 'kakao')) {
+                showAlert(
+                  '카카오 계정 탈퇴는 지원하지 않아요',
+                  '현재 카카오 계정으로는 본인 확인을 진행할 수 없어요.',
+                );
+                return;
+              }
+              navigateOnce(() => router.push('/mypage/withdraw'));
+            }}
             title="탈퇴하기"
           />
         </MyPageCard>
