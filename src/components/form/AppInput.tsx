@@ -9,6 +9,7 @@ type AppInputProps = Omit<TextInputProps, 'style'> & {
   containerStyle?: StyleProp<ViewStyle>;
   error?: string;
   helperText?: string;
+  inputContainerStyle?: StyleProp<ViewStyle>;
   inputStyle?: StyleProp<TextStyle>;
   label?: string;
   leftElement?: ReactNode;
@@ -22,6 +23,7 @@ export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
     containerStyle,
     error,
     helperText,
+    inputContainerStyle,
     inputStyle,
     label,
     leftElement,
@@ -49,6 +51,7 @@ export const AppInput = forwardRef<TextInput, AppInputProps>(function AppInput(
           isFocused && styles.focused,
           error && styles.error,
           textInputProps.editable === false && styles.disabled,
+          inputContainerStyle,
         ]}
       >
         {leftElement ? <View style={styles.leftElement}>{leftElement}</View> : null}

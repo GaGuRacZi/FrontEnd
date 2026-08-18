@@ -82,6 +82,7 @@ export default function RootLayout() {
             <Stack.Screen name="community" />
             <Stack.Screen name="chat" />
             <Stack.Screen name="pet" />
+            <Stack.Screen name="dashboard" />
           </Stack>
         </AppProviders>
       </ThemeProvider>

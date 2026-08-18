@@ -107,4 +107,9 @@ export const TYPOGRAPHY = {
     fontSize: 11,
     lineHeight: 16,
   },
+  badge: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11,
+    lineHeight: 16,
+  },
 } satisfies Record<string, TextStyle>;
