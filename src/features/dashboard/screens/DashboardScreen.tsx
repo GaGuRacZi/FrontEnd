@@ -1,7 +1,7 @@
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { Modal, Pressable, ScrollView, StyleSheet, View, Text } from 'react-native';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { BrandLogoButton } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
@@ -16,18 +16,38 @@ export function DashboardScreen() {
 	const router = useRouter();
 	const { pets, selectedPet } = usePetStore();
 	const [showSummarizingToast, setShowSummarizingToast] = useState(false);
+	const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 	const handleDiagnosisPress = (diagnosis: (typeof MOCK_DIAGNOSIS_LIST)[number]) => {
 		if (diagnosis.status === 'summarizing') {
-		setShowSummarizingToast(true);
-		setTimeout(() => setShowSummarizingToast(false), 2500);
-		return;
-	}
-	router.push(`/dashboard/${diagnosis.id}` as Href);
-};
+			if (toastTimeoutRef.current) {
+				clearTimeout(toastTimeoutRef.current);
+			}
+			setShowSummarizingToast(true);
+			toastTimeoutRef.current = setTimeout(() => {
+				setShowSummarizingToast(false);
+				toastTimeoutRef.current = null;
+			}, 2500);
+			return;
+		}
+		router.push(`/dashboard/${diagnosis.id}` as Href);
+	};
+
+	useEffect(() => {
+		return () => {
+			if (toastTimeoutRef.current) {
+				clearTimeout(toastTimeoutRef.current);
+			}
+		};
+	}, []);
 
 	if (!selectedPet) return null;
 
-return (
+	const filteredList = MOCK_DIAGNOSIS_LIST.filter(
+		(item) => !item.petId || item.petId === selectedPet.id
+	);
+
+	return (
 		<>
 			<ScreenLayout
 				headerFullWidth
@@ -55,7 +75,7 @@ return (
 						) : null}
 
 						<View style={styles.list}>
-							{MOCK_DIAGNOSIS_LIST.map((diagnosis) => (
+							{filteredList.map((diagnosis) => (
 								<DiagnosisListCard
 									diagnosis={diagnosis}
 									key={diagnosis.id}
@@ -69,24 +89,24 @@ return (
 			</ScreenLayout>
 
 			<Modal
-					animationType="fade"
-					onRequestClose={() => setShowSummarizingToast(false)}
-					statusBarTranslucent
-					transparent
-					visible={showSummarizingToast}
+				animationType="fade"
+				onRequestClose={() => setShowSummarizingToast(false)}
+				statusBarTranslucent
+				transparent
+				visible={showSummarizingToast}
+			>
+				<Pressable
+					accessibilityLabel="닫기"
+					accessibilityRole="button"
+					onPress={() => setShowSummarizingToast(false)}
+					style={styles.toastBackdrop}
 				>
-					<Pressable
-						accessibilityLabel="닫기"
-						accessibilityRole="button"
-						onPress={() => setShowSummarizingToast(false)}
-						style={styles.toastBackdrop}
-					>
-						<View style={styles.toastCard}>
-							<Text style={styles.toast}>아직 요약 중이에요!</Text>
-							<Text style={styles.toast}>완료되면 알려 드릴게요.</Text>
-						</View>
-					</Pressable>
-				</Modal>
+					<View style={styles.toastCard}>
+						<Text style={styles.toast}>아직 요약 중이에요!</Text>
+						<Text style={styles.toast}>완료되면 알려 드릴게요.</Text>
+					</View>
+				</Pressable>
+			</Modal>
 		</>
 	);
 }

@@ -32,19 +32,19 @@ export function RecordingScreen() {
 		if (phase !== 'recording' || isPaused) return undefined;
 
 		intervalRef.current = setInterval(() => {
-			setElapsedSeconds((current) => {
-				if (current + 1 >= MAX_RECORDING_SECONDS) {
-					setPhase('processing');
-					return current;
-				}
-				return current + 1;
-			});
+			setElapsedSeconds((current) => Math.min(current + 1, MAX_RECORDING_SECONDS));
 		}, 1000);
 
 		return () => {
 			if (intervalRef.current) clearInterval(intervalRef.current);
 		};
 	}, [phase, isPaused]);
+
+	useEffect(() => {
+		if (elapsedSeconds >= MAX_RECORDING_SECONDS && phase === 'recording') {
+			setPhase('processing');
+		}
+	}, [elapsedSeconds, phase]);
 
 	if (!selectedPet) return null;
 

@@ -12,7 +12,7 @@ export const MOCK_DIAGNOSIS_LIST: DiagnosisListItem[] = [
 		date: '2026.07.01',
 		diagnosisTitle: '관절염 정기 진료',
 		status: 'completed',
-		summaryNote: '카프로펜 처방 · 재검사 2주 후',
+		summaryNote: '카미녹스·가리유니 처방 · 재검사 4주 후',
 	},
 	{
 		id: 'diag-3',
@@ -47,7 +47,7 @@ export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
 		medications: [
 			{
 				id: 'med-1',
-				name: '메타캄',
+				name: '카미녹스',
 				dosageLabel: 'Meloxicam 1.5mg/ml',
 				frequencyLabel: '하루 2회',
 				doseLabel: '1정씩',
@@ -57,7 +57,7 @@ export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
 			},
 			{
 				id: 'med-2',
-				name: '개구락지 감기약',
+				name: '가리유니',
 				dosageLabel: 'Carprofen 25mg',
 				frequencyLabel: '하루 2회',
 				doseLabel: '1정씩',
@@ -76,7 +76,7 @@ export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
 		careFooterNote: '증상이 심해지거나 식욕 저하 시 즉시 재방문 권장',
 		hospitalName: '하얀마음동물병원',
 		transcriptDuration: '05:25',
-		transcriptRecordedAt: '2025년 6월 27일 (금) 14:00',
+		transcriptRecordedAt: '2026년 7월 1일 (수) 14:00',
 		transcript: [
 			{ id: 't1', speaker: 'vet', text: '안녕하세요! 아리 보호자님, 오늘 어떤 증상으로 내원하셨나요?' },
 			{ id: 't2', speaker: 'owner', text: '아리가 요즘 앞다리를 절뚝거리고, 계단 오르내리기를 너무 힘들어해요. 산책도 금방 지쳐서 주저앉더라고요.' },

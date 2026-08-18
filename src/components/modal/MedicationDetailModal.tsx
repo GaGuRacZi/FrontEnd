@@ -63,8 +63,8 @@ export function MedicationDetailModal({
 				<View style={styles.warningSection}>
 					<Text style={styles.warningTitle}>주의할 점</Text>
 					<View style={styles.warningBox}>
-						{warningLines.map((line) => (
-							<Text key={line} style={styles.warningLine}>
+						{warningLines.map((line, index) => (
+							<Text key={`${line}-${index}`} style={styles.warningLine}>
 								· {line}
 							</Text>
 						))}
