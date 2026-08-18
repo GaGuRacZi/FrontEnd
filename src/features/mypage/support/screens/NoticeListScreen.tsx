@@ -47,7 +47,7 @@ export function NoticeListScreen() {
               <Pressable
                 accessibilityLabel="검색어 지우기"
                 accessibilityRole="button"
-                hitSlop={SPACING.md}
+                hitSlop={SPACING.xl}
                 onPress={() => setQuery('')}
               >
                 <AppIcon color={COLORS.gray500} name="close-circle" size={20} />

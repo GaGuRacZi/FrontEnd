@@ -37,8 +37,14 @@ export function loadActiveSignupDraft() {
     const draft = parseStoredSignupDraft(stored);
 
     if (!draft || !isCurrentSignupDraft(draft)) {
-      if (draft) await clearDraftArtifacts(draft.sessionId);
+      const cleanupError = draft
+        ? await clearDraftArtifacts(draft.sessionId).then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+        : undefined;
       if (stored !== null) await AsyncStorage.removeItem(ACTIVE_SIGNUP_DRAFT_KEY);
+      if (cleanupError) throw cleanupError;
       return null;
     }
 

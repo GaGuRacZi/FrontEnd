@@ -13,7 +13,7 @@ export default function CommunityPostDetailRoute() {
 
   return (
     <CommunityPostDetailScreen
-      defaultOrigin={fromMyPageActivity ? 'mypage-activity' : undefined}
+      defaultOrigin={fromMyPageActivity && postKind ? 'mypage-activity' : undefined}
       postId={postId ?? ''}
       postKind={postKind}
     />
