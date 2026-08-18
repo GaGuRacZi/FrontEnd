@@ -124,7 +124,7 @@ type SignupProviderProps = PropsWithChildren<{
 }>;
 
 export function SignupProvider({ children, initialMethod }: SignupProviderProps) {
-  const { pendingRemoteSignupUserId } = useAuthSession();
+  const { isReady, pendingRemoteSignupUserId } = useAuthSession();
   const signupMethod = pendingRemoteSignupUserId ? 'kakao' : initialMethod;
   const restorationStarted = useRef(false);
   const draftEnabledRef = useRef(true);
@@ -154,7 +154,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
   }, [pendingRemoteSignupUserId]);
 
   useEffect(() => {
-    if (restorationStarted.current) return;
+    if (!isReady || restorationStarted.current) return;
 
     restorationStarted.current = true;
     let active = true;
@@ -269,7 +269,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     return () => {
       active = false;
     };
-  }, [pendingRemoteSignupUserId, signupMethod]);
+  }, [isReady, pendingRemoteSignupUserId, signupMethod]);
 
   const flushSignupDraft = useCallback(() => {
     if (draftSaveTimerRef.current) {

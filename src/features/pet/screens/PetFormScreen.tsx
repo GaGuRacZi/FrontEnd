@@ -481,6 +481,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       imageMutationLock.current = true;
       setIsImageMutating(true);
       let managedUri: string | null = null;
+      let cleanupAfterRelease = false;
       try {
         managedUri = await persistPetImage(currentUserId, sourceUri);
         const current = draftRef.current;
@@ -488,7 +489,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         const previousUri = current?.[field] ?? null;
 
         if (!current) {
-          await flushPetImageRemovals().catch(() => undefined);
+          cleanupAfterRelease = true;
           showAlert('사진을 등록하지 못했어요', '잠시 후 다시 시도해주세요.');
           return;
         }
@@ -499,7 +500,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
           await queueDraftImagesForRemoval(previousUri);
           await petRepository.saveDraft(nextDraft);
         } catch (error) {
-          await flushPetImageRemovals().catch(() => undefined);
+          cleanupAfterRelease = true;
           throw error;
         }
 
@@ -509,6 +510,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         await flushPetImageRemovals().catch(() => undefined);
       } finally {
         if (managedUri) releasePersistedPetImage(currentUserId, managedUri);
+        if (cleanupAfterRelease) await flushPetImageRemovals().catch(() => undefined);
         imageMutationLock.current = false;
         setIsImageMutating(false);
       }
