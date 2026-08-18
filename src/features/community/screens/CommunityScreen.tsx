@@ -394,20 +394,11 @@ function TalkLikeIcon({
   size: number;
 }) {
   return (
-    <View
-      style={[styles.talkLikeIcon, { height: size + 6, width: size + 6 }]}
-    >
-      <Image
-        accessible={false}
-        source={REVIEW_GOOD_ICON}
-        style={{
-          height: size,
-          opacity: liked ? 1 : 0.6,
-          tintColor: liked ? COLORS.like : COLORS.danger,
-          width: size,
-        }}
-      />
-    </View>
+    <AppIcon
+      color={liked ? COLORS.like : COLORS.danger}
+      name={liked ? 'heart' : 'heart-outline'}
+      size={size}
+    />
   );
 }
 
@@ -3315,11 +3306,6 @@ const styles = StyleSheet.create({
   },
   metaItemProminent: {
     gap: SPACING.sm,
-  },
-  talkLikeIcon: {
-    alignItems: 'center',
-    borderRadius: RADIUS.round,
-    justifyContent: 'center',
   },
   metaText: {
     ...TYPOGRAPHY.small,
