@@ -10,6 +10,10 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { SignupScaffold } from '../components/SignupScaffold';
 import { useSignup } from '../SignupContext';
 
+function isSignupCancelled(error: unknown) {
+  return error instanceof Error && error.message === 'signup-cancelled';
+}
+
 export function SignupProfileScreen() {
   const router = useRouter();
   const showAlert = useAppAlert();
@@ -39,7 +43,8 @@ export function SignupProfileScreen() {
 
     void ImagePicker.getPendingResultAsync()
       .then(handlePickerResult)
-      .catch(() => {
+      .catch((error) => {
+        if (isSignupCancelled(error)) return;
         showAlert('사진을 저장하지 못했어요', '사진을 다시 선택해주세요.');
       });
   }, [handlePickerResult, showAlert]);
@@ -77,7 +82,8 @@ export function SignupProfileScreen() {
       });
 
       await handlePickerResult(result);
-    } catch {
+    } catch (error) {
+      if (isSignupCancelled(error)) return;
       showAlert('사진을 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
     } finally {
       pickerOpen.current = false;

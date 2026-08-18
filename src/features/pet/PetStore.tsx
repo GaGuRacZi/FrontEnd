@@ -405,7 +405,7 @@ export function PetProvider({ children }: PropsWithChildren) {
           await queueUserPetImageRemoval(userId);
           await petRepository.deleteUser(userId);
           await Promise.all([
-            flushQueuedPetImageRemovals(userId, new Set()),
+            flushQueuedPetImageRemovals(userId, new Set()).catch(() => undefined),
             clearPendingPetImagePicker(userId),
           ]);
           invalidateActiveState(userId);

@@ -62,7 +62,8 @@ assert.equal(
   isCurrentSignupDraft(draft, Date.parse(draft.savedAt) + 8 * 24 * 60 * 60 * 1000),
   false,
 );
-assert.equal(parseStoredSignupDraft(serialized.replace('"schemaVersion":1', '"schemaVersion":2')), null);
+const unsupportedSchemaDraft = { ...JSON.parse(serialized), schemaVersion: 2 };
+assert.equal(parseStoredSignupDraft(JSON.stringify(unsupportedSchemaDraft)), null);
 const draftWithPassword = JSON.parse(serialized);
 draftWithPassword.data.password = secretValues[0];
 assert.equal(parseStoredSignupDraft(JSON.stringify(draftWithPassword)), null);

@@ -165,17 +165,23 @@ export function InquiryWriteScreen() {
 
     savingExitRef.current = true;
     setSavingExit(true);
-    const result = await saveDraft();
-    if (result.ok) {
-      allowNavigationRef.current = true;
-      setPendingExitAction(null);
-      setTimeout(() => navigation.dispatch(exitAction), 0);
-      return;
+    try {
+      const result = await saveDraft();
+      if (result.ok) {
+        allowNavigationRef.current = true;
+        setPendingExitAction(null);
+        setTimeout(() => navigation.dispatch(exitAction), 0);
+        return;
+      }
+      showAlert('작성 내용을 저장하지 못했어요', '입력 내용은 그대로 두었어요. 다시 시도해주세요.');
+    } catch {
+      showAlert('작성 내용을 저장하지 못했어요', '입력 내용은 그대로 두었어요. 다시 시도해주세요.');
+    } finally {
+      if (!allowNavigationRef.current) {
+        savingExitRef.current = false;
+        setSavingExit(false);
+      }
     }
-
-    savingExitRef.current = false;
-    setSavingExit(false);
-    showAlert('작성 내용을 저장하지 못했어요', '입력 내용은 그대로 두었어요. 다시 시도해주세요.');
   }, [navigation, pendingExitAction, saveDraft, showAlert]);
 
   const finishSubmission = useCallback(() => {

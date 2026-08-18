@@ -1,8 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 import {
   BackHandler,
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -38,6 +39,12 @@ export function LoginScreen() {
   const [formError, setFormError] = useState<string>();
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios' && formError) {
+      AccessibilityInfo.announceForAccessibility(formError);
+    }
+  }, [formError]);
 
   const canSubmit = email.trim().length > 0 && password.length > 0;
 

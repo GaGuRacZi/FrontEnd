@@ -183,9 +183,13 @@ export function flushQueuedSupportImageRemovals(
   return enqueueRemoval(async () => {
     const queued = await readQueuedRemovals(userId);
     const failed: InquiryImage[] = [];
+    const retained: InquiryImage[] = [];
 
     for (const image of queued) {
-      if (retainedAssetKeys.has(getInquiryImageAssetKey(image))) continue;
+      if (retainedAssetKeys.has(getInquiryImageAssetKey(image))) {
+        retained.push(image);
+        continue;
+      }
       try {
         const file = new File(image.localUri);
         if (file.exists) file.delete();
@@ -194,11 +198,15 @@ export function flushQueuedSupportImageRemovals(
       }
     }
 
+    const remaining = [...failed, ...retained];
+    if (remaining.length) {
+      await AsyncStorage.setItem(removalStorageKey(userId), JSON.stringify(remaining));
+    } else {
+      await AsyncStorage.removeItem(removalStorageKey(userId));
+    }
     if (failed.length) {
-      await AsyncStorage.setItem(removalStorageKey(userId), JSON.stringify(failed));
       throw new Error('support-image-removal-failed');
     }
-    await AsyncStorage.removeItem(removalStorageKey(userId));
   });
 }
 

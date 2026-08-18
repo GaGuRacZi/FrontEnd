@@ -505,8 +505,8 @@ export function SupportProvider({ children }: PropsWithChildren) {
   const draft = visibleState?.draft ?? createEmptyInquiryDraft(currentUserId ?? '');
 
   const getNotice = useCallback(
-    (noticeId: string) => notices.find(({ id }) => id === noticeId),
-    [notices],
+    (noticeId: string) => (currentUserId ? notices.find(({ id }) => id === noticeId) : undefined),
+    [currentUserId, notices],
   );
   const getInquiry = useCallback(
     (inquiryId: string) => visibleState?.inquiries.find(({ id }) => id === inquiryId),

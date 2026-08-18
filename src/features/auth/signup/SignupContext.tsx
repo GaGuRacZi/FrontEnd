@@ -136,7 +136,6 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
   const dataRef = useRef(data);
   const signupSessionIdRef = useRef(signupSessionId);
   const pendingRemoteSignupUserIdRef = useRef(pendingRemoteSignupUserId);
-  pendingRemoteSignupUserIdRef.current = pendingRemoteSignupUserId;
   const [committedSignupRecovery, setCommittedSignupRecovery] =
     useState<SignupTransaction | null>(null);
   const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
@@ -145,6 +144,14 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
   });
   const [signupReady, setSignupReady] = useState(false);
   const [signupCompleted, setSignupCompleted] = useState(false);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
+    pendingRemoteSignupUserIdRef.current = pendingRemoteSignupUserId;
+  }, [pendingRemoteSignupUserId]);
 
   useEffect(() => {
     if (restorationStarted.current) return;
@@ -223,7 +230,6 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
           };
           signupSessionIdRef.current = transaction.sessionId;
           setSignupSessionId(transaction.sessionId);
-          dataRef.current = restoredData;
           setData(restoredData);
           if (restoredTransaction.status === 'committed') {
             setCommittedSignupRecovery(restoredTransaction);
@@ -239,25 +245,20 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
           };
           signupSessionIdRef.current = draft.sessionId;
           setSignupSessionId(draft.sessionId);
-          dataRef.current = restoredData;
           setData(restoredData);
           return;
         }
 
         if (signupMethod) {
           setData((current) => {
-            const next = { ...current, method: signupMethod };
-            dataRef.current = next;
-            return next;
+            return { ...current, method: signupMethod };
           });
         }
       })
       .catch(() => {
         if (active && signupMethod) {
           setData((current) => {
-            const next = { ...current, method: signupMethod };
-            dataRef.current = next;
-            return next;
+            return { ...current, method: signupMethod };
           });
         }
       })
@@ -323,21 +324,13 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
 
   const updateField = useCallback(
     <Key extends keyof SignupData>(key: Key, fieldValue: SignupData[Key]) => {
-      setData((current) => {
-        const next = { ...current, [key]: fieldValue };
-        dataRef.current = next;
-        return next;
-      });
+      setData((current) => ({ ...current, [key]: fieldValue }));
     },
     [],
   );
 
   const updateFields = useCallback((fields: Partial<SignupData>) => {
-    setData((current) => {
-      const next = { ...current, ...fields };
-      dataRef.current = next;
-      return next;
-    });
+    setData((current) => ({ ...current, ...fields }));
   }, []);
 
   const clearSignupDraft = useCallback(async () => {
