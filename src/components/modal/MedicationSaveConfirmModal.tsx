@@ -17,7 +17,9 @@ export function MedicationSaveConfirmModal({
 }: MedicationSaveConfirmModalProps) {
 	return (
 		<AppModal onClose={onDismiss} variant="center" visible={visible}>
-			<Text style={styles.message}>추가한 약물을 할 일 목록에 자동으로 저장할까요?</Text>
+			<Text style={styles.message}>
+				추가한 약물을 &apos;할일 목록&apos;에 자동으로 저장할까요?
+			</Text>
 
 			<View style={styles.buttonRow}>
 				<AppButton

@@ -1,3 +1,4 @@
+import { BlurView } from 'expo-blur';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/common';
@@ -15,6 +16,9 @@ export const PLACEHOLDER_SUMMARY =
 	'생활 관리로는 미끄러운 바닥을 피하고, 짧은 산책과 수중 재활을 병행하는 것이 효과적입니다. 4주 후 재방문 시 약물 반응을 확인할 예정이며, 증상 악화나 식욕 저하 시 즉시 내원하는 것을 권장합니다.';
 
 export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
+	const isLocked = !summary;
+	const content = summary ?? PLACEHOLDER_SUMMARY;
+
 	return (
 		<View style={styles.wrap}>
 			<View style={styles.headerRow}>
@@ -32,13 +36,20 @@ export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
 			</View>
 
 			<View style={styles.divider} />
+
 			<View style={styles.summaryBox}>
-				<Text style={[styles.summaryText, !summary && styles.summaryTextBlurred]}>
-					{summary ?? PLACEHOLDER_SUMMARY}
-				</Text>
+				<Text style={styles.summaryTextNormal}>{content}</Text>
+				{isLocked ? (
+					<BlurView
+						experimentalBlurMethod="dimezisBlurView"
+						intensity={20}
+						style={StyleSheet.absoluteFill}
+						tint="light"
+					/>
+				) : null}
 			</View>
 
-			{!summary ? (
+			{isLocked ? (
 				<>
 					<Text style={styles.hintText}>버튼을 눌러 AI 요약을 확인하세요</Text>
 					<AppButton
@@ -84,9 +95,14 @@ const styles = StyleSheet.create({
 		borderColor: COLORS.summarycontainerborder,
 		borderRadius: RADIUS.md,
 		borderWidth: 1,
+		overflow: 'hidden', // 테두리 라운딩 곡면을 따라 블러가 꽉 차도록 설정
 		padding: SPACING.xl,
+		position: 'relative',
 	},
-	summaryText: { ...TYPOGRAPHY.body2, color: COLORS.gray800 },
-	summaryTextBlurred: { opacity: 0.45 },
+	summaryTextNormal: {
+		...TYPOGRAPHY.body2,
+		color: COLORS.gray800,
+		lineHeight: 22,
+	},
 	hintText: { ...TYPOGRAPHY.small, color: COLORS.gray500, textAlign: 'center' },
 });
