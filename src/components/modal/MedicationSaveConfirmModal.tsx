@@ -1,5 +1,6 @@
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { AppButton } from '@/src/components/common';
 import { AppModal } from '@/src/components/modal';
 import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
@@ -15,18 +16,42 @@ export function MedicationSaveConfirmModal({
 	visible,
 }: MedicationSaveConfirmModalProps) {
 	return (
-		<AppModal
-			onClose={onDismiss}
-			primaryAction={{ label: '네', onPress: onConfirm }}
-			secondaryAction={{ label: '아니요', onPress: onDismiss }}
-			variant="center"
-			visible={visible}
-		>
-			<Text style={styles.message}>추가한 약물을 '할일 목록'에{'\n'}자동으로 저장할까요?</Text>
+		<AppModal onClose={onDismiss} variant="center" visible={visible}>
+			<Text style={styles.message}>추가한 약물을 '할일 목록'에 자동으로 저장할까요?</Text>
+
+			<View style={styles.buttonRow}>
+				<AppButton
+					fullWidth={false}
+					onPress={onDismiss}
+					style={styles.dismissButton}
+					title="아니요"
+					variant="primary"
+				/>
+				<AppButton
+					fullWidth={false}
+					onPress={onConfirm}
+					style={styles.confirmButton}
+					title="네"
+				/>
+			</View>
 		</AppModal>
 	);
 }
 
 const styles = StyleSheet.create({
-	message: { ...TYPOGRAPHY.body1, color: COLORS.black, textAlign: 'center' },
+	message: { ...TYPOGRAPHY.segmentActive, color: COLORS.black, textAlign: 'center', lineHeight: 40 },
+	buttonRow: {
+		flexDirection: 'row',
+		gap: SPACING.jumbo,
+		justifyContent: 'center',
+		marginTop: SPACING.xxl,
+	},
+	dismissButton: {
+		backgroundColor: COLORS.summarycontainerborder,
+		borderColor: COLORS.primary,
+		borderWidth: 1,
+		height: 48,
+		width: 112,
+	},
+	confirmButton: { height: 48, width: 112 },
 });
