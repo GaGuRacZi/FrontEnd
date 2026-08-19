@@ -31,10 +31,12 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 	const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
 	const ocrTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const sourcePickerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const clearTimers = () => {
 		if (ocrTimerRef.current) clearTimeout(ocrTimerRef.current);
+		if (sourcePickerTimerRef.current) clearTimeout(sourcePickerTimerRef.current);
 		if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
 	};
 
@@ -88,9 +90,14 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 
 			if (result.canceled) return;
 
-			setMode('ocrLoading');
-			setFeedbackMessage(null);
+			if (!result.assets.length) {
+				showFeedback('사진을 확인하지 못했어요. 다시 시도해주세요.');
+				return;
+			}
+
 			clearTimers();
+			setFeedbackMessage(null);
+			setMode('ocrLoading');
 
 			ocrTimerRef.current = setTimeout(() => {
 				setMode('idle');
@@ -98,11 +105,19 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 			}, 1800);
 		} catch {
 			setMode('idle');
-			showFeedback('사진첩을 열지 못했어요. 잠시 후 다시 시도해주세요.');
+			showFeedback('사진을 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
 		}
 	};
 
 	const handleOcrPress = () => setSourcePickerVisible(true);
+	const choosePrescriptionImage = (source: 'camera' | 'library') => {
+		setSourcePickerVisible(false);
+		if (sourcePickerTimerRef.current) clearTimeout(sourcePickerTimerRef.current);
+		sourcePickerTimerRef.current = setTimeout(() => {
+			sourcePickerTimerRef.current = null;
+			void selectPrescriptionImage(source);
+		}, 220);
+	};
 
 	const handleSearch = () => {
 		if (!query.trim()) {
@@ -181,7 +196,6 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 						containerStyle={styles.searchInputContainer}
 						inputContainerStyle={styles.searchInputBox}
 						inputStyle={styles.searchInputText}
-						leftElement={<View style={styles.cameraButtonPlaceholder} />}
 						onChangeText={setQuery}
 						placeholder="약물·성분명 검색"
 						rightElement={
@@ -296,17 +310,11 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 				onClose={() => setSourcePickerVisible(false)}
 				primaryAction={{
 					label: '사진첩',
-					onPress: () => {
-						setSourcePickerVisible(false);
-						void selectPrescriptionImage('library');
-					},
+					onPress: () => choosePrescriptionImage('library'),
 				}}
 				secondaryAction={{
 					label: '카메라',
-					onPress: () => {
-						setSourcePickerVisible(false);
-						void selectPrescriptionImage('camera');
-					},
+					onPress: () => choosePrescriptionImage('camera'),
 				}}
 				title="처방전 사진 선택"
 				variant="center"
@@ -456,7 +464,7 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 		minHeight: 0,
 		paddingVertical: 0,
-		textAlign: 'center',
+		textAlign: 'left',
 		textAlignVertical: 'center',
 		includeFontPadding: false,
 	},
@@ -469,7 +477,6 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		width: 44,
 	},
-	cameraButtonPlaceholder: { width: 48 },
 	cameraIcon: { height: 20, width: 20 },
 	helperText: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
 	manualToggle: {

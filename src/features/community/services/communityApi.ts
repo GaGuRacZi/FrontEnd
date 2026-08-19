@@ -400,7 +400,7 @@ export function createRemotePostData(
   const firstImage = images[0];
   const imageData = isUpdate
     ? {
-        ...(existingUrls.length ? { keepPhotoUrls: existingUrls } : {}),
+        keepPhotoUrls: existingUrls,
         ...(firstImage?.url
           ? { thumbnailUrl: firstImage.url }
           : firstImage?.localUri

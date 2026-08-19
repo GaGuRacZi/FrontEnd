@@ -20,6 +20,7 @@ import { createPetDraft, petDraftToEntity } from '../petMappers';
 import {
   formatBirthDate,
   formatBirthDateValue,
+  getLatestBirthDate,
   hasValidPetForm,
   parseBirthDate,
   validatePetForm,
@@ -111,7 +112,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [isImageMutating, setIsImageMutating] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
-  const [pendingBirthDate, setPendingBirthDate] = useState(new Date());
+  const [pendingBirthDate, setPendingBirthDate] = useState(getLatestBirthDate);
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
   const [pendingCompletion, setPendingCompletion] = useState<PendingPetCompletion | null>(null);
   const allowNavigation = useRef(false);
@@ -599,12 +600,16 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
 
   const openCalendar = () => {
     if (imageMutationLock.current || submitLocked.current) return;
-    const initialDate = parseBirthDate(draft?.birthDate ?? '') ?? new Date();
+    const latestBirthDate = getLatestBirthDate();
+    const storedBirthDate = parseBirthDate(draft?.birthDate ?? '');
+    const initialDate = storedBirthDate && storedBirthDate <= latestBirthDate
+      ? storedBirthDate
+      : latestBirthDate;
 
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         display: 'calendar',
-        maximumDate: new Date(),
+        maximumDate: latestBirthDate,
         mode: 'date',
         onChange: handleAndroidDateChange,
         value: initialDate,
@@ -859,7 +864,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
             accentColor={COLORS.primary}
             display="inline"
             locale="ko-KR"
-            maximumDate={new Date()}
+            maximumDate={getLatestBirthDate()}
             mode="date"
             onChange={(_, date) => date && setPendingBirthDate(date)}
             themeVariant="light"

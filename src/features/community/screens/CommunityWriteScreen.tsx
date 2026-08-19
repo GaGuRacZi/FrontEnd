@@ -514,6 +514,12 @@ export function CommunityWriteScreen() {
   const editRequestKey =
     isEditRequested && postId ? `${initialTab}:${postId}:${viewerId}` : null;
 
+  useEffect(() => {
+    if (!isMarketEditMode && !tradeLocation.trim() && profile?.location) {
+      setTradeLocation(profile.location);
+    }
+  }, [isMarketEditMode, profile?.location, tradeLocation]);
+
   const currentDraft = useMemo<CommunityWriteDraft>(() => {
     const updatedAt = new Date().toISOString();
 
@@ -909,7 +915,7 @@ export function CommunityWriteScreen() {
         allowsMultipleSelection: true,
         defaultTab: 'photos',
         mediaTypes: ['images'],
-        quality: 0.85,
+        quality: 0.65,
         selectionLimit: maxCount - photos.length,
       });
       if (result.canceled) return;
@@ -1230,6 +1236,11 @@ export function CommunityWriteScreen() {
         : '소통 글쓰기';
   const submitLabel = pendingSubmittedPostId ? '다시 시도' : isEditMode ? '저장' : '등록';
   const submitReady = canSubmit || Boolean(pendingSubmittedPostId);
+  const submitDisplayLabel = submitting
+    ? (initialTab === 'talk' ? talkPhotos.length : marketPhotos.length)
+      ? '업로드 중'
+      : '저장 중'
+    : submitLabel;
 
   if (!isReady) {
     return (
@@ -1292,7 +1303,7 @@ export function CommunityWriteScreen() {
       onLeftPress={goBack}
       rightContent={
         <Pressable
-          accessibilityLabel={submitLabel}
+          accessibilityLabel={submitDisplayLabel}
           accessibilityRole="button"
           accessibilityState={{ disabled: submitting }}
           disabled={submitting}
@@ -1304,7 +1315,7 @@ export function CommunityWriteScreen() {
           ]}
         >
           <Text style={[styles.submitPillText, submitReady && styles.submitPillTextActive]}>
-            {submitLabel}
+            {submitDisplayLabel}
           </Text>
         </Pressable>
       }

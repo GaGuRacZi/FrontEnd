@@ -31,6 +31,7 @@ import { toChatParticipant, toChatPostReference } from '@/src/features/chat/comm
 import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import { formatKoreanRelativeTime } from '@/src/utils/koreanDateTime';
 import { formatCompactRegion } from '@/src/utils/location';
 
 import {
@@ -129,16 +130,6 @@ function useMarketBookmarkHandler(
     },
     [showError, toggleBookmark],
   );
-}
-
-function getRelativeTime(isoDate: string) {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const minutes = Math.max(1, Math.floor(diff / 60000));
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  const days = Math.floor(hours / 24);
-  return `${days}일 전`;
 }
 
 function getMarketPriceParts(priceLabel: string) {
@@ -396,7 +387,7 @@ function TalkCard({
           </Text>
         </View>
         <MetaItem color={COLORS.primary} icon="chatbubble-outline" prominent text={commentCount} />
-        <Text style={styles.cardTime}>{getRelativeTime(post.createdAt)}</Text>
+        <Text style={styles.cardTime}>{formatKoreanRelativeTime(post.createdAt)}</Text>
       </View>
     </Pressable>
   );
@@ -448,7 +439,7 @@ function MarketCard({
           {post.title}
         </Text>
         <Text ellipsizeMode="tail" numberOfLines={1} style={styles.marketMeta}>
-          {post.category} · {formatCompactRegion(post.location)} · {getRelativeTime(post.createdAt)}
+          {post.category} · {formatCompactRegion(post.location)} · {formatKoreanRelativeTime(post.createdAt)}
         </Text>
         <View style={styles.marketPriceRow}>
           <Text numberOfLines={1} style={styles.marketPrice}>{priceParts.price}</Text>
@@ -545,7 +536,7 @@ function CommentItem({
       <View style={styles.commentBody}>
         <View style={styles.commentHeader}>
           <Text style={styles.commentAuthor}>{author.nickname}</Text>
-          <Text style={styles.commentTime}>{getRelativeTime(comment.createdAt)}</Text>
+          <Text style={styles.commentTime}>{formatKoreanRelativeTime(comment.createdAt)}</Text>
         </View>
         <Text style={styles.commentText}>{comment.body}</Text>
         <View style={styles.commentActions}>
@@ -570,9 +561,8 @@ function CommentItem({
   );
 }
 
-function CommunityEmptyPosts({ icon, onReset, title }: {
+function CommunityEmptyPosts({ icon, title }: {
   icon: Parameters<typeof AppIcon>[0]['name'];
-  onReset?: () => void;
   title: string;
 }) {
   return (
@@ -581,15 +571,6 @@ function CommunityEmptyPosts({ icon, onReset, title }: {
         <AppIcon color={COLORS.primary} name={icon} size={30} />
       </View>
       <Text style={styles.emptyPostsTitle}>{title}</Text>
-      {onReset ? (
-        <AppButton
-          fullWidth={false}
-          onPress={onReset}
-          size="medium"
-          title="필터 초기화"
-          variant="outline"
-        />
-      ) : null}
     </View>
   );
 }
@@ -864,7 +845,7 @@ export function CommunityPostDetailScreen({
     if (resolvedOrigin === 'community' && focusOnReturn === '1') {
       router.dismissTo({
         pathname: '/community',
-        params: { focusPostId: postId },
+        params: { focusPostId: postId, resetFilters: '1' },
       });
       return;
     }
@@ -1159,7 +1140,7 @@ export function CommunityPostDetailScreen({
                   {selectedPost.showNeighborhood && author.location
                     ? `${formatCompactRegion(author.location)} · `
                     : ''}
-                  {getRelativeTime(selectedPost.createdAt)}
+                  {formatKoreanRelativeTime(selectedPost.createdAt)}
                 </Text>
               </View>
               <Text style={styles.detailCategory}>{selectedPost.category}</Text>
@@ -1674,7 +1655,7 @@ export function CommunityPostDetailScreen({
               ) : null}
             </View>
             <Text ellipsizeMode="tail" numberOfLines={1} style={styles.marketDetailMeta}>
-              {selectedPost.category} · {formatCompactRegion(selectedPost.location)} · {getRelativeTime(selectedPost.createdAt)}
+              {selectedPost.category} · {formatCompactRegion(selectedPost.location)} · {formatKoreanRelativeTime(selectedPost.createdAt)}
             </Text>
             {marketTradeMethods.length > 0 ? (
               <View style={styles.infoLine}>
@@ -1894,6 +1875,7 @@ export function CommunityScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     focusPostId?: string;
+    resetFilters?: string;
     search?: string;
     searchQuery?: string;
     searchTab?: string;
@@ -2178,19 +2160,7 @@ export function CommunityScreen() {
     searchScrollRef.current?.scrollTo({ animated: false, y: 0 });
   }, []);
 
-  const hasTalkFilter = talkCategory !== '전체';
   const marketFilterCount = marketStatuses.length + marketTradeTypes.length;
-  const hasMarketFilter = marketCategory !== '전체' || marketFilterCount > 0;
-  const resetTalkFilters = useCallback(() => {
-    setTalkCategory('전체');
-    resetVisibleCount('talk');
-  }, [resetVisibleCount]);
-  const resetMarketFilters = useCallback(() => {
-    setMarketCategory('전체');
-    setMarketStatuses([]);
-    setMarketTradeTypes([]);
-    resetVisibleCount('market');
-  }, [resetVisibleCount]);
 
   const handleListScroll = useCallback(
     (
@@ -2255,16 +2225,18 @@ export function CommunityScreen() {
     const focusedPost = posts.find((post) => post.id === params.focusPostId) ?? null;
     let focusedTab: CommunityTab | null = null;
 
+    const shouldResetFilters = params.resetFilters === '1';
+
     if (focusedPost?.kind === 'talk') {
       focusedTab = 'talk';
       setActiveTab('talk');
-      setTalkCategory(focusedPost.category);
+      setTalkCategory(shouldResetFilters ? '전체' : focusedPost.category);
     } else if (focusedPost?.kind === 'market') {
       focusedTab = 'market';
       setActiveTab('market');
-      setMarketCategory(focusedPost.category);
-      setMarketStatuses([focusedPost.status]);
-      setMarketTradeTypes([focusedPost.tradeType]);
+      setMarketCategory(shouldResetFilters ? '전체' : focusedPost.category);
+      setMarketStatuses(shouldResetFilters ? [] : [focusedPost.status]);
+      setMarketTradeTypes(shouldResetFilters ? [] : [focusedPost.tradeType]);
     }
 
     if (focusedTab) {
@@ -2274,11 +2246,12 @@ export function CommunityScreen() {
       });
     }
 
-    router.setParams({ focusPostId: undefined });
+    router.setParams({ focusPostId: undefined, resetFilters: undefined });
   }, [
     hasLoadError,
     isReady,
     params.focusPostId,
+    params.resetFilters,
     posts,
     resetVisibleCount,
     router,
@@ -2504,8 +2477,7 @@ export function CommunityScreen() {
             ) : (
               <CommunityEmptyPosts
                 icon="chatbubble-ellipses-outline"
-                onReset={hasTalkFilter ? resetTalkFilters : undefined}
-                title={hasTalkFilter ? '선택한 필터에 맞는 소통 글이 없어요' : '아직 등록된 소통 글이 없어요'}
+                title={talkCategory !== '전체' ? '선택한 태그의 소통 글이 없어요' : '아직 등록된 소통 글이 없어요'}
               />
             )}
           </>
@@ -2549,26 +2521,12 @@ export function CommunityScreen() {
             ) : (
               <CommunityEmptyPosts
                 icon="bag-outline"
-                onReset={hasMarketFilter ? resetMarketFilters : undefined}
-                title={hasMarketFilter ? '선택한 필터에 맞는 장터 글이 없어요' : '아직 등록된 장터 글이 없어요'}
+                title={marketCategory !== '전체' || marketFilterCount > 0 ? '선택한 조건의 장터 글이 없어요' : '아직 등록된 장터 글이 없어요'}
               />
             )}
           </>
         ) : null}
 
-        <Pressable
-          accessibilityLabel="커뮤니티 운영정책 보기"
-          accessibilityRole="button"
-          onPress={() => router.push('/community/policy')}
-          style={({ pressed }) => [
-            styles.policyLink,
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon color={COLORS.gray500} name="shield-checkmark-outline" size={18} />
-          <Text style={styles.policyLinkText}>커뮤니티 운영정책</Text>
-          <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
-        </Pressable>
       </ScrollView>
 
       <Pressable
@@ -2672,18 +2630,6 @@ const styles = StyleSheet.create({
     gap: SPACING.xl,
     paddingBottom: SIZE.tabBarHeight + SPACING.xxxl,
     paddingTop: SPACING.lg,
-  },
-  policyLink: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    minHeight: SIZE.touchTarget,
-    paddingHorizontal: SPACING.xl,
-  },
-  policyLinkText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.gray500,
   },
   headerTitle: {
     ...TYPOGRAPHY.title2,

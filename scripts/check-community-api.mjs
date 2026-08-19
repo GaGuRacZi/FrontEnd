@@ -14,6 +14,25 @@ function loadModule(path, dependencies) {
   return module.exports;
 }
 
+const koreanDateTime = loadModule('../src/utils/koreanDateTime.ts', {});
+const timezoneLessDate = '2026-08-20T10:00:00';
+assert.equal(
+  koreanDateTime.parseKoreanServerDate(timezoneLessDate)?.getTime(),
+  Date.parse('2026-08-20T10:00:00+09:00'),
+);
+assert.equal(
+  koreanDateTime.formatKoreanRelativeTime(
+    timezoneLessDate,
+    Date.parse('2026-08-20T10:30:00+09:00'),
+  ),
+  '30분 전',
+);
+assert.equal(koreanDateTime.formatKoreanChatTime(timezoneLessDate), '오전 10:00');
+assert.equal(
+  koreanDateTime.isSameKoreanCalendarDate('2026-08-20T14:30:00Z', '2026-08-20T15:30:00Z'),
+  false,
+);
+
 let likeRequest;
 const communityApi = loadModule('../src/features/community/services/communityApi.ts', {
   '@/src/services/apiClient': {
@@ -98,7 +117,7 @@ assert.equal(
   '새 소통 카테고리',
 );
 
-const imageUpdate = communityApi.createRemotePostData({
+const imageUpdatePost = {
   author: { nickname: '나', userId: 'user-me' },
   baseBookmarkCount: 0,
   baseReactionCounts: { like: 0 },
@@ -116,9 +135,21 @@ const imageUpdate = communityApi.createRemotePostData({
   tags: [],
   title: '사진 순서',
   updatedAt: '2026-08-19T10:00:00+09:00',
-}, [{ code: 'HEALTH_CONSULT', name: '건강상담', postType: 'COMMUNICATION', sortOrder: 1 }], true);
+};
+const imageUpdate = communityApi.createRemotePostData(
+  imageUpdatePost,
+  [{ code: 'HEALTH_CONSULT', name: '건강상담', postType: 'COMMUNICATION', sortOrder: 1 }],
+  true,
+);
 assert.equal(imageUpdate.data.thumbnailIndex, 1);
 assert.deepEqual(imageUpdate.data.keepPhotoUrls, ['https://cdn.example.com/saved.jpg']);
+assert.deepEqual(
+  communityApi.createRemotePostData({
+    ...imageUpdatePost,
+    images: [],
+  }, [{ code: 'HEALTH_CONSULT', name: '건강상담', postType: 'COMMUNICATION', sortOrder: 1 }], true).data.keepPhotoUrls,
+  [],
+);
 
 assert.deepEqual(
   communityApi.mapRemotePost(communityApi.parseRemoteCommunityDetail({

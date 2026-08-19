@@ -33,24 +33,14 @@ export function MedicationDetailModal({
 				<Text numberOfLines={1} style={styles.title}>
 					{ingredientLabel ? `${name} (${ingredientLabel})` : name}
 				</Text>
-				<View style={styles.actions}>
-					<Pressable
-						accessibilityLabel={`${name} 삭제`}
-						accessibilityRole="button"
-						onPress={onDelete}
-						style={styles.deleteButton}
-					>
-						<AppIcon color={COLORS.error} name="close" size={18} />
-					</Pressable>
-					<Pressable
-						accessibilityLabel="닫기"
-						accessibilityRole="button"
-						onPress={onClose}
-						style={styles.closeButton}
-					>
-						<AppIcon color={COLORS.gray600} name="close" size={20} />
-					</Pressable>
-				</View>
+				<Pressable
+					accessibilityLabel="닫기"
+					accessibilityRole="button"
+					onPress={onClose}
+					style={styles.closeButton}
+				>
+					<AppIcon color={COLORS.gray600} name="close" size={20} />
+				</Pressable>
 			</View>
 
 			<View style={styles.metaRow}>
@@ -64,12 +54,22 @@ export function MedicationDetailModal({
 
 			<View style={styles.divider} />
 
-			{description ? (
-				<View style={styles.section}>
+			<View style={styles.section}>
+				<View style={styles.sectionHeader}>
 					<Text style={styles.sectionTitle}>약 설명</Text>
-					<Text style={styles.descriptionText}>{description}</Text>
+					<Pressable
+						accessibilityLabel={`${name} 삭제`}
+						accessibilityRole="button"
+						onPress={onDelete}
+						style={styles.deleteButton}
+					>
+						<Text style={styles.deleteButtonText}>삭제</Text>
+					</Pressable>
 				</View>
-			) : null}
+				{description ? (
+					<Text style={styles.descriptionText}>{description}</Text>
+				) : null}
+			</View>
 
 			{warningLines.length > 0 ? (
 				<View style={styles.warningSection}>
@@ -90,15 +90,15 @@ export function MedicationDetailModal({
 const styles = StyleSheet.create({
 	header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
 	title: { ...TYPOGRAPHY.title3, color: COLORS.black, flex: 1 },
-	actions: { flexDirection: 'row', gap: SPACING.xs },
 	deleteButton: {
 		alignItems: 'center',
 		backgroundColor: COLORS.errorBackground,
-		borderRadius: RADIUS.round,
-		height: 32,
+		borderRadius: RADIUS.md,
+		minHeight: 32,
 		justifyContent: 'center',
-		width: 32,
+		paddingHorizontal: SPACING.md,
 	},
+	deleteButtonText: { ...TYPOGRAPHY.caption, color: COLORS.error },
 	closeButton: {
 		alignItems: 'center',
 		backgroundColor: COLORS.gray100,
@@ -122,6 +122,7 @@ const styles = StyleSheet.create({
 	metaText: { ...TYPOGRAPHY.small, color: COLORS.primary },
 	divider: { backgroundColor: COLORS.gray200, height: 1, marginVertical: SPACING.lg },
 	section: { gap: SPACING.sm, marginBottom: SPACING.lg },
+	sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
 	sectionTitle: { ...TYPOGRAPHY.segmentActive, color: COLORS.black },
 	descriptionText: { ...TYPOGRAPHY.body2, color: COLORS.gray800 },
 	warningSection: { gap: SPACING.sm },

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BrandLogoButton } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { PetProfileSelector } from '@/src/features/pet/components';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { calculatePetAgeLabel, DiagnosisHeroCard } from '../components/DiagnosisHeroCard';
@@ -14,7 +15,7 @@ import { MOCK_DIAGNOSIS_LIST } from '../mock';
 
 export function DashboardScreen() {
 	const router = useRouter();
-	const { pets, selectedPet } = usePetStore();
+	const { selectedPet } = usePetStore();
 	const [showSummarizingToast, setShowSummarizingToast] = useState(false);
 	const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,11 +51,11 @@ export function DashboardScreen() {
 	return (
 		<>
 			<ScreenLayout
+				centerContent={<PetProfileSelector />}
 				headerFullWidth
 				leftContent={<BrandLogoButton />}
 				onRightPress={() => router.push('/notifications' as Href)}
 				rightAccessibilityLabel="알림 열기"
-				title="진료 요약"
 			>
 				<View style={styles.body}>
 					<ScrollView
@@ -69,13 +70,6 @@ export function DashboardScreen() {
 							subtitle={`${selectedPet.breed} · ${calculatePetAgeLabel(selectedPet.birthDate)}`}
 							title={`${selectedPet.name} 진료 요약`}
 						/>
-						{pets.length > 1 ? (
-							<View style={styles.dots}>
-								<View style={[styles.dot, styles.dotActive]} />
-								<View style={styles.dot} />
-							</View>
-						) : null}
-
 						<View style={styles.list}>
 							{filteredList.map((diagnosis) => (
 								<DiagnosisListCard
@@ -116,9 +110,6 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
 	scroll: { flex: 1 },
 	content: { gap: SPACING.xxl, paddingBottom: SPACING.xxxl },
-	dots: { alignItems: 'center', flexDirection: 'row', gap: SPACING.sm, justifyContent: 'center' },
-	dot: { backgroundColor: COLORS.gray300, borderRadius: 4, height: 6, width: 6 },
-	dotActive: { backgroundColor: COLORS.black },
 	list: { gap: SPACING.md },
 	body: { flex: 1 },
 	toastBackdrop: {

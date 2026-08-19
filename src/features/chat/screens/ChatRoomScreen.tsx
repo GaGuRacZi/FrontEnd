@@ -26,6 +26,7 @@ import { AppScreen, ScreenLayout, TopHeader } from '@/src/components/layout';
 import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import { isSameKoreanCalendarDate } from '@/src/utils/koreanDateTime';
 import { formatCompactRegion } from '@/src/utils/location';
 
 import { formatChatDate, formatChatTime } from '../chatFormat';
@@ -58,17 +59,6 @@ function ChatRoomState({
     >
       <View style={styles.centered}>{children}</View>
     </ScreenLayout>
-  );
-}
-
-function isSameCalendarDate(first: string, second?: string) {
-  if (!second) return false;
-  const firstDate = new Date(first);
-  const secondDate = new Date(second);
-  return (
-    firstDate.getFullYear() === secondDate.getFullYear() &&
-    firstDate.getMonth() === secondDate.getMonth() &&
-    firstDate.getDate() === secondDate.getDate()
   );
 }
 
@@ -539,6 +529,11 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
                 nativeEvent.contentOffset.y <=
               80;
           }}
+          onScrollEndDrag={({ nativeEvent }) => {
+            if (nearBottomRef.current && (nativeEvent.velocity?.y ?? 0) > 0.5) {
+              refreshMessages();
+            }
+          }}
           ref={listRef}
           refreshControl={(
             <RefreshControl
@@ -550,7 +545,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
           )}
           renderItem={({ index, item }) => {
             const previous = messages[index - 1];
-            const showDate = !previous || !isSameCalendarDate(item.createdAt, previous.createdAt);
+            const showDate = !previous || !isSameKoreanCalendarDate(item.createdAt, previous.createdAt);
             return (
               <View>
                 {showDate ? (
@@ -582,7 +577,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
               style={({ pressed }) => [styles.refreshPrompt, pressed && styles.pressed]}
             >
               <AppIcon color={COLORS.primary} name="refresh" size={16} />
-              <Text style={styles.refreshPromptText}>새 메시지 확인</Text>
+              <Text style={styles.refreshPromptText}>위로 쓸어올려 새 메시지 확인</Text>
             </Pressable>
           ) : null}
           {draft.images.length ? (

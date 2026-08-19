@@ -38,6 +38,14 @@ export function parseBirthDate(value: string) {
   return date;
 }
 
+export function getLatestBirthDate() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - 1);
+
+  return date;
+}
+
 export function getBirthDateError(value: string) {
   if (!BIRTH_DATE_PATTERN.test(value)) {
     return '생년월일을 YYYY.MM.DD 형식으로 입력해주세요.';
@@ -45,10 +53,7 @@ export function getBirthDateError(value: string) {
 
   const date = parseBirthDate(value);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  if (!date || date >= today) {
+  if (!date || date > getLatestBirthDate()) {
     return '생년월일은 오늘 이전 날짜를 입력해주세요.';
   }
 

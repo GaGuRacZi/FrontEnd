@@ -118,6 +118,46 @@ assert.equal(
   '/signup/credentials',
 );
 
+const credentialsScreenSource = readFileSync(
+  new URL('../src/features/auth/signup/screens/SignupCredentialsScreen.tsx', import.meta.url),
+  'utf8',
+);
+const completionSource = readFileSync(
+  new URL('../src/features/auth/signup/hooks/useSignupCompletion.ts', import.meta.url),
+  'utf8',
+);
+const termsSource = readFileSync(
+  new URL('../src/features/auth/terms/screens/TermsAgreementScreen.tsx', import.meta.url),
+  'utf8',
+);
+assert.equal(credentialsScreenSource.includes('signUpWithLocalCredentials'), false);
+assert.equal(completionSource.includes('signUpWithLocalCredentials(data.email, data.password)'), true);
+assert.equal(termsSource.includes("if (!pendingRemoteSignupUserId)"), true);
+assert.equal(termsSource.includes("router.replace('/login');"), true);
+
+const petValidationSource = readFileSync(
+  new URL('../src/features/pet/petValidation.ts', import.meta.url),
+  'utf8',
+);
+const petValidationModule = { exports: {} };
+new Function(
+  'module',
+  'exports',
+  ts.transpileModule(petValidationSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+)(petValidationModule, petValidationModule.exports);
+const today = new Date();
+const todayValue = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+const yesterday = new Date(today);
+yesterday.setDate(today.getDate() - 1);
+const yesterdayValue = `${yesterday.getFullYear()}.${String(yesterday.getMonth() + 1).padStart(2, '0')}.${String(yesterday.getDate()).padStart(2, '0')}`;
+assert.equal(
+  petValidationModule.exports.getBirthDateError(todayValue),
+  '생년월일은 오늘 이전 날짜를 입력해주세요.',
+);
+assert.equal(petValidationModule.exports.getBirthDateError(yesterdayValue), undefined);
+
 const transactionSource = readFileSync(
   new URL('../src/features/auth/signup/services/signupTransactionStore.ts', import.meta.url),
   'utf8',

@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
@@ -7,8 +8,10 @@ type AiProcessingScreenProps = {
 };
 
 export function AiProcessingScreen({ onNavigateHome }: AiProcessingScreenProps) {
+	const insets = useSafeAreaInsets();
+
 	return (
-		<View style={styles.container}>
+		<View style={[styles.container, { paddingBottom: insets.bottom + SPACING.xxxl }]}>
 			<View style={styles.centerWrap}>
 				<View style={styles.center}>
 					<ActivityIndicator color={COLORS.primary} size="large" />
@@ -48,7 +51,6 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		backgroundColor: COLORS.primary,
 		borderRadius: RADIUS.button,
-		marginBottom: SPACING.xxl,
 		paddingVertical: SPACING.xl,
 	},
 	pressed: { opacity: 0.85 },

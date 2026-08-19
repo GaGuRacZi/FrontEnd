@@ -1,16 +1,31 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 
-import {
-  formatChatDate,
-  formatChatTime,
-  normalizeChatSearch,
-} from '../src/features/chat/chatFormat.ts';
 import {
   getDirectChatRoomKey,
   getMarketChatRoomKey,
   normalizeStoredChatState,
 } from '../src/features/chat/services/chatRepository.ts';
 import { getMultipartImageFile } from '../src/utils/file.ts';
+
+function loadModule(path, dependencies) {
+  const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const module = { exports: {} };
+  new Function('module', 'exports', 'require', compiled)(module, module.exports, (id) => {
+    if (id in dependencies) return dependencies[id];
+    throw new Error(`Unexpected import: ${id}`);
+  });
+  return module.exports;
+}
+
+const koreanDateTime = loadModule('../src/utils/koreanDateTime.ts', {});
+const { formatChatDate, formatChatTime, normalizeChatSearch } = loadModule(
+  '../src/features/chat/chatFormat.ts',
+  { '@/src/utils/koreanDateTime': koreanDateTime },
+);
 
 process.env.TZ = 'Asia/Seoul';
 

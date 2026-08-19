@@ -13,6 +13,7 @@ export {
   formatBirthDate,
   formatBirthDateValue,
   getBirthDateError,
+  getLatestBirthDate,
   getWeightError,
   parseBirthDate,
 } from '@/src/features/pet/petValidation';

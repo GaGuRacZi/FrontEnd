@@ -34,7 +34,7 @@ import {
   isValidMarketPriceLabel,
   isValidMarketTradeMethodSelection,
 } from './utils/marketValidation';
-import { compareNewestFirst } from './utils/date';
+import { compareNewestFirst, compareOldestFirst } from './utils/date';
 import type {
   CommunityAuthorSnapshot,
   CommunityComment,
@@ -264,7 +264,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
     const posts = [...talkPage.items, ...marketPage.items]
       .map((post) => mapRemotePost(post, identity))
-      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+      .sort(compareNewestFirst);
     const postIds = new Set(posts.map((post) => post.id));
 
     return {
@@ -503,7 +503,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     (postId: string) =>
       stateRef.current.comments
         .filter((comment) => comment.postId === postId)
-        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
+        .sort(compareOldestFirst),
     [],
   );
 
@@ -533,7 +533,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
             ...page.items
               .map((post) => mapRemotePost(post, identity))
               .filter((post) => !loadedIds.has(post.id)),
-          ].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+          ].sort(compareNewestFirst),
         });
         return { ok: true };
       }).catch(mutationError),
@@ -564,7 +564,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           posts: [
             ...stateRef.current.posts.filter((currentPost) => currentPost.id !== post.id),
             post,
-          ].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+          ].sort(compareNewestFirst),
           viewerStates: {
             ...stateRef.current.viewerStates,
             [viewerId]: {
