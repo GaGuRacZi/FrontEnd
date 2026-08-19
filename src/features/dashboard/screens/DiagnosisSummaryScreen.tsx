@@ -1,11 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { Href } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MedicationDetailModal, MedicationSaveConfirmModal, MedicationSearchModal } from '@/src/components/modal';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { useMedicationStore } from '@/src/features/home/MedicationStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
 import { FREQUENCY_OPTIONS, TIMING_OPTIONS, type MedicationEntry } from '@/src/types/medication';
 
@@ -21,6 +22,7 @@ export function DiagnosisSummaryScreen() {
 	const { diagnosisId } = useLocalSearchParams<{ diagnosisId: string }>();
 	const router = useRouter();
 	const { selectedPet } = usePetStore();
+	const { addMedications: addToGlobalStore } = useMedicationStore();
 	const detail = diagnosisId ? MOCK_DIAGNOSIS_DETAIL[diagnosisId] : undefined;
 	const [aiSummary, setAiSummary] = useState(detail?.aiSummary);
 	const [medications, setMedications] = useState<DiagnosisMedication[]>(detail?.medications ?? []);
@@ -28,6 +30,8 @@ export function DiagnosisSummaryScreen() {
 	const [searchModalVisible, setSearchModalVisible] = useState(false);
 	const [saveConfirmVisible, setSaveConfirmVisible] = useState(false);
 	const [detailMedication, setDetailMedication] = useState<DiagnosisMedication | null>(null);
+	// 확인 전 임시 보관 — confirm 시 전역 스토어에 반영
+	const pendingForGlobalRef = useRef<DiagnosisMedication[]>([]);
 
 	if (!selectedPet) return null;
 
@@ -60,6 +64,7 @@ export function DiagnosisSummaryScreen() {
 		});
 
 		setMedications((prev) => [...prev, ...newMedications]);
+		pendingForGlobalRef.current = newMedications;
 		setSearchModalVisible(false);
 		setSaveConfirmVisible(true);
 	};
@@ -177,8 +182,18 @@ export function DiagnosisSummaryScreen() {
 			/>
 
 			<MedicationSaveConfirmModal
-				onConfirm={() => setSaveConfirmVisible(false)}
-				onDismiss={() => setSaveConfirmVisible(false)}
+				onConfirm={() => {
+					// 확인 시 전역 복약 목록에 반영
+					if (pendingForGlobalRef.current.length > 0) {
+						addToGlobalStore(pendingForGlobalRef.current);
+						pendingForGlobalRef.current = [];
+					}
+					setSaveConfirmVisible(false);
+				}}
+				onDismiss={() => {
+					pendingForGlobalRef.current = [];
+					setSaveConfirmVisible(false);
+				}}
 				visible={saveConfirmVisible}
 			/>
 

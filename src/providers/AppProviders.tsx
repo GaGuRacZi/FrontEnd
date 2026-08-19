@@ -21,6 +21,8 @@ import {
   useMyPageStore,
 } from '@/src/features/mypage/MyPageStore';
 import { SupportProvider } from '@/src/features/mypage/support';
+import { MedicationProvider } from '@/src/features/home/MedicationStore';
+import { ScheduleTodoProvider } from '@/src/features/home/ScheduleTodoStore';
 import { PetProvider } from '@/src/features/pet/PetStore';
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 
@@ -148,6 +150,8 @@ function SessionProviders({ children }: PropsWithChildren) {
 
   return (
     <TermsProvider scope="session" userId={termsUserId}>
+      <ScheduleTodoProvider>
+      <MedicationProvider>
       <PetProvider>
         <MyPageProvider>
           <SupportProvider>
@@ -162,6 +166,8 @@ function SessionProviders({ children }: PropsWithChildren) {
           </SupportProvider>
         </MyPageProvider>
       </PetProvider>
+      </MedicationProvider>
+      </ScheduleTodoProvider>
     </TermsProvider>
   );
 }
