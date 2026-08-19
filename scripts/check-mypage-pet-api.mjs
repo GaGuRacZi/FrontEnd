@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
+import { appendMultipartJson } from '../src/utils/file.ts';
+
 function loadModule(path, dependencies) {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -16,7 +18,7 @@ function loadModule(path, dependencies) {
 
 const petApi = loadModule('../src/features/pet/services/petApi.ts', {
   '@/src/services/apiClient': { apiRequest: async () => undefined },
-  '@/src/utils/file': { getMultipartImageFile: () => ({}) },
+  '@/src/utils/file': { appendMultipartImage: () => undefined, appendMultipartJson: () => undefined },
 });
 const petEnvelope = {
   code: 'PET_CREATE_200',
@@ -46,6 +48,10 @@ assert.deepEqual(petApi.parseRemotePetEnvelope(petEnvelope, 'PET_CREATE_200'), {
   weight: 3.5,
 });
 assert.throws(() => petApi.parseRemotePetEnvelope({ ...petEnvelope, code: 'PET_UPDATE_200' }, 'PET_CREATE_200'));
+
+const multipartParts = [];
+appendMultipartJson({ append: (...part) => multipartParts.push(part) }, { petName: '초코' });
+assert.deepEqual(multipartParts, [['data', { string: '{"petName":"초코"}', type: 'application/json' }]]);
 assert.deepEqual(
   petApi.parseRemoteBreedEnvelope({
     code: 'BREED_SEARCH_200',
@@ -132,4 +138,19 @@ assert.deepEqual(
     title: '서비스 이용약관',
     version: '1.0',
   },
+);
+assert.throws(() =>
+  termsApi.parseTermDetailEnvelope({
+    code: 'TERMS_DETAIL_200',
+    isSuccess: true,
+    message: 'ok',
+    result: {
+      content: '약관 내용',
+      effectiveAt: '2025-02-31',
+      required: true,
+      title: '서비스 이용약관',
+      type: 'TERMS_OF_SERVICE',
+      version: '1.0',
+    },
+  }),
 );

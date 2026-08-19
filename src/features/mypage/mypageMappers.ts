@@ -77,17 +77,18 @@ export function mergeRemoteUserProfile(
   const connections = method && !current.loginConnections.some(({ method: currentMethod }) => currentMethod === method)
     ? [...current.loginConnections, { email: remote.email, method }]
     : current.loginConnections;
+  const now = nowIso();
 
   return {
     ...current,
-    createdAt: current.createdAt || new Date().toISOString(),
+    createdAt: current.createdAt || now,
     id: remote.uid,
     introduction: remote.intro,
-    location: remote.regionName,
+    location: remote.regionName || current.location,
     loginConnections: connections.length ? connections : [{ email: remote.email, method: method ?? 'local' }],
     name: remote.name,
     nickname: remote.nickname,
     profileImageUri: remote.profileUrl,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   };
 }

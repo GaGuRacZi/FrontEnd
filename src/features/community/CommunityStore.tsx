@@ -203,8 +203,19 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     market: null,
     talk: null,
   });
+  const hasMorePostsRef = useRef<Record<'market' | 'talk', boolean>>({
+    market: false,
+    talk: false,
+  });
   const communityTagsRef = useRef<RemoteCommunityTag[]>([]);
   const viewerId = currentUserId ?? COMMUNITY_GUEST_ID;
+  const hasProfile = Boolean(profile);
+  const {
+    introduction: profileIntroduction = '',
+    location: profileLocation = '',
+    nickname: profileNickname = '',
+    profileImageUri = null,
+  } = profile ?? {};
 
   useEffect(() => {
     activeViewerIdRef.current = viewerId;
@@ -216,9 +227,31 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   }, []);
 
   const identity = useMemo<CommunityIdentity>(
-    () => ({ profile, userId: viewerId }),
-    [profile, viewerId],
+    () => ({
+      profile: hasProfile
+        ? {
+            introduction: profileIntroduction,
+            location: profileLocation,
+            nickname: profileNickname,
+            profileImageUri,
+          }
+        : null,
+      userId: viewerId,
+    }),
+    [
+      hasProfile,
+      profileImageUri,
+      profileIntroduction,
+      profileLocation,
+      profileNickname,
+      viewerId,
+    ],
   );
+
+  const updateHasMorePosts = useCallback((nextState: Record<'market' | 'talk', boolean>) => {
+    hasMorePostsRef.current = nextState;
+    setHasMorePosts(nextState);
+  }, []);
 
   const loadRemoteState = useCallback(async () => {
     const [storedState, talkPage, marketPage, talkTags, marketTags] = await Promise.all([
@@ -233,7 +266,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       talk: talkPage.nextCursor,
     };
     communityTagsRef.current = [...talkTags, ...marketTags];
-    setHasMorePosts({ market: marketPage.hasNext, talk: talkPage.hasNext });
+    updateHasMorePosts({ market: marketPage.hasNext, talk: talkPage.hasNext });
 
     return {
       ...storedState,
@@ -243,7 +276,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
       reviewPosts: [],
     };
-  }, [identity]);
+  }, [identity, updateHasMorePosts]);
 
   const reloadCommunity = useCallback(async () => {
     if (!sessionReady) return;
@@ -497,7 +530,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   const loadMorePosts = useCallback(
     (kind: 'market' | 'talk') =>
       enqueueMutation(async (): Promise<MutationResult> => {
-        if (!sessionReady || !readyRef.current || !hasMorePosts[kind]) {
+        if (!sessionReady || !readyRef.current || !hasMorePostsRef.current[kind]) {
           return { ok: true };
         }
         const page = await getRemoteCommunityPage(
@@ -505,7 +538,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           remoteCursorsRef.current[kind],
         );
         remoteCursorsRef.current[kind] = page.nextCursor;
-        setHasMorePosts((current) => ({ ...current, [kind]: page.hasNext }));
+        updateHasMorePosts({ ...hasMorePostsRef.current, [kind]: page.hasNext });
         const loadedIds = new Set(stateRef.current.posts.map((post) => post.id));
         applyState({
           ...stateRef.current,
@@ -518,7 +551,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         });
         return { ok: true };
       }).catch(mutationError),
-    [applyState, enqueueMutation, hasMorePosts, identity, sessionReady],
+    [applyState, enqueueMutation, identity, sessionReady, updateHasMorePosts],
   );
 
   const loadPostDetail = useCallback(
@@ -562,11 +595,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       let hasNext = true;
       const comments: CommunityComment[] = [];
       while (hasNext) {
+        const previousCursor: string | null = cursor;
         const page = await getRemoteComments(postId, cursor, identity);
         comments.push(...page.comments);
         cursor = page.nextCursor;
         hasNext = page.hasNext;
-        if (hasNext && !cursor) throw new Error('community-comment-cursor-missing');
+        if (hasNext && (!cursor || cursor === previousCursor)) {
+          throw new Error('community-comment-cursor-missing');
+        }
       }
       return comments;
     },
@@ -761,7 +797,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         }, viewerId, post.images);
         if (!saveResult.ok) return saveResult;
         return { ok: true, postId: createdPost.id };
-      }),
+      }).catch(mutationError),
     [enqueueMutation, identity, persistMutationWithImageRemovals, sessionReady, viewerId],
   );
 
@@ -801,7 +837,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         }, viewerId, post.images);
         if (!saveResult.ok) return saveResult;
         return { ok: true, postId: createdPost.id };
-      }),
+      }).catch(mutationError),
     [enqueueMutation, identity, persistMutationWithImageRemovals, sessionReady, viewerId],
   );
 
@@ -909,7 +945,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           viewerId,
           removedImages,
         );
-      }),
+      }).catch(mutationError),
     [
       enqueueMutation,
       identity,
@@ -970,7 +1006,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           viewerId,
           removedImages,
         );
-      }),
+      }).catch(mutationError),
     [
       enqueueMutation,
       identity,
@@ -1043,7 +1079,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           viewerStates,
         };
         return persistMutationWithImageRemovals(nextState, viewerId, post.images);
-      }),
+      }).catch(mutationError),
     [
       enqueueMutation,
       persistMutationWithImageRemovals,

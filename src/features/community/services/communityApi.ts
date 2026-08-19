@@ -1,6 +1,6 @@
 import { apiRequest } from '@/src/services/apiClient';
 import { getRemoteUserLocation } from '@/src/services/locationApi';
-import { getMultipartImageFile } from '@/src/utils/file';
+import { appendMultipartImage, appendMultipartJson } from '@/src/utils/file';
 
 import type { UserProfile } from '@/src/features/mypage/types';
 
@@ -226,7 +226,7 @@ function readRemoteComment(value: unknown, identity: CommunityIdentity): Communi
 }
 
 export type CommunityIdentity = {
-  profile: UserProfile | null;
+  profile: Pick<UserProfile, 'introduction' | 'location' | 'nickname' | 'profileImageUri'> | null;
   userId: string;
 };
 
@@ -344,9 +344,9 @@ function getCategoryCode(
 
 function createPostFormData(data: Record<string, unknown>, images: readonly CommunityImageAsset[]) {
   const formData = new FormData();
-  formData.append('data', new Blob([JSON.stringify(data)], { type: 'application/json' }));
+  appendMultipartJson(formData, data);
   images.forEach((image) => {
-    if (image.localUri) formData.append('images', getMultipartImageFile(image.localUri) as unknown as Blob);
+    if (image.localUri) appendMultipartImage(formData, 'images', image.localUri);
   });
   return formData;
 }
@@ -420,6 +420,7 @@ function withMarketRegion(data: Record<string, unknown>, regionCode: string) {
 
 export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityIdentity): CommunityPost {
   const author = getAuthor(remote.authorNickname, remote.postId, identity);
+  const photoUris = remote.photos.map((photo) => photo.url).filter((url): url is string => Boolean(url));
   const base = {
     author,
     baseCommentCount: remote.commentCount,
@@ -428,7 +429,7 @@ export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityId
     createdAt: remote.createdAt,
     id: remote.postId,
     images: remote.photos,
-    photoUris: remote.photos.map((photo) => photo.url).filter((url): url is string => Boolean(url)),
+    photoUris: photoUris.length > 0 ? photoUris : remote.thumbnailUrl ? [remote.thumbnailUrl] : [],
     tags: remote.hashTags,
     title: remote.title,
     updatedAt: remote.createdAt,

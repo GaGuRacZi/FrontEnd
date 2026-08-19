@@ -1,6 +1,5 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import type { HealthTip } from '../types';

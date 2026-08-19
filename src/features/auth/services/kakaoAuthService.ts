@@ -7,7 +7,7 @@ import {
   withTokenRefreshPaused,
 } from '@/src/services/apiClient';
 import { getTokens } from '@/src/services/tokenStorage';
-import { getMultipartImageFile } from '@/src/utils/file';
+import { appendMultipartImage } from '@/src/utils/file';
 
 import {
   assertSuccessfulKakaoEnvelope,
@@ -191,10 +191,7 @@ function requirePassword(value: unknown) {
 
 function createImageFormData(uri: string, fieldName: string) {
   const formData = new FormData();
-  formData.append(
-    fieldName,
-    getMultipartImageFile(requireNonBlank(uri)) as unknown as Blob,
-  );
+  appendMultipartImage(formData, fieldName, requireNonBlank(uri));
   return formData;
 }
 

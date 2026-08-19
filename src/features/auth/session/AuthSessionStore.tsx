@@ -448,32 +448,37 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
     [],
   );
 
-  const verifyCurrentUserPassword = useCallback(async (password: string) => {
-    const userId = currentUserIdRef.current;
-    if (!userId || !isUuid(userId)) return 'missing' as const;
+  const verifyCurrentUserPassword = useCallback(
+    (password: string) =>
+      enqueueSessionMutation(async () => {
+        const userId = currentUserIdRef.current;
+        if (!userId || !isUuid(userId)) return 'missing' as const;
 
-    try {
-      const profile = await loadRemoteUserProfile();
-      const outcome = await signInWithLocalCredentials(profile.email, password);
+        try {
+          const profile = await loadRemoteUserProfile();
+          const outcome = await signInWithLocalCredentials(profile.email, password);
 
-      if (
-        outcome.kind !== 'authenticated' ||
-        outcome.session.uid !== userId ||
-        outcome.session.isNew
-      ) {
-        return 'invalid' as const;
-      }
+          if (
+            outcome.kind !== 'authenticated' ||
+            outcome.session.uid !== userId ||
+            outcome.session.isNew ||
+            currentUserIdRef.current !== userId
+          ) {
+            return 'invalid' as const;
+          }
 
-      await saveTokens(outcome.session);
-      return 'verified' as const;
-    } catch (error) {
-      if (error instanceof LocalAuthError && error.kind === 'invalid-credentials') {
-        return 'invalid' as const;
-      }
+          await saveTokens(outcome.session);
+          return 'verified' as const;
+        } catch (error) {
+          if (error instanceof LocalAuthError && error.kind === 'invalid-credentials') {
+            return 'invalid' as const;
+          }
 
-      throw error;
-    }
-  }, []);
+          throw error;
+        }
+      }),
+    [enqueueSessionMutation],
+  );
 
   const clearSession = useCallback(
     (expectedUserId: string) =>

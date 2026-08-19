@@ -37,6 +37,14 @@ function requireNonBlank(value: string) {
   return normalized;
 }
 
+function requirePassword(value: string) {
+  if (!value.trim()) {
+    throw new LocalAuthError('invalid-response', '입력한 정보를 확인해주세요.');
+  }
+
+  return value;
+}
+
 function getResponseCode(error: unknown) {
   if (error instanceof KakaoAuthResponseError) return error.code;
   if (!(error instanceof ApiError) || !error.data || typeof error.data !== 'object') {
@@ -101,7 +109,7 @@ export async function signInWithLocalCredentials(
       authenticated: false,
       json: {
         email: requireNonBlank(email).toLowerCase(),
-        password: requireNonBlank(password),
+        password: requirePassword(password),
       },
       method: 'POST',
     });
@@ -121,7 +129,7 @@ export async function signUpWithLocalCredentials(
       authenticated: false,
       json: {
         email: requireNonBlank(email).toLowerCase(),
-        password: requireNonBlank(password),
+        password: requirePassword(password),
       },
       method: 'POST',
     });

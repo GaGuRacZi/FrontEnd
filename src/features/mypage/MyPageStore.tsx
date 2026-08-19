@@ -117,6 +117,29 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     setState(nextState);
   }, []);
 
+  const persist = useCallback(async (
+    userId: string,
+    nextState: StoredMyPageState,
+    afterSave?: () => Promise<void>,
+  ) => {
+    await mypageRepository.saveState(userId, nextState);
+    if (afterSave) await afterSave();
+
+    if (activeUserRef.current === userId && readyUserRef.current === userId) {
+      stateRef.current = nextState;
+      setState(nextState);
+    }
+  }, []);
+
+  const enqueueMutation = useCallback(<T,>(mutation: () => Promise<T>) => {
+    const result = mutationQueueRef.current.then(mutation, mutation);
+    mutationQueueRef.current = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }, []);
+
   useEffect(() => {
     if (!sessionReady) return;
 
@@ -146,25 +169,28 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           getRemoteUserProfile(),
           getRemoteUserLocation().catch(() => null),
         ])
-          .then(async ([remoteProfile, remoteLocation]) => {
-            if (
-              !active ||
-              activeUserRef.current !== currentUserId ||
-              stateRef.current !== loadedState
-            ) {
-              return;
-            }
+          .then(([remoteProfile, remoteLocation]) => {
+            void enqueueMutation(async () => {
+              if (
+                !active ||
+                activeUserRef.current !== currentUserId ||
+                stateRef.current !== loadedState
+              ) {
+                return;
+              }
 
-            const nextState = {
-              ...loadedState,
-              profile: {
-                ...mergeRemoteUserProfile(loadedState.profile, remoteProfile),
-                location: remoteLocation?.regionName ?? remoteProfile.regionName,
-              },
-            };
-            if (active && activeUserRef.current === currentUserId && stateRef.current === loadedState) {
-              applyState(nextState);
-            }
+              const nextState = {
+                ...loadedState,
+                profile: {
+                  ...mergeRemoteUserProfile(loadedState.profile, remoteProfile),
+                  location:
+                    remoteLocation?.regionName.trim() ||
+                    remoteProfile.regionName ||
+                    loadedState.profile.location,
+                },
+              };
+              await persist(currentUserId, nextState);
+            }).catch(() => undefined);
           })
           .catch(() => undefined);
       })
@@ -179,33 +205,10 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applyState, currentUserId, loadRequest, sessionReady]);
+  }, [applyState, currentUserId, enqueueMutation, loadRequest, persist, sessionReady]);
 
   const reloadMyPage = useCallback(() => {
     setLoadRequest((current) => current + 1);
-  }, []);
-
-  const persist = useCallback(async (
-    userId: string,
-    nextState: StoredMyPageState,
-    afterSave?: () => Promise<void>,
-  ) => {
-    await mypageRepository.saveState(userId, nextState);
-    if (afterSave) await afterSave();
-
-    if (activeUserRef.current === userId && readyUserRef.current === userId) {
-      stateRef.current = nextState;
-      setState(nextState);
-    }
-  }, []);
-
-  const enqueueMutation = useCallback(<T,>(mutation: () => Promise<T>) => {
-    const result = mutationQueueRef.current.then(mutation, mutation);
-    mutationQueueRef.current = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
   }, []);
 
   const mutateState = useCallback(
@@ -244,19 +247,11 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   const registerRemoteProfile = useCallback(
     (remoteProfile: RemoteUserProfile, method: 'kakao' | 'local' = 'kakao') =>
       enqueueMutation(async () => {
-        const status = await mypageRepository.getStoredStateStatus(remoteProfile.uid);
         const previous = await mypageRepository.loadState(remoteProfile.uid);
-        const now = new Date().toISOString();
 
         const nextState = {
           ...previous,
-          profile: mergeRemoteUserProfile(
-            status === 'valid'
-              ? previous.profile
-              : { ...previous.profile, createdAt: previous.profile.createdAt || now },
-            remoteProfile,
-            method,
-          ),
+          profile: mergeRemoteUserProfile(previous.profile, remoteProfile, method),
         };
 
         await persist(remoteProfile.uid, nextState);

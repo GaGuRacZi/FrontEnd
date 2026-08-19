@@ -244,7 +244,9 @@ export function PetProvider({ children }: PropsWithChildren) {
           const nextPet = mergeRemotePet(pet, remotePet);
           const nextPets = [...currentPets, nextPet];
           const result = await persistMutation(userId, nextPets, nextPet.id);
-          if (!result.ok) return result;
+          if (!result.ok) {
+            applyState({ pets: nextPets, selectedPetId: nextPet.id });
+          }
           await queuePetImageRemovals(userId, [pet.profileImageUri]).catch(() => undefined);
           await flushPetImageRemovals(userId, nextPets).catch(() => undefined);
           return { ok: true, pet: nextPet };
@@ -253,7 +255,7 @@ export function PetProvider({ children }: PropsWithChildren) {
         }
       });
     },
-    [currentUserId, enqueueMutation, persistMutation],
+    [applyState, currentUserId, enqueueMutation, persistMutation],
   );
 
   const updatePet = useCallback(
@@ -377,7 +379,9 @@ export function PetProvider({ children }: PropsWithChildren) {
           nextPets.push(pet);
         }
 
-        await petRepository.saveState(userId, { pets: nextPets, selectedPetId: pet.id });
+        await petRepository
+          .saveState(userId, { pets: nextPets, selectedPetId: pet.id })
+          .catch(() => undefined);
 
         if (activeUserRef.current === userId) {
           loadRevisionRef.current += 1;

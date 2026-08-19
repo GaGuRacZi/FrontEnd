@@ -73,13 +73,7 @@ export function resolveEmailVerificationError(
 
     if (code === 'EMAIL_CODE_400') {
       return {
-        message: '인증번호가 만료되었어요. 다시 인증해주세요.',
-      };
-    }
-
-    if (code === 'INVALID_VERIFICATION_CODE') {
-      return {
-        message: '인증번호가 올바르지 않아요.',
+        message: '인증번호가 올바르지 않거나 만료되었어요. 다시 인증해주세요.',
       };
     }
 

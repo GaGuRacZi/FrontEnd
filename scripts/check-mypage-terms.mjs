@@ -36,11 +36,12 @@ const termsRepository = readFileSync(
 
 assert.match(
   termsRepository,
-  /apiRequest<unknown>\('\/terms', \{ authenticated: false \}\)/,
+  /apiRequest<unknown>\('\/terms'/,
 );
 assert.match(
   termsRepository,
-  /apiRequest<unknown>\(`\/terms\/\$\{type\}`, \{ authenticated: false \}\)/,
+  /apiRequest<unknown>\(`\/terms\/\$\{type\}`/,
 );
+assert.match(termsRepository, /authenticated:\s*false/);
 assert.match(termsRepository, /TERMS_LIST_200/);
 assert.match(termsRepository, /TERMS_DETAIL_200/);

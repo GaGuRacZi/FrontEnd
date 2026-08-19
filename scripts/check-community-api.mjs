@@ -17,7 +17,7 @@ function loadModule(path, dependencies) {
 const communityApi = loadModule('../src/features/community/services/communityApi.ts', {
   '@/src/services/apiClient': { apiRequest: async () => undefined },
   '@/src/services/locationApi': { getRemoteUserLocation: async () => ({ regionCode: '1111000000' }) },
-  '@/src/utils/file': { getMultipartImageFile: () => ({}) },
+  '@/src/utils/file': { appendMultipartImage: () => undefined, appendMultipartJson: () => undefined },
   '../utils/marketValidation': {
     getMarketTradeMethods: (tags) => tags.filter((tag) => ['직거래', '택배', '비대면 나눔'].includes(tag)),
     getPositiveMarketPrice: () => null,

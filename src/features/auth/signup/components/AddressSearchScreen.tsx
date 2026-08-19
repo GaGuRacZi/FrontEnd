@@ -94,8 +94,8 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
         </View>
 
         {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color={COLORS.primary} />
+          <View accessibilityLiveRegion="polite" style={styles.centered}>
+            <ActivityIndicator accessibilityLabel="지역을 검색하고 있어요" color={COLORS.primary} />
           </View>
         ) : null}
 

@@ -1,5 +1,5 @@
 import { apiRequest } from '@/src/services/apiClient';
-import { getMultipartImageFile } from '@/src/utils/file';
+import { appendMultipartImage, appendMultipartJson } from '@/src/utils/file';
 
 import type { PetEntity, PetGender, PetType } from '../types';
 
@@ -94,25 +94,17 @@ function createPetFormData(pet: PetEntity, imageUri?: string | null) {
   }
 
   const formData = new FormData();
-  formData.append(
-    'data',
-    new Blob(
-      [
-        JSON.stringify({
-          birth,
-          breed: pet.breed.trim(),
-          gender: pet.gender.toUpperCase(),
-          neutering: pet.neutered,
-          petName: pet.name.trim(),
-          petType: pet.type.toUpperCase(),
-          petWeight: pet.weight,
-        }),
-      ],
-      { type: 'application/json' },
-    ),
-  );
+  appendMultipartJson(formData, {
+    birth,
+    breed: pet.breed.trim(),
+    gender: pet.gender.toUpperCase(),
+    neutering: pet.neutered,
+    petName: pet.name.trim(),
+    petType: pet.type.toUpperCase(),
+    petWeight: pet.weight,
+  });
   if (imageUri) {
-    formData.append('image', getMultipartImageFile(imageUri) as unknown as Blob);
+    appendMultipartImage(formData, 'image', imageUri);
   }
   return formData;
 }

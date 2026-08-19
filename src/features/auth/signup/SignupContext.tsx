@@ -224,6 +224,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
             ...createInitialData(transaction.method),
             ...(draft?.data ?? {}),
             email: transaction.email,
+            emailVerified: transaction.method === 'local',
             method: transaction.method,
           };
           signupSessionIdRef.current = transaction.sessionId;

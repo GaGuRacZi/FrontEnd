@@ -35,6 +35,7 @@ import type { UserProfile } from '../types';
 const MAX_NICKNAME_LENGTH = 15;
 const MAX_NAME_LENGTH = 10;
 const MAX_INTRODUCTION_LENGTH = 30;
+const NICKNAME_PATTERN = /^[a-zA-Z0-9가-힣]+$/;
 
 type ProfileDraft = Pick<
   UserProfile,
@@ -197,7 +198,11 @@ export function MyPageProfileScreen() {
 
     return {
       name: draft.name.trim() ? '' : '이름을 입력해주세요.',
-      nickname: draft.nickname.trim() ? '' : '닉네임을 입력해주세요.',
+      nickname: !draft.nickname.trim()
+        ? '닉네임을 입력해주세요.'
+        : NICKNAME_PATTERN.test(draft.nickname)
+          ? ''
+          : '닉네임은 한글, 영문, 숫자만 사용할 수 있어요.',
     };
   }, [draft]);
   const canSave = Boolean(draft && !errors.name && !errors.nickname && !saving);
@@ -211,30 +216,47 @@ export function MyPageProfileScreen() {
     setPendingExitAction(data.action);
   });
 
+  const startLocationRequest = () => {
+    const requestId = locationRequestIdRef.current + 1;
+    locationRequestIdRef.current = requestId;
+    return () => mountedRef.current && locationRequestIdRef.current === requestId;
+  };
+
   if (addressSearchVisible && draft) {
     return (
       <AddressSearchScreen
         onBack={() => setAddressSearchVisible(false)}
         onSelect={(address) => {
           setAddressSearchVisible(false);
+          if (locating) return;
           void (async () => {
+            const isActiveRequest = startLocationRequest();
             setLocating(true);
             try {
               const location = (await geocodeAddress(address)).find(
                 ({ latitude, longitude }) => Number.isFinite(latitude) && Number.isFinite(longitude),
               );
+              if (!isActiveRequest()) return;
               if (!location) throw new Error('location-not-found');
               const certified = await certifyRemoteUserLocation(
                 location.latitude,
                 location.longitude,
               );
+              if (!isActiveRequest() || !certified.regionName.trim()) {
+                if (isActiveRequest()) {
+                  showAlert('지역을 설정하지 못했어요', '다시 검색하거나 현재 위치를 사용해주세요.');
+                }
+                return;
+              }
               setDraft((current) =>
                 current ? { ...current, location: certified.regionName } : current,
               );
             } catch {
-              showAlert('지역을 설정하지 못했어요', '다시 검색하거나 현재 위치를 사용해주세요.');
+              if (isActiveRequest()) {
+                showAlert('지역을 설정하지 못했어요', '다시 검색하거나 현재 위치를 사용해주세요.');
+              }
             } finally {
-              setLocating(false);
+              if (isActiveRequest()) setLocating(false);
             }
           })();
         }}
@@ -304,10 +326,7 @@ export function MyPageProfileScreen() {
 
   const requestCurrentLocation = async () => {
     if (locating) return;
-    const requestId = locationRequestIdRef.current + 1;
-    locationRequestIdRef.current = requestId;
-    const isActiveRequest = () =>
-      mountedRef.current && locationRequestIdRef.current === requestId;
+    const isActiveRequest = startLocationRequest();
     setLocating(true);
 
     try {

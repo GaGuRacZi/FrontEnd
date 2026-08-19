@@ -1,7 +1,7 @@
 import {
   apiRequest,
 } from '@/src/services/apiClient';
-import { getMultipartImageFile } from '@/src/utils/file';
+import { appendMultipartImage, appendMultipartJson } from '@/src/utils/file';
 
 import {
   parseRemoteUserProfileEnvelope,
@@ -27,16 +27,10 @@ export async function updateRemoteUserProfile({
   nickname,
 }: RemoteProfileUpdate): Promise<RemoteUserProfile> {
   const formData = new FormData();
-  formData.append(
-    'data',
-    new Blob(
-      [JSON.stringify({ intro, name, nickname })],
-      { type: 'application/json' },
-    ),
-  );
+  appendMultipartJson(formData, { intro, name, nickname });
 
   if (imageUri) {
-    formData.append('image', getMultipartImageFile(imageUri) as unknown as Blob);
+    appendMultipartImage(formData, 'image', imageUri);
   }
 
   const response = await apiRequest<unknown>('/users/me/profile', {

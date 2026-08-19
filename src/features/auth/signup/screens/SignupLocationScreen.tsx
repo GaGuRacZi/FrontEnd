@@ -231,6 +231,10 @@ export function SignupLocationScreen() {
       const resolved = await resolveRemoteLocation(location.latitude, location.longitude);
 
       if (!isCurrentRequest()) return;
+      if (!resolved.regionName) {
+        setLocationError('선택한 지역의 정보를 확인하지 못했어요. 다시 검색해주세요.');
+        return;
+      }
 
       updateFields({
         latitude: resolved.latitude,

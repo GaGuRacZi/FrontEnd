@@ -167,7 +167,7 @@ export function LoginScreen() {
     } catch (error) {
       if (screenActiveRef.current) {
         setFormError(
-          error instanceof LocalAuthError
+          error instanceof LocalAuthError || error instanceof KakaoAuthError
             ? error.message
             : '로그인 정보를 확인하지 못했어요. 잠시 후 다시 시도해주세요.',
         );
