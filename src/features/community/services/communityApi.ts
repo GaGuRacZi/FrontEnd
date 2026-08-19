@@ -139,13 +139,27 @@ function readPhotos(value: unknown): CommunityImageAsset[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new CommunityApiContractError();
 
-  return value.map((photo) => {
+  return value.map((photo, index) => {
     const record = readRecord(photo);
+    if (record.isThumbnail !== undefined && typeof record.isThumbnail !== 'boolean') {
+      throw new CommunityApiContractError();
+    }
+    if (
+      record.sortOrder !== undefined &&
+      (typeof record.sortOrder !== 'number' || !Number.isSafeInteger(record.sortOrder) || record.sortOrder < 0)
+    ) {
+      throw new CommunityApiContractError();
+    }
     return {
-      assetId: readId(record.photoId),
-      url: readString(record.url),
+      image: {
+        assetId: readId(record.photoId),
+        url: readString(record.url),
+      },
+      isThumbnail: record.isThumbnail === true,
+      sortOrder: typeof record.sortOrder === 'number' ? record.sortOrder : index,
     };
-  });
+  }).sort((left, right) => Number(right.isThumbnail) - Number(left.isThumbnail) || left.sortOrder - right.sortOrder)
+    .map(({ image }) => image);
 }
 
 function readRemotePost(value: unknown, detail: boolean): RemoteCommunityPost {
@@ -361,7 +375,7 @@ async function getMarketRegionCode() {
   return (await getRemoteUserLocation()).regionCode;
 }
 
-function createRemotePostData(
+export function createRemotePostData(
   post: TalkPost | MarketPost,
   tags: readonly RemoteCommunityTag[],
   isUpdate: boolean,
@@ -383,13 +397,17 @@ function createRemotePostData(
     title: post.title.trim(),
   };
   const existingUrls = images.flatMap((image) => image.url ? [image.url] : []);
-  const newImageCount = images.filter((image) => image.localUri).length;
+  const firstImage = images[0];
   const imageData = isUpdate
     ? {
         ...(existingUrls.length ? { keepPhotoUrls: existingUrls } : {}),
-        ...(existingUrls[0] ? { thumbnailUrl: existingUrls[0] } : newImageCount ? { thumbnailIndex: 0 } : {}),
+        ...(firstImage?.url
+          ? { thumbnailUrl: firstImage.url }
+          : firstImage?.localUri
+            ? { thumbnailIndex: existingUrls.length + images.filter((image) => image.localUri).indexOf(firstImage) }
+            : {}),
       }
-    : newImageCount ? { thumbnailIndex: 0 } : {};
+    : firstImage?.localUri ? { thumbnailIndex: 0 } : {};
 
   if (post.kind === 'talk') {
     return {
@@ -420,7 +438,13 @@ function withMarketRegion(data: Record<string, unknown>, regionCode: string) {
 
 export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityIdentity): CommunityPost {
   const author = getAuthor(remote.authorNickname, remote.postId, identity);
-  const photoUris = remote.photos.map((photo) => photo.url).filter((url): url is string => Boolean(url));
+  const thumbnailIndex = remote.thumbnailUrl
+    ? remote.photos.findIndex((photo) => photo.url === remote.thumbnailUrl)
+    : -1;
+  const photos = thumbnailIndex > 0
+    ? [remote.photos[thumbnailIndex], ...remote.photos.slice(0, thumbnailIndex), ...remote.photos.slice(thumbnailIndex + 1)]
+    : remote.photos;
+  const photoUris = photos.map((photo) => photo.url).filter((url): url is string => Boolean(url));
   const base = {
     author,
     baseCommentCount: remote.commentCount,
@@ -428,7 +452,7 @@ export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityId
     categoryCode: remote.tagCode,
     createdAt: remote.createdAt,
     id: remote.postId,
-    images: remote.photos,
+    images: photos,
     photoUris: photoUris.length > 0 ? photoUris : remote.thumbnailUrl ? [remote.thumbnailUrl] : [],
     tags: remote.hashTags,
     title: remote.title,
@@ -450,10 +474,10 @@ export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityId
   const method = remote.tradeMethod ? [LOCAL_TRADE_METHOD[remote.tradeMethod]] : [];
   return {
     ...base,
-    baseBookmarkCount: 0,
+    baseBookmarkCount: remote.likeCount,
     category: MARKET_CATEGORY_BY_CODE[remote.tagCode] ?? (remote.tagName as Exclude<MarketCategory, '전체'>),
     expiresAt: formatExpiryDate(remote.expiryDate),
-    imageCount: remote.photos.length || (remote.thumbnailUrl ? 1 : 0),
+    imageCount: photos.length || (remote.thumbnailUrl ? 1 : 0),
     kind: 'market',
     location: remote.regionName ?? '',
     priceLabel: getPriceLabel(remote),
@@ -612,7 +636,7 @@ export async function deleteRemoteComment(commentId: string) {
   await apiRequest<unknown>(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' });
 }
 
-export async function toggleRemoteTalkLike(postId: string) {
+export async function toggleRemoteCommunityLike(postId: string) {
   return parseRemoteLikeMutation(
     await apiRequest<unknown>(`/communities/${encodeURIComponent(postId)}/likes`, { method: 'PATCH' }),
   );

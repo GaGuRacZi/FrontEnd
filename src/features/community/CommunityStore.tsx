@@ -17,7 +17,7 @@ import {
   getRemoteCommunityTags,
   mapRemotePost,
   parseRemoteCommentMutation,
-  toggleRemoteTalkLike,
+  toggleRemoteCommunityLike,
   updateRemoteComment,
   updateRemoteCommunityPost,
   type CommunityIdentity,
@@ -48,7 +48,7 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-supported' | 'not-yours' };
+  | { ok: false; reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-yours' };
 
 const mutationError = (): MutationResult => ({ ok: false, reason: 'error' });
 
@@ -535,11 +535,17 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         const post = mapRemotePost(remotePost, identity);
         const previousViewerState = getViewerStateFromMap(stateRef.current.viewerStates, viewerId);
         const likedPostIds = previousViewerState.reactionPostIds.like ?? [];
+        const bookmarkedPostIds = previousViewerState.bookmarkedPostIds;
         const nextLikedPostIds = post.kind !== 'talk'
           ? likedPostIds
           : remotePost.likedByMe
             ? [...new Set([...likedPostIds, post.id])]
             : likedPostIds.filter((id) => id !== post.id);
+        const nextBookmarkedPostIds = post.kind !== 'market'
+          ? bookmarkedPostIds
+          : remotePost.likedByMe
+            ? [...new Set([...bookmarkedPostIds, post.id])]
+            : bookmarkedPostIds.filter((id) => id !== post.id);
         applyState({
           ...stateRef.current,
           posts: [
@@ -550,6 +556,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
             ...stateRef.current.viewerStates,
             [viewerId]: {
               ...previousViewerState,
+              bookmarkedPostIds: nextBookmarkedPostIds,
               reactionPostIds: {
                 ...previousViewerState.reactionPostIds,
                 like: nextLikedPostIds,
@@ -629,7 +636,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           const talkPost = current.posts.find((post) => post.id === postId);
           if (!talkPost || talkPost.kind !== 'talk') return { ok: false, reason: 'not-found' };
 
-          const result = await toggleRemoteTalkLike(postId);
+          const result = await toggleRemoteCommunityLike(postId);
           const previous = getViewerStateFromMap(current.viewerStates, viewerId);
           const likePostIds = result.liked
             ? [...new Set([...(previous.reactionPostIds.like ?? []), postId])]
@@ -661,8 +668,34 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   );
 
   const toggleBookmark = useCallback(
-    async (_postId: string): Promise<MutationResult> => ({ ok: false, reason: 'not-supported' }),
-    [],
+    (postId: string) =>
+      runSingleToggle(`bookmark:${viewerId}:${postId}`, () =>
+        enqueueMutation(async (): Promise<MutationResult> => {
+          if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+          const current = stateRef.current;
+          const marketPost = current.posts.find((post) => post.id === postId);
+          if (!marketPost || marketPost.kind !== 'market') return { ok: false, reason: 'not-found' };
+
+          const result = await toggleRemoteCommunityLike(postId);
+          const previous = getViewerStateFromMap(current.viewerStates, viewerId);
+          const bookmarkedPostIds = result.liked
+            ? [...new Set([...previous.bookmarkedPostIds, postId])]
+            : previous.bookmarkedPostIds.filter((id) => id !== postId);
+          return persistMutation({
+            ...current,
+            posts: current.posts.map((post) =>
+              post.id === postId && post.kind === 'market'
+                ? { ...post, baseBookmarkCount: result.likeCount }
+                : post,
+            ),
+            viewerStates: {
+              ...current.viewerStates,
+              [viewerId]: { ...previous, bookmarkedPostIds },
+            },
+          });
+        }).catch(mutationError),
+      ),
+    [enqueueMutation, persistMutation, runSingleToggle, sessionReady, viewerId],
   );
 
   const addComment = useCallback(

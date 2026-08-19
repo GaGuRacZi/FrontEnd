@@ -87,6 +87,51 @@ assert.equal(
   '새 소통 카테고리',
 );
 
+const imageUpdate = communityApi.createRemotePostData({
+  author: { nickname: '나', userId: 'user-me' },
+  baseBookmarkCount: 0,
+  baseReactionCounts: { like: 0 },
+  body: '사진 순서를 바꿨어요.',
+  category: '건강상담',
+  categoryCode: 'HEALTH_CONSULT',
+  createdAt: '2026-08-19T10:00:00+09:00',
+  id: '10',
+  images: [
+    { assetId: 'new-photo', localUri: 'file:///new.jpg' },
+    { assetId: 'saved-photo', url: 'https://cdn.example.com/saved.jpg' },
+  ],
+  kind: 'talk',
+  showNeighborhood: false,
+  tags: [],
+  title: '사진 순서',
+  updatedAt: '2026-08-19T10:00:00+09:00',
+}, [{ code: 'HEALTH_CONSULT', name: '건강상담', postType: 'COMMUNICATION', sortOrder: 1 }], true);
+assert.equal(imageUpdate.data.thumbnailIndex, 1);
+assert.deepEqual(imageUpdate.data.keepPhotoUrls, ['https://cdn.example.com/saved.jpg']);
+
+assert.deepEqual(
+  communityApi.mapRemotePost(communityApi.parseRemoteCommunityDetail({
+    code: 'COMMUNITY_DETAIL_200',
+    isSuccess: true,
+    message: 'ok',
+    result: {
+      ...page.items[0],
+      content: '사진 순서를 확인해요.',
+      hashTags: [],
+      likedByMe: false,
+      marketStatus: 'IN_PROGRESS',
+      photos: [
+        { isThumbnail: false, photoId: 'first', sortOrder: 0, url: 'https://cdn.example.com/first.jpg' },
+        { isThumbnail: true, photoId: 'thumbnail', sortOrder: 1, url: 'https://cdn.example.com/thumbnail.jpg' },
+      ],
+      postType: 'MARKET',
+      tradeMethod: 'DIRECT',
+      tradeType: 'SHARE',
+    },
+  }), { profile: null, userId: 'user-me' }).photoUris,
+  ['https://cdn.example.com/thumbnail.jpg', 'https://cdn.example.com/first.jpg'],
+);
+
 assert.deepEqual(
   communityApi.parseRemoteCommunityTags({
     code: 'COMMUNITY_TAG_LIST_200',
