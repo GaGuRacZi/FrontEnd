@@ -13,7 +13,6 @@ import {
   useAuthSession,
 } from '@/src/features/auth/session/AuthSessionStore';
 import { TermsProvider } from '@/src/features/auth/terms';
-import { RequiredTermsGuard } from '@/src/features/auth/terms/components/RequiredTermsGuard';
 import { ChatDataBridge } from '@/src/features/chat/ChatDataBridge';
 import { ChatProvider } from '@/src/features/chat/ChatStore';
 import { CommunityProvider } from '@/src/features/community/CommunityStore';
@@ -156,9 +155,7 @@ function SessionProviders({ children }: PropsWithChildren) {
               <ChatProvider>
                 <AccountDataGuard>
                   <ChatDataBridge />
-                  <RequiredTermsGuard userId={termsUserId}>
-                    {children}
-                  </RequiredTermsGuard>
+                  {children}
                 </AccountDataGuard>
               </ChatProvider>
             </CommunityProvider>

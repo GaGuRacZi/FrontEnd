@@ -24,6 +24,7 @@ type Mode = 'idle' | 'manual' | 'ocrLoading';
 
 export function MedicationSearchModal({ onClose, onSubmit, visible }: MedicationSearchModalProps) {
 	const [mode, setMode] = useState<Mode>('idle');
+	const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
 	const [query, setQuery] = useState('');
 	const [selected, setSelected] = useState<MedicationEntry[]>([]);
 	const [manualForm, setManualForm] = useState({ name: '', ingredient: '', description: '', warningNote: '' });
@@ -48,15 +49,22 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 			clearTimers();
 			setMode('idle');
 			setFeedbackMessage(null);
+			setSourcePickerVisible(false);
 		}
 		return () => clearTimers();
 	}, [visible]);
 
 	const hasSelection = selected.length > 0;
 
-	const handleOcrPress = async () => {
+	const selectPrescriptionImage = async (source: 'camera' | 'library') => {
 		try {
-			if (Platform.OS === 'ios') {
+			if (source === 'camera') {
+				const { status } = await ImagePicker.requestCameraPermissionsAsync();
+				if (status !== 'granted') {
+					showFeedback('카메라 권한을 허용해주세요.');
+					return;
+				}
+			} else if (Platform.OS === 'ios') {
 				const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 				if (status !== 'granted') {
 					showFeedback('사진 접근 권한을 허용해주세요.');
@@ -64,13 +72,19 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 				}
 			}
 
-			const result = await ImagePicker.launchImageLibraryAsync({
+			const result = await (source === 'camera'
+				? ImagePicker.launchCameraAsync({
+					allowsEditing: false,
+					mediaTypes: ['images'],
+					quality: 0.8,
+				})
+				: ImagePicker.launchImageLibraryAsync({
 				allowsMultipleSelection: false,
 				defaultTab: 'photos',
 				mediaTypes: ['images'],
 				quality: 0.8,
 				allowsEditing: false,
-			});
+				}));
 
 			if (result.canceled) return;
 
@@ -87,6 +101,8 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 			showFeedback('사진첩을 열지 못했어요. 잠시 후 다시 시도해주세요.');
 		}
 	};
+
+	const handleOcrPress = () => setSourcePickerVisible(true);
 
 	const handleSearch = () => {
 		if (!query.trim()) {
@@ -274,6 +290,31 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 					style={!hasSelection && styles.bottomButtonInactive}
 					title={hasSelection ? '완료' : '약물을 검색해서 담아주세요'}
 				/>
+			</AppModal>
+
+			<AppModal
+				onClose={() => setSourcePickerVisible(false)}
+				primaryAction={{
+					label: '사진첩',
+					onPress: () => {
+						setSourcePickerVisible(false);
+						void selectPrescriptionImage('library');
+					},
+				}}
+				secondaryAction={{
+					label: '카메라',
+					onPress: () => {
+						setSourcePickerVisible(false);
+						void selectPrescriptionImage('camera');
+					},
+				}}
+				title="처방전 사진 선택"
+				variant="center"
+				visible={sourcePickerVisible}
+			>
+				<Text style={styles.sourcePickerDescription}>
+					카메라로 촬영하거나 사진첩에서 처방전을 선택해주세요.
+				</Text>
 			</AppModal>
 
 			<Modal
@@ -547,6 +588,11 @@ const styles = StyleSheet.create({
 		...TYPOGRAPHY.segmentActive,
 		color: COLORS.black,
 		fontFamily: TYPOGRAPHY.button.fontFamily,
+		textAlign: 'center',
+	},
+	sourcePickerDescription: {
+		...TYPOGRAPHY.body2,
+		color: COLORS.gray600,
 		textAlign: 'center',
 	},
 });

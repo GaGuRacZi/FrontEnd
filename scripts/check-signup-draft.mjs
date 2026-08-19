@@ -12,7 +12,12 @@ const compiled = ts.transpileModule(source, {
 const loadedModule = { exports: {} };
 new Function('module', 'exports', compiled)(loadedModule, loadedModule.exports);
 
-const { createSignupDraft, isCurrentSignupDraft, parseStoredSignupDraft } =
+const {
+  canResumeLocalSignupDraft,
+  createSignupDraft,
+  isCurrentSignupDraft,
+  parseStoredSignupDraft,
+} =
   loadedModule.exports;
 const secretValues = ['Abcd1234', 'Abcd1234-confirm', '123456', 'verification-token'];
 const draft = createSignupDraft({
@@ -57,6 +62,12 @@ for (const field of [
 }
 for (const value of secretValues) assert.equal(serialized.includes(value), false);
 assert.deepEqual(parseStoredSignupDraft(serialized), draft);
+assert.equal(canResumeLocalSignupDraft(draft, 'PAW@example.com', 'user-id'), true);
+assert.equal(canResumeLocalSignupDraft(draft, 'other@example.com', 'user-id'), false);
+assert.equal(
+  canResumeLocalSignupDraft({ ...draft, remoteUserId: 'other-user' }, 'paw@example.com', 'user-id'),
+  false,
+);
 assert.equal(isCurrentSignupDraft(draft), true);
 assert.equal(
   isCurrentSignupDraft(draft, Date.parse(draft.savedAt) + 8 * 24 * 60 * 60 * 1000),

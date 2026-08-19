@@ -293,9 +293,6 @@ export function PetProvider({ children }: PropsWithChildren) {
           pet.profileImageUri !== nextPet.profileImageUri
             ? pet.profileImageUri
             : null,
-          previous.certificateImageUri !== nextPet.certificateImageUri
-            ? previous.certificateImageUri
-            : null,
         ];
         try {
           await queuePetImageRemovals(userId, imagesToRemove);
@@ -338,9 +335,7 @@ export function PetProvider({ children }: PropsWithChildren) {
         try {
           await queuePetImageRemovals(userId, [
             target.profileImageUri,
-            target.certificateImageUri,
             editDraft?.profileImageUri ?? null,
-            editDraft?.certificateImageUri ?? null,
           ]);
         } catch {
           return { ok: false, reason: 'error' };

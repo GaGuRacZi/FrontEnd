@@ -161,6 +161,19 @@ export function isCurrentSignupDraft(draft: StoredSignupDraft, now = Date.now())
   return savedAt <= now + 60_000 && savedAt >= now - SIGNUP_DRAFT_RETENTION_MS;
 }
 
+export function canResumeLocalSignupDraft(
+  draft: StoredSignupDraft | null,
+  email: string,
+  remoteUserId: string,
+) {
+  return Boolean(
+    draft &&
+      draft.method === 'local' &&
+      draft.data.email.trim().toLowerCase() === email.trim().toLowerCase() &&
+      (draft.remoteUserId === null || draft.remoteUserId === remoteUserId),
+  );
+}
+
 export function parseStoredSignupDraft(value: string | null) {
   if (!value) return null;
 

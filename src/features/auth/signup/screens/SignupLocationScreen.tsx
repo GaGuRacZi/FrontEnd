@@ -24,6 +24,7 @@ import {
   geocodeAddress,
   getBestCurrentPosition,
   getRegionFromPosition,
+  LocationPermissionError,
   MAX_LOCATION_ACCURACY_METERS,
 } from '../services/locationService';
 import { useSignup } from '../SignupContext';
@@ -241,8 +242,20 @@ export function SignupLocationScreen() {
         longitude: resolved.longitude,
         region: resolved.regionName,
       });
-    } catch {
+    } catch (error) {
       if (isCurrentRequest()) {
+        if (error instanceof LocationPermissionError) {
+          setLocationError('지역을 선택하려면 위치 권한을 허용해주세요.');
+          showAlert(
+            '위치 권한이 필요해요',
+            '지역 검색 결과를 확인하려면 앱 설정에서 위치 권한을 허용해주세요.',
+            [
+              { text: '취소', style: 'cancel' },
+              { text: '설정 열기', onPress: () => void Linking.openSettings() },
+            ],
+          );
+          return;
+        }
         setLocationError('선택한 지역의 위치를 확인하지 못했어요. 다시 검색해주세요.');
       }
     } finally {

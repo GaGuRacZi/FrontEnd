@@ -74,7 +74,7 @@ export function TermsAgreementScreen() {
       if (pendingRemoteSignupUserId) {
         await clearSession(pendingRemoteSignupUserId);
       }
-      router.dismissTo(data.method === 'kakao' ? '/' : '/login');
+      router.replace(data.method === 'kakao' ? '/' : '/login');
     } catch {
       resumeSignupDraft();
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');

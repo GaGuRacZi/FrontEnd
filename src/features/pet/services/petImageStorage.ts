@@ -9,7 +9,7 @@ import {
   type PendingPetImageRemoval,
 } from './petImageRemovalState';
 
-export type PetImageField = 'certificateImageUri' | 'profileImageUri';
+export type PetImageField = 'profileImageUri';
 
 export type PendingPetImagePicker = {
   draftId: string;
@@ -52,7 +52,7 @@ function parsePendingPicker(value: string | null): PendingPetImagePicker | null 
     if (
       typeof pending.userId !== 'string' ||
       typeof pending.draftId !== 'string' ||
-      (pending.field !== 'profileImageUri' && pending.field !== 'certificateImageUri')
+      pending.field !== 'profileImageUri'
     ) {
       return null;
     }
@@ -129,27 +129,20 @@ export function releasePersistedPetImage(userId: string, uri: string) {
 
 export function collectPetImageUris(
   items: readonly {
-    certificateImageUri: string | null;
     profileImageUri: string | null;
   }[],
 ) {
   return new Set(
-    items.flatMap((item) =>
-      [item.profileImageUri, item.certificateImageUri].filter(
-        (uri): uri is string => Boolean(uri),
-      ),
-    ),
+    items.flatMap((item) => [item.profileImageUri].filter((uri): uri is string => Boolean(uri))),
   );
 }
 
 export function collectRetainedPetImageUris(
   pets: readonly {
-    certificateImageUri: string | null;
     id: string;
     profileImageUri: string | null;
   }[],
   drafts: readonly {
-    certificateImageUri: string | null;
     petId: string | null;
     profileImageUri: string | null;
   }[],
