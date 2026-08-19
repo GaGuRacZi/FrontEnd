@@ -216,7 +216,7 @@ export function assertSuccessfulKakaoEnvelope(value: unknown) {
 export function assertSuccessfulEmailEnvelope(value: unknown, expectedCode: string) {
   const { code, result } = readEnvelope(value);
 
-  if (code !== expectedCode || result !== null) {
+  if (code !== expectedCode || (result !== null && result !== undefined)) {
     throw new KakaoAuthContractError();
   }
 }

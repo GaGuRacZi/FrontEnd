@@ -34,9 +34,10 @@ export function PetBreedPickerModal({
     if (!visible) return;
 
     let active = true;
+    setBreeds([]);
+    setLoading(true);
+    setLoadError(false);
     const timeoutId = setTimeout(() => {
-      setLoading(true);
-      setLoadError(false);
       void searchRemoteBreeds(petType, query)
         .then((nextBreeds) => {
           if (active) setBreeds(nextBreeds);

@@ -170,6 +170,12 @@ assert.doesNotThrow(() =>
     'EMAIL_VERIFY_200',
   ),
 );
+assert.doesNotThrow(() =>
+  assertSuccessfulEmailEnvelope(
+    { code: 'EMAIL_VERIFY_200', isSuccess: true, message: 'ok' },
+    'EMAIL_VERIFY_200',
+  ),
+);
 assert.throws(
   () =>
     parseKakaoLoginEnvelope({

@@ -38,9 +38,10 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
     }
 
     let active = true;
+    setResults([]);
+    setLoading(true);
+    setLoadError(false);
     const timeoutId = setTimeout(() => {
-      setLoading(true);
-      setLoadError(false);
       void searchRemoteRegions(normalizedQuery)
         .then((nextResults) => {
           if (active) setResults(nextResults);

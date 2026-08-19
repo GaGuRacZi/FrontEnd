@@ -855,6 +855,7 @@ export function CommunityPostDetailScreen({
       ? matchedReviewPost
       : null
     : matchedReviewPost;
+  const talkPostId = selectedPost?.kind === 'talk' ? selectedPost.id : null;
   const resolvedOrigin = origin ?? defaultOrigin;
   const detailBackAccessibilityLabel =
     resolvedOrigin === 'mypage-activity'
@@ -950,9 +951,9 @@ export function CommunityPostDetailScreen({
   }, [isReady, loadPostDetail, postId, postKind]);
 
   useEffect(() => {
-    if (!selectedPost || selectedPost.kind !== 'talk') return;
-    void loadComments(selectedPost.id);
-  }, [loadComments, selectedPost]);
+    if (!talkPostId) return;
+    void loadComments(talkPostId);
+  }, [loadComments, talkPostId]);
 
   const goBack = useCallback(() => {
     if (resolvedOrigin === 'mypage-activity') {

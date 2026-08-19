@@ -1,6 +1,7 @@
 import { Redirect, usePathname } from 'expo-router';
 import type { PropsWithChildren } from 'react';
 
+import { AuthSessionStateScreen } from '../../session/AuthSessionGuard';
 import { useAuthSession } from '../../session/AuthSessionStore';
 import { useTerms } from '../../terms';
 import { useSignup } from '../SignupContext';
@@ -60,7 +61,7 @@ export function SignupFlowGuard({ children }: PropsWithChildren) {
   }
 
   if (status === 'loading') {
-    return children;
+    return <AuthSessionStateScreen loadingLabel="약관을 불러오고 있어요." />;
   }
 
   if (currentOrder !== undefined && currentOrder > allowedOrder) {

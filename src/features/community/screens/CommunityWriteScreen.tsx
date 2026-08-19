@@ -1306,7 +1306,7 @@ export function CommunityWriteScreen() {
         return '유통기한은 오늘 이후 날짜로 입력해주세요.';
       }
       if (!marketBody.trim()) return '상세 설명을 입력해주세요.';
-      if (!hasValidTradeMethods) return '거래 방법을 1개 이상 선택해주세요.';
+      if (!hasValidTradeMethods) return '거래 방법을 선택해주세요.';
       if (marketNeedsLocation && !tradeLocation.trim()) return '거래 지역을 입력해주세요.';
       return null;
     }

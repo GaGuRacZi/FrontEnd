@@ -187,7 +187,8 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
           loadedDraft &&
           isCurrentMethod(loadedDraft.method) &&
           (pendingRemoteSignupUserId
-            ? loadedDraft.remoteUserId === pendingRemoteSignupUserId
+            ? loadedDraft.remoteUserId === pendingRemoteSignupUserId ||
+              (loadedDraft.method === 'local' && loadedDraft.remoteUserId === null)
             : loadedDraft.method === 'local' && loadedDraft.remoteUserId === null);
         let draft = draftMatches ? loadedDraft : null;
 
@@ -204,7 +205,8 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
             draft &&
             (draft.sessionId !== transaction.sessionId ||
               draft.method !== transaction.method ||
-              draft.remoteUserId !== transaction.userId)
+              (draft.remoteUserId !== transaction.userId &&
+                !(transaction.method === 'local' && draft.remoteUserId === null)))
           ) {
             await clearActiveSignupDraft(draft.sessionId);
             draft = null;

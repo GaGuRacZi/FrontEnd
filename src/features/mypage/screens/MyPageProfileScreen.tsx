@@ -353,13 +353,14 @@ export function MyPageProfileScreen() {
         position.coords.longitude,
       );
       if (!isActiveRequest()) return;
-      if (!certified.regionName) {
+      const regionName = certified.regionName.trim();
+      if (!regionName) {
         showAlert('현재 위치의 지역 정보를 찾지 못했어요', '지역 검색으로 직접 선택해주세요.');
         return;
       }
 
       setDraft((current) =>
-        current ? { ...current, location: certified.regionName } : current,
+        current ? { ...current, location: regionName } : current,
       );
     } catch {
       if (isActiveRequest()) {

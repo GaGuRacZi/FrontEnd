@@ -184,10 +184,12 @@ export function useSignupCompletion() {
           throw new Error('signup-account-exists');
         }
 
-        if (storedTransaction.exists) {
-          await clearSignupTransaction(userId);
+        if (!(ownsStoredTransaction && transaction?.status === 'committed')) {
+          if (storedTransaction.exists) {
+            await clearSignupTransaction(userId);
+          }
+          await saveSignupTransaction(transactionOwner, 'pending');
         }
-        await saveSignupTransaction(transactionOwner, 'pending');
         ownsTransaction = true;
       }
 

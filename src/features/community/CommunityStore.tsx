@@ -637,6 +637,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       stateRef.current.posts.find((current) => current.id === postId) ??
       stateRef.current.reviewPosts.find((current) => current.id === postId);
     const baseCount = post?.baseReactionCounts?.[kind] ?? 0;
+    if (post && 'kind' in post && post.kind === 'talk' && kind === 'like') return baseCount;
     const viewerCount = Object.values(state.viewerStates).filter((viewerState) =>
       viewerState.reactionPostIds[kind]?.includes(postId),
     ).length;
@@ -704,7 +705,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
                         ...post,
                         baseReactionCounts: {
                           ...post.baseReactionCounts,
-                          like: Math.max(0, result.likeCount - (result.liked ? 1 : 0)),
+                          like: result.likeCount,
                         },
                       }
                     : post,
@@ -1036,7 +1037,10 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           ],
           posts: current.posts.map((post) =>
             post.id === comment.postId
-              ? { ...post, baseCommentCount: Math.max(0, (post.baseCommentCount ?? 0) - 1) }
+              ? {
+                  ...post,
+                  baseCommentCount: comments.filter((nextComment) => !nextComment.deletedAt).length,
+                }
               : post,
           ),
         });

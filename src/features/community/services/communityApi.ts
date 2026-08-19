@@ -436,11 +436,10 @@ export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityId
   };
 
   if (remote.postType === 'COMMUNICATION') {
-    const likedByMe = remote.likedByMe === true;
     return {
       ...base,
       baseBookmarkCount: 0,
-      baseReactionCounts: { like: Math.max(0, remote.likeCount - (likedByMe ? 1 : 0)) },
+      baseReactionCounts: { like: remote.likeCount },
       category: TALK_CATEGORY_BY_CODE[remote.tagCode] ?? '동네정보',
       kind: 'talk',
       showNeighborhood: false,

@@ -98,7 +98,7 @@ export function EmailVerificationField() {
       const verificationError = resolveEmailVerificationError(error, 'request');
 
       if (verificationError.alreadyRegistered) {
-        clearVerificationData();
+        resetVerification();
       }
 
       updateEmailVerification({
@@ -152,7 +152,7 @@ export function EmailVerificationField() {
       const verificationError = resolveEmailVerificationError(error, 'confirm');
 
       if (verificationError.alreadyRegistered) {
-        clearVerificationData();
+        resetVerification();
       }
 
       updateEmailVerification({
