@@ -113,8 +113,10 @@ export function hasValidSignupLocation(data: SignupData) {
   );
 }
 
-export function getNextSignupRoute(data: SignupData): SignupFlowRoute {
-  if (!hasValidSignupCredentials(data)) return '/signup/credentials';
+export function getNextSignupRoute(data: SignupData, credentialsEstablished = false): SignupFlowRoute {
+  if (!credentialsEstablished && !hasValidSignupCredentials(data)) {
+    return '/signup/credentials';
+  }
   if (!hasValidSignupProfileInfo(data)) return '/signup/user-info';
   if (!hasValidSignupLocation(data)) return '/signup/location';
   if (!hasValidSignupPetType(data)) return '/signup/pet-type';

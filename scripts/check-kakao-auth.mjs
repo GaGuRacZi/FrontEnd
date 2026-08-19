@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import ts from 'typescript';
 
 import {
   assertSuccessfulKakaoEnvelope,
@@ -169,6 +172,57 @@ assert.doesNotThrow(() =>
     { code: 'EMAIL_VERIFY_200', isSuccess: true, message: 'ok', result: null },
     'EMAIL_VERIFY_200',
   ),
+);
+
+const emailVerificationSource = readFileSync(
+  new URL('../src/features/auth/signup/services/emailVerificationService.ts', import.meta.url),
+  'utf8',
+);
+const emailVerificationModule = { exports: {} };
+class TestApiError extends Error {
+  constructor(message, status, data) {
+    super(message);
+    this.data = data;
+    this.status = status;
+  }
+}
+new Function(
+  'module',
+  'exports',
+  'require',
+  ts.transpileModule(emailVerificationSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+)(emailVerificationModule, emailVerificationModule.exports, (id) => {
+  if (id === '@/src/services/apiClient') {
+    return { ApiError: TestApiError, apiRequest: async () => undefined };
+  }
+  if (id === '../../services/kakaoAuthContract') {
+    return { assertSuccessfulEmailEnvelope: () => undefined };
+  }
+  throw new Error(`Unexpected import: ${id}`);
+});
+const {
+  EMAIL_VERIFICATION_TTL_MS,
+  getEmailVerificationExpiresAt,
+  isEmailVerificationExpired,
+  resolveEmailVerificationError,
+} = emailVerificationModule.exports;
+const verificationIssuedAt = 1_000;
+const verificationExpiresAt = getEmailVerificationExpiresAt(verificationIssuedAt);
+assert.equal(verificationExpiresAt - verificationIssuedAt, EMAIL_VERIFICATION_TTL_MS);
+assert.equal(isEmailVerificationExpired(verificationExpiresAt, verificationExpiresAt - 1), false);
+assert.equal(isEmailVerificationExpired(verificationExpiresAt, verificationExpiresAt), true);
+assert.deepEqual(
+  resolveEmailVerificationError(
+    new TestApiError('invalid code', 400, { code: 'EMAIL_CODE_400' }),
+    'confirm',
+  ),
+  { message: '인증번호가 올바르지 않아요.' },
+);
+assert.deepEqual(
+  resolveEmailVerificationError(new TestApiError('conflict', 409), 'request'),
+  { alreadyRegistered: true, message: '이미 가입된 이메일이에요.' },
 );
 assert.doesNotThrow(() =>
   assertSuccessfulEmailEnvelope(

@@ -7,6 +7,7 @@ type EmailVerificationError = {
 };
 
 const EMAIL_VERIFICATION_TIMEOUT_MS = 15000;
+export const EMAIL_VERIFICATION_TTL_MS = 5 * 60 * 1000;
 
 function getErrorCode(error: ApiError) {
   if (typeof error.data !== 'object' || error.data === null) return undefined;
@@ -34,6 +35,17 @@ async function emailVerificationRequest<ResponseData>(path: string, json: unknow
 
 export function normalizeSignupEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+export function getEmailVerificationExpiresAt(now = Date.now()) {
+  return now + EMAIL_VERIFICATION_TTL_MS;
+}
+
+export function isEmailVerificationExpired(
+  expiresAt: number | null,
+  now = Date.now(),
+) {
+  return expiresAt === null || now >= expiresAt;
 }
 
 export async function requestSignupEmailVerification(email: string) {
@@ -64,7 +76,7 @@ export function resolveEmailVerificationError(
   if (error instanceof ApiError) {
     const code = getErrorCode(error);
 
-    if (code === 'LOCAL_SIGNUP_409_1') {
+    if (code === 'LOCAL_SIGNUP_409_1' || error.status === 409) {
       return {
         alreadyRegistered: true,
         message: '이미 가입된 이메일이에요.',
@@ -73,7 +85,7 @@ export function resolveEmailVerificationError(
 
     if (code === 'EMAIL_CODE_400') {
       return {
-        message: '인증번호가 올바르지 않거나 만료되었어요. 다시 인증해주세요.',
+        message: '인증번호가 올바르지 않아요.',
       };
     }
 

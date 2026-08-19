@@ -68,6 +68,45 @@ const draftWithPassword = JSON.parse(serialized);
 draftWithPassword.data.password = secretValues[0];
 assert.equal(parseStoredSignupDraft(JSON.stringify(draftWithPassword)), null);
 
+const signupValidationSource = readFileSync(
+  new URL('../src/features/auth/signup/signupValidation.ts', import.meta.url),
+  'utf8',
+);
+const signupValidationModule = { exports: {} };
+new Function(
+  'module',
+  'exports',
+  'require',
+  ts.transpileModule(signupValidationSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+)(signupValidationModule, signupValidationModule.exports, (id) => {
+  if (id === '../authValidation') return { getEmailError: () => undefined };
+  if (id === '@/src/features/pet/petValidation') {
+    return {
+      getBirthDateError: () => undefined,
+      getWeightError: () => undefined,
+      isBreedForPet: () => true,
+    };
+  }
+  throw new Error(`Unexpected import: ${id}`);
+});
+const resumedSignupData = {
+  ...draft.data,
+  emailVerified: true,
+  method: 'local',
+  password: '',
+  passwordConfirm: '',
+};
+assert.equal(
+  signupValidationModule.exports.getNextSignupRoute(resumedSignupData, true),
+  '/signup/complete',
+);
+assert.equal(
+  signupValidationModule.exports.getNextSignupRoute(resumedSignupData),
+  '/signup/credentials',
+);
+
 const transactionSource = readFileSync(
   new URL('../src/features/auth/signup/services/signupTransactionStore.ts', import.meta.url),
   'utf8',

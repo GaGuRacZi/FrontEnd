@@ -31,7 +31,10 @@ export function SignupFlowGuard({ children }: PropsWithChildren) {
   const currentOrder = pathname.startsWith('/signup/terms/')
     ? ROUTE_ORDER['/signup/terms']
     : ROUTE_ORDER[pathname];
-  const nextRoute = getNextSignupRoute(data);
+  const nextRoute = getNextSignupRoute(
+    data,
+    data.method === 'local' && Boolean(pendingRemoteSignupUserId),
+  );
   const allowedRoute =
     nextRoute === '/signup/complete' && !signupCompleted ? '/signup/pet-info' : nextRoute;
   const allowedOrder = hasRequiredSignupConsents

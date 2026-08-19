@@ -12,6 +12,7 @@ import {
 import {
   attachActiveSignupDraftRemoteUserId,
   clearActiveSignupDraft,
+  loadActiveSignupDraft,
 } from '../signup/services/signupDraftStore';
 import { clearActiveSignupTransaction } from '../signup/services/signupTransactionStore';
 import { isUuid } from '../services/kakaoAuthContract';
@@ -327,12 +328,17 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
         const preservesPendingSignup =
           pendingRemoteSignupUserIdRef.current === remoteSession.uid &&
           pendingRemoteSignupMethodRef.current === method;
-        const shouldRetainLocalDraft =
+        const activeSignupDraft = method === 'local' ? await loadActiveSignupDraft() : null;
+        const hasMatchingLocalDraft = activeSignupDraft?.remoteUserId === remoteSession.uid;
+        const canAttachLocalDraft =
           method === 'local' &&
           !pendingRemoteSignupUserIdRef.current &&
           typeof signupSessionId === 'string' &&
-          Boolean(signupSessionId.trim()) &&
-          (await attachActiveSignupDraftRemoteUserId(signupSessionId, remoteSession.uid));
+          Boolean(signupSessionId.trim());
+        const shouldRetainLocalDraft =
+          hasMatchingLocalDraft ||
+          (canAttachLocalDraft &&
+            (await attachActiveSignupDraftRemoteUserId(signupSessionId, remoteSession.uid)));
 
         if (!preservesPendingSignup && !shouldRetainLocalDraft) {
           await Promise.allSettled([

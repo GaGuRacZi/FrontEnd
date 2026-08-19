@@ -10,6 +10,8 @@ import { useTerms } from '@/src/features/auth/terms';
 
 import {
   confirmSignupEmailVerification,
+  getEmailVerificationExpiresAt,
+  isEmailVerificationExpired,
   normalizeSignupEmail,
   requestSignupEmailVerification,
   resolveEmailVerificationError,
@@ -41,7 +43,7 @@ export function EmailVerificationField() {
   const helperText = isVerified
     ? '이메일 인증이 완료되었어요.'
     : hasPendingVerification
-      ? '인증번호를 전송했어요. 이메일을 확인해주세요.'
+      ? '인증번호를 전송했어요. 5분 안에 입력해주세요.'
       : undefined;
 
   const clearVerificationData = () => {
@@ -53,7 +55,12 @@ export function EmailVerificationField() {
 
   const resetVerification = () => {
     clearVerificationData();
-    updateEmailVerification({ error: null, requestedEmail: null, status: 'idle' });
+    updateEmailVerification({
+      error: null,
+      expiresAt: null,
+      requestedEmail: null,
+      status: 'idle',
+    });
   };
 
   const handleEmailChange = (value: string) => {
@@ -91,6 +98,7 @@ export function EmailVerificationField() {
       });
       updateEmailVerification({
         error: null,
+        expiresAt: getEmailVerificationExpiresAt(),
         requestedEmail,
         status: 'idle',
       });
@@ -116,6 +124,20 @@ export function EmailVerificationField() {
     if (!hasPendingVerification) {
       updateEmailVerification({
         error: { field: 'code', message: '인증번호를 다시 요청해주세요.' },
+      });
+      return;
+    }
+
+    if (isEmailVerificationExpired(emailVerification.expiresAt)) {
+      clearVerificationData();
+      updateEmailVerification({
+        error: {
+          field: 'email',
+          message: '인증번호가 만료됐어요. 다시 인증해주세요.',
+        },
+        expiresAt: null,
+        requestedEmail: null,
+        status: 'idle',
       });
       return;
     }
@@ -147,7 +169,12 @@ export function EmailVerificationField() {
         emailVerificationCode: '',
         emailVerified: true,
       });
-      updateEmailVerification({ error: null, requestedEmail: normalizedEmail, status: 'idle' });
+      updateEmailVerification({
+        error: null,
+        expiresAt: null,
+        requestedEmail: normalizedEmail,
+        status: 'idle',
+      });
     } catch (error) {
       const verificationError = resolveEmailVerificationError(error, 'confirm');
 
@@ -285,7 +312,8 @@ const styles = StyleSheet.create({
   action: {
     borderRadius: RADIUS.md,
     height: SIZE.inputHeight,
-    width: 100,
+    paddingHorizontal: SPACING.md,
+    width: 116,
   },
   completedAction: {
     opacity: 1,

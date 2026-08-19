@@ -49,6 +49,20 @@ assert.deepEqual(petApi.parseRemotePetEnvelope(petEnvelope, 'PET_CREATE_200'), {
 });
 assert.throws(() => petApi.parseRemotePetEnvelope({ ...petEnvelope, code: 'PET_UPDATE_200' }, 'PET_CREATE_200'));
 
+const petValidation = loadModule('../src/features/pet/petValidation.ts', {});
+const today = new Date();
+const yesterday = new Date(today);
+yesterday.setDate(today.getDate() - 1);
+const formatDate = (date) =>
+  `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+assert.equal(
+  petValidation.getBirthDateError(formatDate(today)),
+  '생년월일은 오늘 이전 날짜를 입력해주세요.',
+);
+assert.equal(petValidation.getBirthDateError(formatDate(yesterday)), undefined);
+
 const multipartParts = [];
 appendMultipartJson({ append: (...part) => multipartParts.push(part) }, { petName: '초코' });
 assert.deepEqual(multipartParts, [['data', { string: '{"petName":"초코"}', type: 'application/json' }]]);

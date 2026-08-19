@@ -46,8 +46,11 @@ export function getBirthDateError(value: string) {
 
   const date = parseBirthDate(value);
 
-  if (!date || date > new Date()) {
-    return '올바른 생년월일을 입력해주세요.';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (!date || date >= today) {
+    return '생년월일은 오늘 이전 날짜를 입력해주세요.';
   }
 
   return undefined;

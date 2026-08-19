@@ -32,6 +32,7 @@ import {
   loadRemoteUserProfile,
 } from '@/src/features/auth/services/kakaoAuthService';
 import { LocalAuthError } from '@/src/features/auth/services/localAuthService';
+import { loadActiveSignupDraft } from '@/src/features/auth/signup/services/signupDraftStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
@@ -66,8 +67,15 @@ export function LoginScreen() {
 
   const finishLocalLogin = async (session: KakaoSession, linkedKakao = false) => {
     if (session.isNew) {
+      const activeSignupDraft = await loadActiveSignupDraft();
+      const resumesSignup =
+        activeSignupDraft?.method === 'local' && activeSignupDraft.remoteUserId === session.uid;
       await prepareRemoteSignup(session, 'local');
-      router.replace({ pathname: '/signup/terms', params: { method: 'local' } });
+      router.replace(
+        resumesSignup
+          ? '/signup/user-info'
+          : { pathname: '/signup/terms', params: { method: 'local' } },
+      );
       return;
     }
 

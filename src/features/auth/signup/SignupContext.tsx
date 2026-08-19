@@ -46,6 +46,7 @@ type EmailVerificationError = {
 
 type EmailVerificationState = {
   error: EmailVerificationError;
+  expiresAt: number | null;
   requestedEmail: string | null;
   status: EmailVerificationStatus;
 };
@@ -143,6 +144,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
     useState<SignupTransaction | null>(null);
   const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
     error: null,
+    expiresAt: null,
     requestedEmail: null,
     status: 'idle',
   });
@@ -242,6 +244,7 @@ export function SignupProvider({ children, initialMethod }: SignupProviderProps)
           const restoredData = {
             ...createInitialData(draft.method),
             ...draft.data,
+            emailVerified: draft.method === 'local' && draft.remoteUserId !== null,
             method: draft.method,
           };
           signupSessionIdRef.current = draft.sessionId;
