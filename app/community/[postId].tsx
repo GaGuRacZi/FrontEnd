@@ -9,7 +9,7 @@ export default function CommunityPostDetailRoute() {
     postId?: string;
   }>();
   const fromMyPageActivity = origin === 'mypage-activity';
-  const postKind = kind === 'talk' || kind === 'market' || kind === 'review' ? kind : undefined;
+  const postKind = kind === 'talk' || kind === 'market' ? kind : undefined;
 
   return (
     <CommunityPostDetailScreen

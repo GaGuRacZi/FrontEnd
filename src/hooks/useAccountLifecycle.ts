@@ -40,7 +40,7 @@ async function runAll(operations: Promise<void>[]) {
 }
 
 export function useAccountLifecycle() {
-  const { clearSession, currentUserId, deleteLocalCredential } = useAuthSession();
+  const { clearSession, currentUserId } = useAuthSession();
   const { deleteConsentHistory } = useTerms();
   const {
     clearScreenSession: clearChatSession,
@@ -88,12 +88,10 @@ export function useAccountLifecycle() {
       runWithRetry(deleteConsentHistory),
     ]);
 
-    await runWithRetry(() => deleteLocalCredential(userId));
     await runWithRetry(() => clearSession(userId));
     await runWithRetry(() => AsyncStorage.removeItem(PENDING_WITHDRAWAL_KEY));
   }, [
     clearSession,
-    deleteLocalCredential,
     deleteConsentHistory,
     deleteUserChatData,
     deleteUserCommunityData,

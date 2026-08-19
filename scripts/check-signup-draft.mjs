@@ -12,7 +12,12 @@ const compiled = ts.transpileModule(source, {
 const loadedModule = { exports: {} };
 new Function('module', 'exports', compiled)(loadedModule, loadedModule.exports);
 
-const { createSignupDraft, isCurrentSignupDraft, parseStoredSignupDraft } =
+const {
+  canResumeLocalSignupDraft,
+  createSignupDraft,
+  isCurrentSignupDraft,
+  parseStoredSignupDraft,
+} =
   loadedModule.exports;
 const secretValues = ['Abcd1234', 'Abcd1234-confirm', '123456', 'verification-token'];
 const draft = createSignupDraft({
@@ -57,6 +62,12 @@ for (const field of [
 }
 for (const value of secretValues) assert.equal(serialized.includes(value), false);
 assert.deepEqual(parseStoredSignupDraft(serialized), draft);
+assert.equal(canResumeLocalSignupDraft(draft, 'PAW@example.com', 'user-id'), true);
+assert.equal(canResumeLocalSignupDraft(draft, 'other@example.com', 'user-id'), false);
+assert.equal(
+  canResumeLocalSignupDraft({ ...draft, remoteUserId: 'other-user' }, 'paw@example.com', 'user-id'),
+  false,
+);
 assert.equal(isCurrentSignupDraft(draft), true);
 assert.equal(
   isCurrentSignupDraft(draft, Date.parse(draft.savedAt) + 8 * 24 * 60 * 60 * 1000),
@@ -67,3 +78,83 @@ assert.equal(parseStoredSignupDraft(JSON.stringify(unsupportedSchemaDraft)), nul
 const draftWithPassword = JSON.parse(serialized);
 draftWithPassword.data.password = secretValues[0];
 assert.equal(parseStoredSignupDraft(JSON.stringify(draftWithPassword)), null);
+
+const signupValidationSource = readFileSync(
+  new URL('../src/features/auth/signup/signupValidation.ts', import.meta.url),
+  'utf8',
+);
+const signupValidationModule = { exports: {} };
+new Function(
+  'module',
+  'exports',
+  'require',
+  ts.transpileModule(signupValidationSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText,
+)(signupValidationModule, signupValidationModule.exports, (id) => {
+  if (id === '../authValidation') return { getEmailError: () => undefined };
+  if (id === '@/src/features/pet/petValidation') {
+    return {
+      getBirthDateError: () => undefined,
+      getWeightError: () => undefined,
+      isBreedForPet: () => true,
+    };
+  }
+  throw new Error(`Unexpected import: ${id}`);
+});
+const resumedSignupData = {
+  ...draft.data,
+  emailVerified: true,
+  method: 'local',
+  password: '',
+  passwordConfirm: '',
+};
+assert.equal(
+  signupValidationModule.exports.getNextSignupRoute(resumedSignupData, true),
+  '/signup/complete',
+);
+assert.equal(
+  signupValidationModule.exports.getNextSignupRoute(resumedSignupData),
+  '/signup/credentials',
+);
+
+const transactionSource = readFileSync(
+  new URL('../src/features/auth/signup/services/signupTransactionStore.ts', import.meta.url),
+  'utf8',
+);
+const transactionCompiled = ts.transpileModule(transactionSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const transactionStorage = new Map();
+const transactionModule = { exports: {} };
+new Function('module', 'exports', 'require', transactionCompiled)(
+  transactionModule,
+  transactionModule.exports,
+  (id) => {
+    if (id === '@react-native-async-storage/async-storage') {
+      return {
+        __esModule: true,
+        default: {
+          getItem: async (key) => transactionStorage.get(key) ?? null,
+          multiRemove: async (keys) => keys.forEach((key) => transactionStorage.delete(key)),
+          multiSet: async (entries) => entries.forEach(([key, value]) => transactionStorage.set(key, value)),
+          removeItem: async (key) => transactionStorage.delete(key),
+        },
+      };
+    }
+    throw new Error(`Unexpected import: ${id}`);
+  },
+);
+const transactionOwner = {
+  email: 'paw@example.com',
+  method: 'local',
+  sessionId: 'signup-session',
+  userId: 'user-id',
+};
+await transactionModule.exports.saveSignupTransaction(transactionOwner, 'committed');
+await transactionModule.exports.saveSignupTransaction(transactionOwner, 'committed', '42');
+await transactionModule.exports.saveSignupTransaction(transactionOwner, 'committed');
+assert.equal(
+  (await transactionModule.exports.loadSignupTransaction(transactionOwner.userId)).transaction.createdPetId,
+  '42',
+);

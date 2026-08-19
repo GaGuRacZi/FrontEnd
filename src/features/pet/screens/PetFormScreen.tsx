@@ -12,9 +12,7 @@ import { FormScreen, TopHeader } from '@/src/components/layout';
 import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, LAYOUT, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
-import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
-import { PetBloodTypeModal } from '../components/PetBloodTypeModal';
 import { PetBreedPickerModal } from '../components/PetBreedPickerModal';
 import { PetFormFields } from '../components/PetFormFields';
 import { usePetImagePicker } from '../hooks/usePetImagePicker';
@@ -37,7 +35,7 @@ import {
   queuePetImageRemovals,
 } from '../services/petImageStorage';
 import { petRepository } from '../services/petRepository';
-import type { PetDraft, PetEntity, PetFormValues, PetSelectionField } from '../types';
+import type { PetDraft, PetEntity, PetFormValues } from '../types';
 
 type PetFormScreenProps =
   | { mode: 'add'; petId?: never }
@@ -51,21 +49,14 @@ type PendingPetCompletion = {
 
 const PET_DRAFT_FIELDS: readonly (keyof PetDraft)[] = [
   'birthDate',
-  'bloodType',
   'breed',
-  'careAreas',
-  'certificateImageUri',
-  'excludedIngredients',
   'gender',
   'id',
   'name',
   'neutered',
-  'ownerName',
   'petId',
   'profileImageUri',
-  'registrationNumber',
   'sourceUpdatedAt',
-  'surgeries',
   'type',
   'userId',
   'weight',
@@ -100,7 +91,6 @@ function getInvalidFields(values: PetFormValues) {
 export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const router = useRouter();
   const navigation = useNavigation();
-  const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const { currentUserId, isReady: sessionReady } = useAuthSession();
   const {
@@ -118,7 +108,6 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [touched, setTouched] = useState<Set<keyof PetFormErrors>>(() => new Set());
   const [breedVisible, setBreedVisible] = useState(false);
-  const [bloodTypeVisible, setBloodTypeVisible] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [isImageMutating, setIsImageMutating] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -292,9 +281,6 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
             storedDraft.profileImageUri !== initialDraft.profileImageUri
               ? storedDraft.profileImageUri
               : null,
-            storedDraft.certificateImageUri !== initialDraft.certificateImageUri
-              ? storedDraft.certificateImageUri
-              : null,
           );
           await petRepository.deleteDraft(currentUserId, storedDraft.id);
           await flushPetImageRemovals().catch(() => undefined);
@@ -379,9 +365,6 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
 
     await queueDraftImagesForRemoval(
       current.profileImageUri !== base?.profileImageUri ? current.profileImageUri : null,
-      current.certificateImageUri !== base?.certificateImageUri
-        ? current.certificateImageUri
-        : null,
     );
   }, [currentUserId, queueDraftImagesForRemoval]);
 
@@ -574,7 +557,6 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       if (field === 'type' && value !== current.type) {
         nextDraft = {
           ...current,
-          bloodType: null,
           breed: '',
           type: value as PetFormValues['type'],
         };
@@ -632,29 +614,6 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
 
     setPendingBirthDate(initialDate);
     setCalendarVisible(true);
-  };
-
-  const openSelection = (field: PetSelectionField) => {
-    const current = draftRef.current;
-    if (
-      !current ||
-      imageMutationLock.current ||
-      submitLocked.current ||
-      pendingCompletion
-    ) {
-      return;
-    }
-
-    navigateOnce(async () => {
-      try {
-        await petRepository.saveDraft(current);
-        const petParam = mode === 'edit' && petId ? `&petId=${encodeURIComponent(petId)}` : '';
-        router.push(`/pet/selection?field=${field}&mode=${mode}${petParam}` as Href);
-      } catch (error) {
-        showAlert('화면을 열지 못했어요', '잠시 후 다시 시도해주세요.');
-        throw error;
-      }
-    });
   };
 
   const finishSavedPet = async (completion: PendingPetCompletion) => {
@@ -726,7 +685,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
             ? '반려동물은 최대 10마리까지 등록할 수 있어요.'
             : result.reason === 'conflict'
               ? '다른 화면에서 정보가 변경되었어요. 최신 정보를 확인한 뒤 다시 수정해주세요.'
-              : '반려동물 정보를 저장하지 못했어요.';
+              : result.reason === 'not-supported'
+                ? '등록된 프로필 사진은 새 사진으로 변경할 수 있어요.'
+                : '반려동물 정보를 저장하지 못했어요.';
         showAlert(
           result.reason === 'conflict' ? '정보가 변경되었어요' : '저장할 수 없어요',
           message,
@@ -734,8 +695,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         return;
       }
 
+      const savedEntity = result.pet ?? entity;
       draftCompleted.current = true;
-      const savedDraft = createPetDraft(currentDraft.userId, entity);
+      const savedDraft = createPetDraft(currentDraft.userId, savedEntity);
       baseDraftRef.current = savedDraft;
       draftRef.current = savedDraft;
       isDirtyRef.current = false;
@@ -743,7 +705,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       setDraft(savedDraft);
       const completion = {
         draftId: currentDraft.id,
-        entity,
+        entity: savedEntity,
         fallbackDraft: mode === 'add' ? createPetDraft(currentDraft.userId) : savedDraft,
       };
       setPendingCompletion(completion);
@@ -850,18 +812,12 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
           errors={visibleErrors}
           onBlur={(field) => setTouched((current) => new Set(current).add(field))}
           onChange={updateField}
-          onOpenBloodTypes={() => {
-            if (imageMutationLock.current || submitLocked.current) return;
-            setTouched((current) => new Set(current).add('bloodType'));
-            if (draft.type) setBloodTypeVisible(true);
-          }}
           onOpenBreed={() => {
             if (imageMutationLock.current || submitLocked.current) return;
             setTouched((current) => new Set(current).add('breed'));
             if (draft.type) setBreedVisible(true);
           }}
           onOpenCalendar={openCalendar}
-          onOpenSelection={openSelection}
           onPickImage={(field) => {
             if (imageMutationLock.current || submitLocked.current) return;
             void pickImage(field);
@@ -878,16 +834,6 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
           petType={draft.type}
           selectedBreed={draft.breed}
           visible={breedVisible}
-        />
-      ) : null}
-
-      {draft.type ? (
-        <PetBloodTypeModal
-          onClose={() => setBloodTypeVisible(false)}
-          onSelect={(bloodType) => updateField('bloodType', bloodType)}
-          petType={draft.type}
-          selectedBloodType={draft.bloodType}
-          visible={bloodTypeVisible}
         />
       ) : null}
 

@@ -59,9 +59,19 @@ export function saveActiveSignupDraft(input: {
   sessionId: string;
 }) {
   return enqueueMutation(async () => {
-    const draft = createSignupDraft(input);
+    let draft = createSignupDraft(input);
     const stored = await AsyncStorage.getItem(ACTIVE_SIGNUP_DRAFT_KEY);
     const activeDraft = parseStoredSignupDraft(stored);
+
+    if (
+      activeDraft &&
+      activeDraft.sessionId === draft.sessionId &&
+      activeDraft.method === 'local' &&
+      activeDraft.remoteUserId &&
+      draft.remoteUserId === null
+    ) {
+      draft = createSignupDraft({ ...draft, remoteUserId: activeDraft.remoteUserId });
+    }
 
     if (activeDraft && activeDraft.sessionId !== draft.sessionId) {
       await AsyncStorage.setItem(ACTIVE_SIGNUP_DRAFT_KEY, JSON.stringify(draft));
@@ -71,6 +81,29 @@ export function saveActiveSignupDraft(input: {
 
     await AsyncStorage.setItem(ACTIVE_SIGNUP_DRAFT_KEY, JSON.stringify(draft));
     return draft;
+  });
+}
+
+export function attachActiveSignupDraftRemoteUserId(sessionId: string, remoteUserId: string) {
+  return enqueueMutation(async () => {
+    const stored = await AsyncStorage.getItem(ACTIVE_SIGNUP_DRAFT_KEY);
+    const draft = parseStoredSignupDraft(stored);
+
+    if (
+      !draft ||
+      draft.sessionId !== sessionId ||
+      draft.method !== 'local' ||
+      draft.remoteUserId !== null
+    ) {
+      return false;
+    }
+
+    const nextDraft = createSignupDraft({
+      ...draft,
+      remoteUserId,
+    });
+    await AsyncStorage.setItem(ACTIVE_SIGNUP_DRAFT_KEY, JSON.stringify(nextDraft));
+    return true;
   });
 }
 

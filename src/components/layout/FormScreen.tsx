@@ -29,8 +29,8 @@ export function FormScreen({
   return (
     <AppScreen edges={footer ? ['top', 'left', 'right'] : undefined} padded={false}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        enabled={Platform.OS === 'ios'}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        enabled
         keyboardVerticalOffset={keyboardVerticalOffset}
         style={styles.keyboardView}
       >

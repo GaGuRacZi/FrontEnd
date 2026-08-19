@@ -52,6 +52,8 @@ export function DashboardScreen() {
 			<ScreenLayout
 				headerFullWidth
 				leftContent={<BrandLogoButton />}
+				onRightPress={() => router.push('/notifications' as Href)}
+				rightAccessibilityLabel="알림 열기"
 				title="진료 요약"
 			>
 				<View style={styles.body}>

@@ -1,7 +1,6 @@
 import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
-import type { AppIconName } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import type { TodoCategory, TodoSummaryItem } from '../types';

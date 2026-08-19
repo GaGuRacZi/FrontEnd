@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { BrandLogoButton } from '@/src/components/common';
+import { BrandLogoButton, EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
 import { SPACING } from '@/src/constants';
 import { usePetStore } from '@/src/features/pet/PetStore';
@@ -40,8 +40,29 @@ export function HomeScreen() {
     );
   };
 
-  if (!isReady || !selectedPet) {
-    return null; // TODO: 로딩/빈 상태 UI는 추후 보완
+  if (!isReady) {
+    return (
+      <ScreenLayout headerFullWidth leftContent={<BrandLogoButton />}>
+        <View style={styles.stateContent}>
+          <LoadingView label="반려동물 정보를 불러오고 있어요." />
+        </View>
+      </ScreenLayout>
+    );
+  }
+
+  if (!selectedPet) {
+    return (
+      <ScreenLayout headerFullWidth leftContent={<BrandLogoButton />}>
+        <View style={styles.stateContent}>
+          <EmptyState
+            actionLabel="반려동물 등록"
+            description="반려동물 정보를 등록하면 홈에서 관리할 수 있어요."
+            onActionPress={() => router.push('/pet/add' as Href)}
+            title="등록된 반려동물이 없어요"
+          />
+        </View>
+      </ScreenLayout>
+    );
   }
 
   const activePet = mapPetEntityToSummary(selectedPet);
@@ -99,4 +120,5 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { gap: SPACING.xxl, paddingBottom: SPACING.xxxl },
   row: { flexDirection: 'row', gap: SPACING.xl },
+  stateContent: { flex: 1, justifyContent: 'center' },
 });

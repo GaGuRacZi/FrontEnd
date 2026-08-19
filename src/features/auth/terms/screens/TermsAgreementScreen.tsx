@@ -73,13 +73,8 @@ export function TermsAgreementScreen() {
       await clearSignupDraft();
       if (pendingRemoteSignupUserId) {
         await clearSession(pendingRemoteSignupUserId);
-        return;
       }
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace(data.method === 'kakao' ? '/' : '/login');
-      }
+      router.replace(data.method === 'kakao' ? '/' : '/login');
     } catch {
       resumeSignupDraft();
       setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
@@ -181,7 +176,7 @@ export function TermsAgreementScreen() {
             asChild
             href={{
               pathname: '/signup/terms/[termId]',
-              params: { termId: TERM_IDS.privacyPolicy },
+              params: { termId: TERM_IDS.privacy },
             }}
           >
             <Pressable

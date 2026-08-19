@@ -45,19 +45,6 @@ function readNullableString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
-function readStringArray(value: unknown) {
-  if (!Array.isArray(value)) return [];
-
-  return Array.from(
-    new Set(
-      value.flatMap((item) => {
-        const normalized = readRequiredString(item);
-        return normalized ? [normalized] : [];
-      }),
-    ),
-  );
-}
-
 function isPetType(value: unknown): value is PetType {
   return value === 'cat' || value === 'dog';
 }
@@ -99,20 +86,13 @@ function adaptPetEntity(value: unknown, userId: string): PetEntity | null {
 
   return {
     birthDate,
-    bloodType: readNullableString(value.bloodType),
     breed,
-    careAreas: readStringArray(value.careAreas),
-    certificateImageUri: readNullableString(value.certificateImageUri),
     createdAt,
-    excludedIngredients: readStringArray(value.excludedIngredients),
     gender: value.gender,
     id,
     name,
     neutered: value.neutered,
-    ownerName: readString(value.ownerName),
     profileImageUri: readNullableString(value.profileImageUri),
-    registrationNumber: readString(value.registrationNumber),
-    surgeries: readStringArray(value.surgeries),
     type: value.type,
     updatedAt,
     userId,
@@ -142,21 +122,14 @@ function adaptPetDraft(value: unknown, userId: string): PetDraft | null {
 
   return {
     birthDate: readString(value.birthDate),
-    bloodType: readNullableString(value.bloodType),
     breed: readString(value.breed),
-    careAreas: readStringArray(value.careAreas),
-    certificateImageUri: readNullableString(value.certificateImageUri),
-    excludedIngredients: readStringArray(value.excludedIngredients),
     gender: value.gender ?? null,
     id,
     name: readString(value.name),
     neutered: value.neutered ?? null,
-    ownerName: readString(value.ownerName),
     petId: typeof petId === 'string' && petId.trim() ? petId : null,
     profileImageUri: readNullableString(value.profileImageUri),
-    registrationNumber: readString(value.registrationNumber),
     sourceUpdatedAt: readNullableString(value.sourceUpdatedAt),
-    surgeries: readStringArray(value.surgeries),
     type: value.type ?? null,
     userId,
     weight:

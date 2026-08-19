@@ -68,7 +68,7 @@ export function LoginStartScreen() {
     );
   };
 
-  const finishKakaoLogin = async (session: KakaoSession) => {
+  const finishKakaoLogin = async (session: KakaoSession, linkedLocal = false) => {
     if (session.isNew) {
       if (pendingRemoteSignupUserId !== session.uid) {
         const storedTransaction = await loadSignupTransaction(session.uid);
@@ -88,7 +88,7 @@ export function LoginStartScreen() {
         if (cleanupFailure) throw cleanupFailure.reason;
         await clearSignupTransaction(session.uid);
       }
-      await prepareRemoteSignup(session);
+      await prepareRemoteSignup(session, 'kakao');
       return;
     }
 
@@ -97,6 +97,7 @@ export function LoginStartScreen() {
       throw new Error('kakao-profile-mismatch');
     }
     await registerRemoteProfile(profile);
+    if (linkedLocal) await registerRemoteProfile(profile, 'local');
     await activateRemoteSession(session);
   };
 
@@ -138,7 +139,7 @@ export function LoginStartScreen() {
         challenge.linkToken,
         password,
       );
-      await finishKakaoLogin(session);
+      await finishKakaoLogin(session, true);
       if (mountedRef.current) setChallenge(null);
     } catch (error) {
       if (mountedRef.current) {

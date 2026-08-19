@@ -37,7 +37,8 @@ const styles = StyleSheet.create({
 	container: {
 		backgroundColor: COLORS.background,
 		flex: 1,
-		padding: SPACING.xxxl,
+		paddingHorizontal: SPACING.xxxl,
+		paddingTop: SPACING.xxxl,
 	},
 	centerWrap: { alignItems: 'center', flex: 1, justifyContent: 'center' },
 	center: { alignItems: 'center', gap: SPACING.xxl },
@@ -47,6 +48,7 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		backgroundColor: COLORS.primary,
 		borderRadius: RADIUS.button,
+		marginBottom: SPACING.xxl,
 		paddingVertical: SPACING.xl,
 	},
 	pressed: { opacity: 0.85 },

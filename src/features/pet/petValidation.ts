@@ -1,11 +1,9 @@
 import type { PetFormValues, PetType } from './types';
-import { MOCK_BREEDS } from './petData';
 
 const BIRTH_DATE_PATTERN = /^(\d{4})\.(\d{2})\.(\d{2})$/;
 
 type PetRequiredField =
   | 'birthDate'
-  | 'bloodType'
   | 'breed'
   | 'gender'
   | 'name'
@@ -47,8 +45,11 @@ export function getBirthDateError(value: string) {
 
   const date = parseBirthDate(value);
 
-  if (!date || date > new Date()) {
-    return '올바른 생년월일을 입력해주세요.';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (!date || date >= today) {
+    return '생년월일은 오늘 이전 날짜를 입력해주세요.';
   }
 
   return undefined;
@@ -66,7 +67,7 @@ export function getWeightError(value: string) {
 }
 
 export function isBreedForPet(type: PetType | null, breed: string) {
-  return Boolean(type && MOCK_BREEDS[type].some((option) => option.name === breed));
+  return Boolean(type && breed.trim());
 }
 
 export function formatBirthDate(value: string) {
@@ -87,13 +88,8 @@ export function formatBirthDateValue(date: Date) {
 }
 
 export function validatePetForm(values: PetFormValues): PetFormErrors {
-  const bloodTypeIsValid = values.type
-    ? isBloodTypeForPet(values.type, values.bloodType)
-    : !values.bloodType;
-
   return {
     birthDate: getBirthDateError(values.birthDate),
-    bloodType: bloodTypeIsValid ? undefined : '종류에 맞는 혈액형을 선택해주세요.',
     breed: isBreedForPet(values.type, values.breed)
       ? undefined
       : '견종·묘종을 선택해주세요.',
@@ -108,13 +104,3 @@ export function validatePetForm(values: PetFormValues): PetFormErrors {
 export function hasValidPetForm(values: PetFormValues) {
   return Object.values(validatePetForm(values)).every((error) => !error);
 }
-
-function isBloodTypeForPet(type: PetType, bloodType: string | null) {
-  if (!bloodType) return true;
-  return BLOOD_TYPES[type].includes(bloodType);
-}
-
-export const BLOOD_TYPES: Record<PetType, readonly string[]> = {
-  dog: ['DEA 1.1+', 'DEA 1.1-', '미확인'],
-  cat: ['A형', 'B형', 'AB형', '미확인'],
-};

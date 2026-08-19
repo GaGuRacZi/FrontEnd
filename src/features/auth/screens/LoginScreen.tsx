@@ -17,18 +17,36 @@ import { AppInput } from '@/src/components/form/AppInput';
 import { AppScreen } from '@/src/components/layout/AppScreen';
 import { KeyboardAwareScrollView } from '@/src/components/layout/KeyboardAwareScrollView';
 import { TopHeader } from '@/src/components/layout/TopHeader';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, LAYOUT, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { getEmailError } from '@/src/features/auth/authValidation';
 import { AuthActionPanel } from '@/src/features/auth/components/AuthActionPanel';
 import { AuthBrandHero } from '@/src/features/auth/components/AuthBrandHero';
 import { PasswordVisibilityButton } from '@/src/features/auth/components/PasswordVisibilityButton';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import type { KakaoSession } from '@/src/features/auth/services/kakaoAuthContract';
+import {
+  confirmKakaoLinkWithKakaoAccessToken,
+  getKakaoAccessToken,
+  KakaoAuthError,
+  loadRemoteUserProfile,
+} from '@/src/features/auth/services/kakaoAuthService';
+import { LocalAuthError } from '@/src/features/auth/services/localAuthService';
+import { loadActiveSignupDraft } from '@/src/features/auth/signup/services/signupDraftStore';
+import { canResumeLocalSignupDraft } from '@/src/features/auth/signup/services/signupDraftContract';
+import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 export function LoginScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { signInWithPassword } = useAuthSession();
+  const showAlert = useAppAlert();
+  const {
+    activateRemoteSession,
+    prepareRemoteSignup,
+    signInWithPassword,
+  } = useAuthSession();
+  const { registerRemoteProfile } = useMyPageStore();
   const passwordInputRef = useRef<TextInput>(null);
   const screenActiveRef = useRef(false);
   const submittingRef = useRef(false);
@@ -47,6 +65,59 @@ export function LoginScreen() {
   }, [formError]);
 
   const canSubmit = email.trim().length > 0 && password.length > 0;
+
+  const finishLocalLogin = async (session: KakaoSession, linkedKakao = false) => {
+    if (session.isNew) {
+      const activeSignupDraft = await loadActiveSignupDraft();
+      const resumesSignup = canResumeLocalSignupDraft(activeSignupDraft, email, session.uid);
+      await prepareRemoteSignup(
+        session,
+        'local',
+        resumesSignup ? activeSignupDraft?.sessionId : undefined,
+      );
+      router.replace(
+        resumesSignup
+          ? '/signup/user-info'
+          : { pathname: '/signup/terms', params: { method: 'local' } },
+      );
+      return;
+    }
+
+    const profile = await loadRemoteUserProfile(session.accessToken);
+    if (profile.uid !== session.uid || profile.isNew) {
+      throw new Error('local-profile-mismatch');
+    }
+    await registerRemoteProfile(profile, 'local');
+    if (linkedKakao) await registerRemoteProfile(profile, 'kakao');
+    await activateRemoteSession(session);
+  };
+
+  const confirmKakaoAccountLink = async (linkToken: string) => {
+    if (submittingRef.current) return;
+
+    submittingRef.current = true;
+    setSubmitting(true);
+    setFormError(undefined);
+
+    try {
+      const accessToken = await getKakaoAccessToken();
+      const session = await confirmKakaoLinkWithKakaoAccessToken(linkToken, accessToken);
+      await finishLocalLogin(session, true);
+    } catch (error) {
+      if (error instanceof KakaoAuthError && error.kind === 'cancelled') return;
+
+      if (screenActiveRef.current) {
+        setFormError(
+          error instanceof LocalAuthError || error instanceof KakaoAuthError
+            ? error.message
+            : '계정 연결을 완료하지 못했어요. 잠시 후 다시 시도해주세요.',
+        );
+      }
+    } finally {
+      submittingRef.current = false;
+      if (screenActiveRef.current) setSubmitting(false);
+    }
+  };
 
   const handleEmailChange = (value: string) => {
     setEmail(value);
@@ -85,17 +156,33 @@ export function LoginScreen() {
     setSubmitting(true);
 
     try {
-      const result = await signInWithPassword(email, password);
-      if (result.status !== 'verified') {
-        if (screenActiveRef.current) {
-          setFormError('이메일 또는 비밀번호가 일치하지 않아요.');
+      const outcome = await signInWithPassword(email, password);
+      if (outcome.kind === 'link-required') {
+        if (outcome.challenge.existingProvider !== 'KAKAO') {
+          throw new Error('unsupported-local-link-challenge');
         }
+        showAlert(
+          '카카오 계정이 있어요',
+          '카카오 계정으로 본인 확인을 하면 이메일 로그인과 연결할 수 있어요.',
+          [
+            { text: '취소', style: 'cancel' },
+            {
+              text: '카카오로 확인',
+              onPress: () => void confirmKakaoAccountLink(outcome.challenge.linkToken),
+            },
+          ],
+        );
         return;
       }
 
-    } catch {
+      await finishLocalLogin(outcome.session);
+    } catch (error) {
       if (screenActiveRef.current) {
-        setFormError('로그인 정보를 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+        setFormError(
+          error instanceof LocalAuthError || error instanceof KakaoAuthError
+            ? error.message
+            : '로그인 정보를 확인하지 못했어요. 잠시 후 다시 시도해주세요.',
+        );
       }
     } finally {
       submittingRef.current = false;

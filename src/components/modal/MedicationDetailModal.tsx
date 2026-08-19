@@ -10,6 +10,7 @@ type MedicationDetailModalProps = {
 	ingredientLabel?: string;
 	name: string;
 	onClose: () => void;
+	onDelete: () => void;
 	visible: boolean;
 	warningNote?: string;
 };
@@ -20,6 +21,7 @@ export function MedicationDetailModal({
 	ingredientLabel,
 	name,
 	onClose,
+	onDelete,
 	visible,
 	warningNote,
 }: MedicationDetailModalProps) {
@@ -28,17 +30,27 @@ export function MedicationDetailModal({
 	return (
 		<AppModal onClose={onClose} variant="bottomSheet" visible={visible}>
 			<View style={styles.header}>
-				<Text style={styles.title}>
+				<Text numberOfLines={1} style={styles.title}>
 					{ingredientLabel ? `${name} (${ingredientLabel})` : name}
 				</Text>
-				<Pressable
-					accessibilityLabel="닫기"
-					accessibilityRole="button"
-					onPress={onClose}
-					style={styles.closeButton}
-				>
-					<AppIcon color={COLORS.gray600} name="close" size={20} />
-				</Pressable>
+				<View style={styles.actions}>
+					<Pressable
+						accessibilityLabel={`${name} 삭제`}
+						accessibilityRole="button"
+						onPress={onDelete}
+						style={styles.deleteButton}
+					>
+						<AppIcon color={COLORS.error} name="close" size={18} />
+					</Pressable>
+					<Pressable
+						accessibilityLabel="닫기"
+						accessibilityRole="button"
+						onPress={onClose}
+						style={styles.closeButton}
+					>
+						<AppIcon color={COLORS.gray600} name="close" size={20} />
+					</Pressable>
+				</View>
 			</View>
 
 			<View style={styles.metaRow}>
@@ -78,6 +90,15 @@ export function MedicationDetailModal({
 const styles = StyleSheet.create({
 	header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
 	title: { ...TYPOGRAPHY.title3, color: COLORS.black, flex: 1 },
+	actions: { flexDirection: 'row', gap: SPACING.xs },
+	deleteButton: {
+		alignItems: 'center',
+		backgroundColor: COLORS.errorBackground,
+		borderRadius: RADIUS.round,
+		height: 32,
+		justifyContent: 'center',
+		width: 32,
+	},
 	closeButton: {
 		alignItems: 'center',
 		backgroundColor: COLORS.gray100,

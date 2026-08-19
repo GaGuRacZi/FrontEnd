@@ -16,7 +16,6 @@ export function ChatDataBridge() {
     hasLoadError: hasCommunityLoadError,
     isReady: isCommunityReady,
     posts,
-    reviewPosts,
   } = useCommunityStore();
   const { isReady: isProfileReady, profile } = useMyPageStore();
   const { isReady: isPetReady, selectedPet } = usePetStore();
@@ -28,8 +27,8 @@ export function ChatDataBridge() {
     syncPostReference,
   } = useChatStore();
   const livePosts = useMemo(
-    () => new Map([...posts, ...reviewPosts].map((post) => [post.id, post])),
-    [posts, reviewPosts],
+    () => new Map(posts.map((post) => [post.id, post])),
+    [posts],
   );
   const participantIdsKey = useMemo(
     () =>
@@ -51,7 +50,7 @@ export function ChatDataBridge() {
 
     const participantIds = new Set(participantIdsKey ? participantIdsKey.split('\u0000') : []);
     const participants = new Map(
-      [...posts, ...reviewPosts]
+      posts
         .filter((post) => participantIds.has(post.author.userId))
         .map((post) => [post.author.userId, toChatParticipant(post.author)]),
     );
@@ -117,7 +116,6 @@ export function ChatDataBridge() {
     postIdsKey,
     posts,
     profile,
-    reviewPosts,
     selectedPet,
     syncParticipant,
     syncPostReference,

@@ -1,11 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
-  createInitialCommunityState,
   MARKET_CATEGORIES,
   MARKET_TRADE_METHODS,
   MARKET_TRADE_TYPES,
-  REVIEW_CATEGORIES,
   TALK_CATEGORIES,
 } from '../communityData';
 import {
@@ -22,25 +20,15 @@ import type {
   MarketPost,
   PostKind,
   ReactionKind,
-  ReviewPost,
   StoredCommunityState,
   TalkPost,
 } from '../types';
 import { isValidMarketPriceLabel } from '../utils/marketValidation';
-import {
-  getValidReviewInput,
-  getValidReviewTarget,
-  isValidReviewScore,
-  REVIEW_BODY_MAX_LENGTH,
-  REVIEW_TARGET_MAX_LENGTH,
-  REVIEW_TITLE_MAX_LENGTH,
-} from '../utils/reviewValidation';
 
 const COMMUNITY_STORAGE_KEY = 'paw:community-store';
 const COMMUNITY_WRITE_DRAFT_PREFIX = 'paw:community-write-draft:';
 type TalkWriteDraft = Extract<CommunityWriteDraft, { tab: 'talk' }>;
 type MarketWriteDraft = Extract<CommunityWriteDraft, { tab: 'market' }>;
-type ReviewWriteDraft = Extract<CommunityWriteDraft, { tab: 'review' }>;
 
 function createOperationQueue() {
   let queue = Promise.resolve();
@@ -57,6 +45,14 @@ function createOperationQueue() {
 
 const enqueueStateOperation = createOperationQueue();
 const enqueueWriteDraftOperation = createOperationQueue();
+
+function createEmptyState(): StoredCommunityState {
+  return {
+    comments: [],
+    posts: [],
+    viewerStates: {},
+  };
+}
 
 export function getDeletedComment(
   comment: CommunityComment,
@@ -111,81 +107,8 @@ function readStoredState(stored: string) {
   try {
     return normalizeStoredState(JSON.parse(stored));
   } catch {
-    return createInitialCommunityState();
+    return createEmptyState();
   }
-}
-
-function mergeSeedState(storedState: StoredCommunityState) {
-  const seedState = createInitialCommunityState();
-  const storedPostIds = new Set(storedState.posts.map((post) => post.id));
-  const storedCommentIds = new Set(storedState.comments.map((comment) => comment.id));
-  const storedReviewPostIds = new Set(storedState.reviewPosts.map((post) => post.id));
-  const storedEntityIds = new Set([...storedPostIds, ...storedReviewPostIds]);
-  const posts = [
-    ...storedState.posts,
-    ...seedState.posts.filter((post) => !storedEntityIds.has(post.id)),
-  ];
-  const postIds = new Set(posts.map((post) => post.id));
-  const reviewPosts = [
-    ...storedState.reviewPosts,
-    ...seedState.reviewPosts.filter(
-      (post) => !storedEntityIds.has(post.id) && !postIds.has(post.id),
-    ),
-  ];
-  const talkPostIds = new Set(
-    posts.filter((post) => post.kind === 'talk').map((post) => post.id),
-  );
-  const marketPostIds = new Set(
-    posts.filter((post) => post.kind === 'market').map((post) => post.id),
-  );
-  const reviewAuthors = new Map(
-    reviewPosts.map((post) => [post.id, post.author.userId]),
-  );
-  const viewerStates = Object.fromEntries(
-    Object.entries(storedState.viewerStates ?? {}).map(([viewerId, viewerState]) => {
-      const uniqueIds = (values: string[] | undefined, validIds: ReadonlySet<string>) =>
-        [...new Set(values ?? [])].filter((id) => validIds.has(id));
-      const validReviewIds = new Set(
-        [...reviewAuthors]
-          .filter(([, authorId]) => authorId !== viewerId)
-          .map(([postId]) => postId),
-      );
-      const notHelpfulIds = uniqueIds(
-        viewerState.reactionPostIds?.notHelpful,
-        validReviewIds,
-      );
-      const notHelpfulSet = new Set(notHelpfulIds);
-
-      return [
-        viewerId,
-        {
-          ...viewerState,
-          bookmarkedPostIds: uniqueIds(
-            viewerState.bookmarkedPostIds,
-            marketPostIds,
-          ),
-          reactionPostIds: {
-            helpful: uniqueIds(
-              viewerState.reactionPostIds?.helpful,
-              validReviewIds,
-            ).filter((postId) => !notHelpfulSet.has(postId)),
-            like: uniqueIds(viewerState.reactionPostIds?.like, talkPostIds),
-            notHelpful: notHelpfulIds,
-          },
-        },
-      ];
-    }),
-  );
-
-  return {
-    comments: [
-      ...storedState.comments,
-      ...seedState.comments.filter((comment) => !storedCommentIds.has(comment.id)),
-    ],
-    posts,
-    reviewPosts,
-    viewerStates,
-  };
 }
 
 async function writeCommunityState(serialized: string) {
@@ -195,9 +118,9 @@ async function writeCommunityState(serialized: string) {
 function readCommunityState() {
   return enqueueStateOperation(async () => {
     const stored = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
-    if (!stored) return createInitialCommunityState();
+    if (!stored) return createEmptyState();
 
-    const nextState = mergeSeedState(readStoredState(stored));
+    const nextState = readStoredState(stored);
     const serialized = JSON.stringify(nextState);
     if (serialized !== stored) await writeCommunityState(serialized);
     return nextState;
@@ -206,20 +129,19 @@ function readCommunityState() {
 
 function getDraftImages(draft: CommunityWriteDraft): CommunityImageAsset[] {
   if (draft.tab === 'talk') return draft.talkPhotos;
-  if (draft.tab === 'market') return draft.marketPhotos;
-  return draft.reviewPhotos;
+  return draft.marketPhotos;
 }
 
 function getStoredImageIds(state: StoredCommunityState) {
   return new Set(
-    [...state.posts, ...state.reviewPosts].flatMap((post) =>
+    state.posts.flatMap((post) =>
       (post.images ?? []).map((image) => image.assetId),
     ),
   );
 }
 
 function getStoredImageUris(state: StoredCommunityState) {
-  return [...state.posts, ...state.reviewPosts].flatMap((post) =>
+  return state.posts.flatMap((post) =>
     (post.images ?? []).flatMap((image) => (image.localUri ? [image.localUri] : [])),
   );
 }
@@ -303,8 +225,8 @@ function isValueIn<T extends string>(value: string, values: readonly T[]): value
   return values.some((item) => item === value);
 }
 
-const POST_KINDS: PostKind[] = ['talk', 'market', 'review'];
-const REACTION_KINDS: ReactionKind[] = ['helpful', 'like', 'notHelpful'];
+const POST_KINDS: PostKind[] = ['talk', 'market'];
+const REACTION_KINDS: ReactionKind[] = ['like'];
 const MARKET_STATUSES: MarketPost['status'][] = ['진행 중', '예약 중', '완료'];
 
 function getTrimmedString(value: unknown) {
@@ -504,84 +426,6 @@ function normalizeMarketPost(value: unknown): MarketPost | null {
   };
 }
 
-function normalizeReviewPost(value: unknown): ReviewPost | null {
-  if (!isRecord(value)) return null;
-  const author = normalizeAuthor(value.author);
-  const body = getTrimmedString(value.body);
-  const category = getString(value.category);
-  const createdAt = getTimestamp(value.createdAt);
-  const id = getTrimmedString(value.id);
-  const rating = getNumber(value.rating);
-  const targetName = getTrimmedString(value.targetName);
-  const title = getTrimmedString(value.title);
-  const visitedAt = getTrimmedString(value.visitedAt);
-  if (
-    !author ||
-    !body ||
-    !category ||
-    !isReviewWriteCategory(category) ||
-    !createdAt ||
-    !id ||
-    rating === null ||
-    !isValidReviewScore(rating) ||
-    !targetName ||
-    !title ||
-    !visitedAt
-  ) {
-    return null;
-  }
-
-  if (!isRecord(value.detailScores)) return null;
-  const kindness = getNumber(value.detailScores.kindness);
-  const price = getNumber(value.detailScores.price);
-  const revisit = getNumber(value.detailScores.revisit);
-  if (
-    kindness === null ||
-    !isValidReviewScore(kindness) ||
-    price === null ||
-    !isValidReviewScore(price) ||
-    revisit === null ||
-    !isValidReviewScore(revisit)
-  ) {
-    return null;
-  }
-  const detailScores = { kindness, price, revisit };
-
-  const reviewInput = getValidReviewInput({
-    body,
-    detailScores,
-    rating,
-    title,
-    visitedAt,
-  });
-  const normalizedTargetName = getValidReviewTarget(targetName);
-  if (!reviewInput || !normalizedTargetName) return null;
-
-  const images = normalizeStoredImages(value.images);
-  const photoUris = normalizeLegacyPhotoUris(value.photoUris);
-  const placeholderPhotoCount = getNonNegativeInteger(value.placeholderPhotoCount);
-
-  return {
-    author,
-    baseReactionCounts: normalizeReactionCounts(value.baseReactionCounts, [
-      'helpful',
-      'notHelpful',
-    ]),
-    body: reviewInput.body,
-    category,
-    createdAt,
-    detailScores,
-    id,
-    ...(images ? { images } : {}),
-    ...(photoUris ? { photoUris } : {}),
-    ...(placeholderPhotoCount ? { placeholderPhotoCount } : {}),
-    rating,
-    targetName: normalizedTargetName,
-    title: reviewInput.title,
-    visitedAt: reviewInput.visitedAt,
-  };
-}
-
 function normalizeComment(value: unknown): CommunityComment | null {
   if (!isRecord(value)) return null;
   const deletedAt =
@@ -629,7 +473,6 @@ export function normalizeCommunityFilterSession(
   const filter = isRecord(value) ? value : {};
   const activeTab = getString(filter.activeTab);
   const marketCategory = getString(filter.marketCategory);
-  const reviewCategory = getString(filter.reviewCategory);
   const searchQuery = getString(filter.searchQuery);
   const searchTab = getString(filter.searchTab);
   const talkCategory = getString(filter.talkCategory);
@@ -647,10 +490,6 @@ export function normalizeCommunityFilterSession(
       (tradeType): tradeType is MarketPost['tradeType'] =>
         isValueIn(tradeType, MARKET_TRADE_TYPES),
     ),
-    reviewCategory:
-      reviewCategory && isValueIn(reviewCategory, REVIEW_CATEGORIES)
-        ? reviewCategory
-        : '전체',
     searchQuery: searchQuery ?? '',
     searchTab: searchTab && isValueIn(searchTab, POST_KINDS) ? searchTab : 'talk',
     talkCategory:
@@ -691,7 +530,7 @@ function uniqueById<T extends { id: string }>(values: T[]) {
 }
 
 function normalizeStoredState(value: unknown): StoredCommunityState {
-  if (!isRecord(value)) return createInitialCommunityState();
+  if (!isRecord(value)) return createEmptyState();
 
   const posts = uniqueById(
     (Array.isArray(value.posts) ? value.posts : []).flatMap((post) => {
@@ -702,15 +541,8 @@ function normalizeStoredState(value: unknown): StoredCommunityState {
       return normalized ? [normalized] : [];
     }),
   );
-  const postIds = new Set(posts.map((post) => post.id));
-  const reviewPosts = uniqueById(
-    (Array.isArray(value.reviewPosts) ? value.reviewPosts : []).flatMap((post) => {
-      const normalized = normalizeReviewPost(post);
-      return normalized && !postIds.has(normalized.id) ? [normalized] : [];
-    }),
-  );
   const talkPostIds = new Set(
-    [...posts, ...createInitialCommunityState().posts]
+    posts
       .filter((post) => post.kind === 'talk')
       .map((post) => post.id),
   );
@@ -748,7 +580,6 @@ function normalizeStoredState(value: unknown): StoredCommunityState {
   return {
     comments,
     posts,
-    reviewPosts,
     viewerStates,
   };
 }
@@ -759,10 +590,6 @@ function isTalkWriteCategory(value: string): value is TalkWriteDraft['talkCatego
 
 function isMarketWriteCategory(value: string): value is MarketWriteDraft['marketCategory'] {
   return isValueIn(value, MARKET_CATEGORIES) && value !== '전체';
-}
-
-function isReviewWriteCategory(value: string): value is ReviewWriteDraft['reviewCategory'] {
-  return isValueIn(value, REVIEW_CATEGORIES) && value !== '전체';
 }
 
 function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
@@ -862,57 +689,7 @@ function normalizeWriteDraft(value: unknown): CommunityWriteDraft | null {
     };
   }
 
-  if (tab !== 'review') return null;
-
-  const reviewBody = getString(value.reviewBody);
-  const reviewCategory = getString(value.reviewCategory);
-  const reviewKindness = getNumber(value.reviewKindness);
-  const reviewPriceScore = getNumber(value.reviewPriceScore);
-  const reviewRating = getNumber(value.reviewRating);
-  const reviewRevisit = getNumber(value.reviewRevisit);
-  const reviewTarget = getString(value.reviewTarget);
-  const reviewTitle = getString(value.reviewTitle);
-  const reviewVisitedAt = getString(value.reviewVisitedAt);
-
-  if (
-    reviewBody === null ||
-    !reviewCategory ||
-    !isReviewWriteCategory(reviewCategory) ||
-    reviewKindness === null ||
-    !isValidReviewScore(reviewKindness) ||
-    reviewPriceScore === null ||
-    !isValidReviewScore(reviewPriceScore) ||
-    reviewRating === null ||
-    !isValidReviewScore(reviewRating) ||
-    reviewRevisit === null ||
-    !isValidReviewScore(reviewRevisit) ||
-    reviewTarget === null ||
-    reviewTarget.length > REVIEW_TARGET_MAX_LENGTH ||
-    reviewTitle === null ||
-    reviewTitle.length > REVIEW_TITLE_MAX_LENGTH ||
-    reviewVisitedAt === null ||
-    reviewBody.length > REVIEW_BODY_MAX_LENGTH
-  ) {
-    return null;
-  }
-
-  return {
-    ...(editPostId ? { editPostId } : {}),
-    id,
-    reviewBody,
-    reviewCategory,
-    reviewKindness,
-    reviewPhotos: normalizeDraftImages(value.reviewPhotos),
-    reviewPriceScore,
-    reviewRating,
-    reviewRevisit,
-    reviewTarget,
-    reviewTitle,
-    reviewVisitedAt,
-    tab,
-    updatedAt,
-    userId,
-  };
+  return null;
 }
 
 async function readWriteDraft(
@@ -1008,17 +785,13 @@ export const communityRepository = {
   async deleteUserState(userId: string) {
     const state = await readCommunityState();
     const deletedAt = new Date().toISOString();
-    const removedImages = [...state.posts, ...state.reviewPosts]
+    const removedImages = state.posts
       .filter((post) => post.author.userId === userId)
       .flatMap((post) => post.images ?? []);
     const removedPostIds = new Set(
       state.posts.filter((post) => post.author.userId === userId).map((post) => post.id),
     );
-    const removedReviewPostIds = new Set(
-      state.reviewPosts.filter((post) => post.author.userId === userId).map((post) => post.id),
-    );
     const posts = state.posts.filter((post) => post.author.userId !== userId);
-    const reviewPosts = state.reviewPosts.filter((post) => post.author.userId !== userId);
     const retainedComments = state.comments.filter(
       (comment) => !removedPostIds.has(comment.postId),
     );
@@ -1041,18 +814,18 @@ export const communityRepository = {
           {
             ...viewerState,
             bookmarkedPostIds: viewerState.bookmarkedPostIds.filter(
-              (postId) => !removedPostIds.has(postId) && !removedReviewPostIds.has(postId),
+              (postId) => !removedPostIds.has(postId),
             ),
             reactionPostIds: Object.fromEntries(
               Object.entries(viewerState.reactionPostIds).map(([kind, postIds]) => [
                 kind,
-                postIds.filter((postId) => !removedPostIds.has(postId) && !removedReviewPostIds.has(postId)),
+                postIds.filter((postId) => !removedPostIds.has(postId)),
               ]),
             ),
           },
         ]),
     );
-    const nextState = { comments, posts, reviewPosts, viewerStates };
+    const nextState = { comments, posts, viewerStates };
     await queueCommunityImageRemovals(userId, removedImages);
     await this.saveState(nextState);
     await this.clearWriteDrafts(userId);

@@ -5,7 +5,9 @@ import {
   type AuthTokens,
 } from './tokenStorage';
 
-export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').replace(/\/+$/, '');
+export const API_BASE_URL = (
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://issueissyu-ai.cloud'
+).replace(/\/+$/, '');
 
 export type ApiRequestOptions = Omit<RequestInit, 'body'> & {
   authenticated?: boolean;

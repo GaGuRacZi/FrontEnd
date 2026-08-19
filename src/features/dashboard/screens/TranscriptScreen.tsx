@@ -41,11 +41,6 @@ export function TranscriptScreen() {
 					</View>
 				}
 				headerVariant="auth"
-				onRightPress={() => {
-					// TODO: 네이티브 Share API 연동
-				}}
-				rightAccessibilityLabel="공유하기"
-				rightIcon="share-social-outline"
 			>
 				<View style={styles.screenBg}>
 					<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
