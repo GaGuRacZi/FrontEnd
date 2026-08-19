@@ -2,7 +2,6 @@ import { getCommunityImageUris } from '@/src/features/community/services/communi
 import type {
   CommunityAuthorSnapshot,
   CommunityPost,
-  ReviewPost,
 } from '@/src/features/community/types';
 
 import type {
@@ -25,12 +24,12 @@ export function toChatParticipant(
 }
 
 export function toChatPostReference(
-  post: CommunityPost | ReviewPost,
+  post: CommunityPost,
   commentCount?: number,
 ): ChatPostReferenceSnapshot {
   const thumbnailUri = getCommunityImageUris(post.images, post.photoUris)[0];
 
-  if ('kind' in post && post.kind === 'market') {
+  if (post.kind === 'market') {
     return {
       authorNickname: post.author.nickname,
       kind: 'market',
@@ -46,7 +45,7 @@ export function toChatPostReference(
   return {
     authorNickname: post.author.nickname,
     ...(commentCount === undefined ? {} : { commentCount }),
-    kind: 'kind' in post ? post.kind : 'review',
+    kind: post.kind,
     postId: post.id,
     thumbnailUri,
     title: post.title,

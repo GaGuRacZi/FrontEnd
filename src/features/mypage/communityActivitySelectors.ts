@@ -3,7 +3,6 @@ import type {
   CommunityPost,
   MarketPost,
   PostKind,
-  ReviewPost,
   TalkPost,
 } from '../community/types';
 
@@ -23,16 +22,8 @@ type MarketActivityItem = {
   postId: string;
 };
 
-type ReviewActivityItem = {
-  createdAt: string;
-  kind: 'review';
-  post: ReviewPost;
-  postId: string;
-};
-
 export type CommunityActivityItem =
   | MarketActivityItem
-  | ReviewActivityItem
   | TalkActivityItem;
 
 export type CommentedActivityItem = TalkActivityItem & {
@@ -48,7 +39,6 @@ export function getCommunityActivityKey(
 
 type CommunityPostsInput = {
   posts: readonly CommunityPost[];
-  reviewPosts: readonly ReviewPost[];
   userId: string | null;
 };
 
@@ -95,7 +85,6 @@ function toPostActivityItem(post: CommunityPost): MarketActivityItem | TalkActiv
 
 export function selectAuthoredActivityItems({
   posts,
-  reviewPosts,
   userId,
 }: CommunityPostsInput): CommunityActivityItem[] {
   if (!userId) return [];
@@ -104,14 +93,6 @@ export function selectAuthoredActivityItems({
     ...posts
       .filter((post) => post.author.userId === userId)
       .map(toPostActivityItem),
-    ...reviewPosts
-      .filter((post) => post.author.userId === userId)
-      .map((post): ReviewActivityItem => ({
-        createdAt: post.createdAt,
-        kind: 'review',
-        post,
-        postId: post.id,
-      })),
   ].sort(compareNewest);
 }
 
@@ -184,7 +165,6 @@ export function getActivityFilterCounts(items: readonly CommunityActivityItem[])
   const counts: Record<CommunityActivityFilter, number> = {
     all: 0,
     market: 0,
-    review: 0,
     talk: 0,
   };
   items.forEach((item) => {

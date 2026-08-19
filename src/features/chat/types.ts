@@ -26,7 +26,7 @@ export type ChatPostReferenceSnapshot = {
   authorNickname: string;
   commentCount?: number;
   deletedAt?: string;
-  kind: 'market' | 'review' | 'talk';
+  kind: 'market' | 'talk';
   marketStatus?: '예약 중' | '완료' | '진행 중';
   postId: string;
   priceLabel?: string;

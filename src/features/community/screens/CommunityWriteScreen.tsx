@@ -38,7 +38,6 @@ import { usePetStore } from '@/src/features/pet/PetStore';
 import {
   MARKET_TRADE_METHODS,
   MARKET_TRADE_TYPES,
-  REVIEW_CATEGORIES,
   TALK_CATEGORIES,
 } from '../communityData';
 import { useCommunityStore } from '../CommunityStore';
@@ -57,7 +56,6 @@ import type {
   MarketPost,
   MarketTradeMethod,
   MarketTradeType,
-  ReviewCategory,
   TalkCategory,
   TalkPost,
 } from '../types';
@@ -73,16 +71,6 @@ import {
   getPositiveMarketPrice,
   isValidMarketTradeMethodSelection,
 } from '../utils/marketValidation';
-import {
-  REVIEW_BODY_MAX_LENGTH,
-  REVIEW_TARGET_MAX_LENGTH,
-  REVIEW_TITLE_MAX_LENGTH,
-  getReviewInputValidationMessage,
-  getReviewScoreLabels,
-  getReviewTargetValidationMessage,
-  getValidReviewInput,
-  getValidReviewTarget,
-} from '../utils/reviewValidation';
 
 const TALK_WRITE_CATEGORIES = TALK_CATEGORIES.filter(
   (category): category is Exclude<TalkCategory, '전체'> => category !== '전체',
@@ -93,9 +81,6 @@ const MARKET_WRITE_CATEGORIES: Exclude<MarketCategory, '전체'>[] = [
   '기타',
   '영양제',
 ];
-const REVIEW_WRITE_CATEGORIES = REVIEW_CATEGORIES.filter(
-  (category): category is Exclude<ReviewCategory, '전체'> => category !== '전체',
-);
 const TALK_TAG_SUGGESTIONS = ['피하수액', '응급', '동네병원', '산책', '고양이'];
 const DEFAULT_TALK_TAGS: string[] = [];
 const MAX_PHOTOS = 5;
@@ -103,34 +88,13 @@ const MAX_TITLE_LENGTH = 40;
 const MAX_BODY_LENGTH = 500;
 const MAX_TAG_COUNT = 5;
 const MAX_TAG_LENGTH = 10;
-const REVIEW_STAR_COLOR = COLORS.starWarm;
 const PHOTO_SLOT_SIZE = 62;
 
-type WriteTab = 'market' | 'review' | 'talk';
-type ReviewWriteCategory = Exclude<ReviewCategory, '전체'>;
-
-function getReviewTargetPlaceholder(category: ReviewWriteCategory) {
-  if (category === '산책 장소') return '장소 이름을 입력해주세요';
-  if (category === '병원') return '병원 이름을 입력해주세요';
-  if (category === '용품샵') return '용품샵 이름을 입력해주세요';
-  if (category === '미용실') return '미용실 이름을 입력해주세요';
-  return '자유롭게 입력해주세요';
-}
+type WriteTab = 'market' | 'talk';
 
 function resolveWriteTab(value?: string): WriteTab {
-  if (value === 'market' || value === 'review' || value === 'talk') return value;
+  if (value === 'market' || value === 'talk') return value;
   return 'talk';
-}
-
-function getDefaultReviewDate() {
-  return formatDateValue(new Date());
-}
-
-function formatDateInput(value: string) {
-  const digits = value.replace(/[^0-9]/g, '').slice(0, 8);
-  if (digits.length <= 4) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 4)}.${digits.slice(4)}`;
-  return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
 }
 
 function getTomorrow() {
@@ -197,18 +161,7 @@ function hasWriteDraftContent(draft: CommunityWriteDraft, defaultMarketLocation 
     );
   }
 
-  return Boolean(
-    draft.reviewBody.trim() ||
-      draft.reviewCategory !== '병원' ||
-      draft.reviewKindness !== 5 ||
-      draft.reviewPhotos.length ||
-      draft.reviewPriceScore !== 4 ||
-      draft.reviewRating !== 5 ||
-      draft.reviewRevisit !== 5 ||
-      draft.reviewTarget.trim() ||
-      draft.reviewTitle.trim() ||
-      (draft.reviewVisitedAt.trim() && draft.reviewVisitedAt !== getDefaultReviewDate()),
-  );
+  return false;
 }
 
 function FieldCard({
@@ -481,51 +434,6 @@ function DraggablePhotoBox({
   );
 }
 
-function StarRating({
-  onChange,
-  value,
-}: {
-  onChange: (value: number) => void;
-  value: number;
-}) {
-  return (
-    <View style={styles.ratingRow}>
-      <View style={styles.starRow}>
-        {[1, 2, 3, 4, 5].map((score) => {
-          const iconName = value >= score ? 'star' : value >= score - 0.5 ? 'star-half' : 'star-outline';
-
-          return (
-            <View key={score} style={styles.starButton}>
-              <Pressable
-                accessibilityLabel={`${score - 0.5}점`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: value === score - 0.5 }}
-                onPress={() => onChange(score - 0.5)}
-                style={({ pressed }) => [styles.starHitArea, styles.starHitAreaLeft, pressed && styles.pressed]}
-              />
-              <Pressable
-                accessibilityLabel={`${score}점`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: value === score }}
-                onPress={() => onChange(score)}
-                style={({ pressed }) => [styles.starHitArea, styles.starHitAreaRight, pressed && styles.pressed]}
-              />
-            <AppIcon
-              color={value >= score - 0.5 ? REVIEW_STAR_COLOR : COLORS.gray300}
-              name={iconName}
-              size={28}
-            />
-            </View>
-          );
-        })}
-      </View>
-      <View style={styles.ratingBadge}>
-        <Text style={styles.ratingBadgeText}>{value.toFixed(1)}</Text>
-      </View>
-    </View>
-  );
-}
-
 export function CommunityWriteScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -539,17 +447,13 @@ export function CommunityWriteScreen() {
   const initialTab = resolveWriteTab(type);
   const {
     addMarketPost,
-    addReviewPost,
     addTalkPost,
     getPostById,
-    getReviewPostById,
     hasLoadError,
     isReady,
     posts,
     reloadCommunity,
-    reviewPosts,
     updateMarketPost,
-    updateReviewPost,
     updateTalkPost,
     viewerId,
   } = useCommunityStore();
@@ -559,28 +463,18 @@ export function CommunityWriteScreen() {
     () => createCommunityAuthor(profile, selectedPet, viewerId),
     [profile, selectedPet, viewerId],
   );
-  const reviewPostToEdit = useMemo(
-    () => initialTab === 'review' && postId
-      ? reviewPosts.find((post) => post.id === postId) ?? null
-      : null,
-    [initialTab, postId, reviewPosts],
-  );
   const postToEdit = useMemo<CommunityPost | null>(
-    () => initialTab !== 'review' && postId
-      ? posts.find((post) => post.id === postId) ?? null
-      : null,
-    [initialTab, postId, posts],
+    () => postId ? posts.find((post) => post.id === postId) ?? null : null,
+    [postId, posts],
   );
   const talkPostToEdit = postToEdit?.kind === 'talk' ? postToEdit : null;
   const marketPostToEdit = postToEdit?.kind === 'market' ? postToEdit : null;
   const isTalkEditRequested = initialTab === 'talk' && Boolean(postId);
   const isMarketEditRequested = initialTab === 'market' && Boolean(postId);
-  const isReviewEditRequested = initialTab === 'review' && Boolean(postId);
-  const isEditRequested = isTalkEditRequested || isMarketEditRequested || isReviewEditRequested;
+  const isEditRequested = isTalkEditRequested || isMarketEditRequested;
   const isTalkEditMode = Boolean(talkPostToEdit?.author.userId === viewerId);
   const isMarketEditMode = Boolean(marketPostToEdit?.author.userId === viewerId);
-  const isReviewEditMode = Boolean(reviewPostToEdit?.author.userId === viewerId);
-  const isEditMode = isTalkEditMode || isMarketEditMode || isReviewEditMode;
+  const isEditMode = isTalkEditMode || isMarketEditMode;
   const [submitting, setSubmitting] = useState(false);
 
   const [talkCategory, setTalkCategory] = useState<Exclude<TalkCategory, '전체'>>('건강상담');
@@ -603,25 +497,11 @@ export function CommunityWriteScreen() {
   const [tradeMethods, setTradeMethods] = useState<MarketTradeMethod[]>(['직거래']);
   const [tradeLocation, setTradeLocation] = useState(profile?.location ?? '');
 
-  const [reviewCategory, setReviewCategory] = useState<Exclude<ReviewCategory, '전체'>>('병원');
-  const [reviewTarget, setReviewTarget] = useState('');
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewKindness, setReviewKindness] = useState(5);
-  const [reviewPriceScore, setReviewPriceScore] = useState(4);
-  const [reviewRevisit, setReviewRevisit] = useState(5);
-  const [reviewTitle, setReviewTitle] = useState('');
-  const [reviewVisitedAt, setReviewVisitedAt] = useState(getDefaultReviewDate);
-  const [reviewCalendarVisible, setReviewCalendarVisible] = useState(false);
-  const [pendingReviewDate, setPendingReviewDate] = useState(() => new Date());
-  const [reviewBody, setReviewBody] = useState('');
-  const [reviewPhotos, setReviewPhotos] = useState<CommunityImageAsset[]>([]);
-  const reviewScoreLabels = getReviewScoreLabels(reviewCategory);
   const originalImageIds = useMemo(() => {
     if (talkPostToEdit?.images) return new Set(talkPostToEdit.images.map((image) => image.assetId));
     if (marketPostToEdit?.images) return new Set(marketPostToEdit.images.map((image) => image.assetId));
-    if (reviewPostToEdit?.images) return new Set(reviewPostToEdit.images.map((image) => image.assetId));
     return new Set<string>();
-  }, [marketPostToEdit?.images, reviewPostToEdit?.images, talkPostToEdit?.images]);
+  }, [marketPostToEdit?.images, talkPostToEdit?.images]);
   const [isDraftReady, setIsDraftReady] = useState(false);
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
   const [manualExitPending, setManualExitPending] = useState(false);
@@ -657,26 +537,6 @@ export function CommunityWriteScreen() {
       };
     }
 
-    if (initialTab === 'review') {
-      return {
-        ...(isReviewEditMode && postId ? { editPostId: postId } : {}),
-        id: isReviewEditMode && postId ? `edit-${initialTab}-${postId}` : `write-${initialTab}`,
-        reviewBody,
-        reviewCategory,
-        reviewKindness,
-        reviewPhotos,
-        reviewPriceScore,
-        reviewRating,
-        reviewRevisit,
-        reviewTarget,
-        reviewTitle,
-        reviewVisitedAt,
-        tab: 'review',
-        updatedAt,
-        userId: viewerId,
-      };
-    }
-
     return {
       ...(isTalkEditMode && postId ? { editPostId: postId } : {}),
       id: isTalkEditMode && postId ? `edit-${initialTab}-${postId}` : `write-${initialTab}`,
@@ -693,7 +553,6 @@ export function CommunityWriteScreen() {
     expiresAt,
     initialTab,
     isMarketEditMode,
-    isReviewEditMode,
     isTalkEditMode,
     marketBody,
     marketCategory,
@@ -702,16 +561,6 @@ export function CommunityWriteScreen() {
     priceOffer,
     productName,
     postId,
-    reviewBody,
-    reviewCategory,
-    reviewKindness,
-    reviewPhotos,
-    reviewPriceScore,
-    reviewRating,
-    reviewRevisit,
-    reviewTarget,
-    reviewTitle,
-    reviewVisitedAt,
     talkBody,
     talkCategory,
     talkPhotos,
@@ -722,21 +571,6 @@ export function CommunityWriteScreen() {
     tradeType,
     viewerId,
   ]);
-  const isReviewEditDirty = Boolean(
-    isReviewEditMode &&
-      reviewPostToEdit &&
-      (
-        reviewRating !== reviewPostToEdit.rating ||
-        reviewKindness !== (reviewPostToEdit.detailScores?.kindness ?? 5) ||
-        reviewPriceScore !== (reviewPostToEdit.detailScores?.price ?? 4) ||
-        reviewRevisit !== (reviewPostToEdit.detailScores?.revisit ?? 5) ||
-        reviewTitle !== reviewPostToEdit.title ||
-        reviewVisitedAt !== (reviewPostToEdit.visitedAt ?? '') ||
-        reviewBody !== reviewPostToEdit.body ||
-        reviewPhotos.map((image) => image.assetId).join('|') !==
-          (reviewPostToEdit.images ?? []).map((image) => image.assetId).join('|')
-      ),
-  );
   const isTalkEditDirty = Boolean(
     isTalkEditMode &&
       talkPostToEdit &&
@@ -768,7 +602,7 @@ export function CommunityWriteScreen() {
   );
   const isDirty = isDraftReady &&
     (isEditMode
-      ? isTalkEditDirty || isMarketEditDirty || isReviewEditDirty
+      ? isTalkEditDirty || isMarketEditDirty
       : hasWriteDraftContent(currentDraft, defaultMarketLocation));
   const performBack = useCallback(() => {
     if ((origin === 'community' || origin === 'detail') && router.canGoBack()) {
@@ -823,16 +657,6 @@ export function CommunityWriteScreen() {
       return;
     }
 
-    setReviewCategory(draft.reviewCategory);
-    setReviewTarget(draft.reviewTarget);
-    setReviewRating(draft.reviewRating);
-    setReviewKindness(draft.reviewKindness);
-    setReviewPriceScore(draft.reviewPriceScore);
-    setReviewRevisit(draft.reviewRevisit);
-    setReviewTitle(draft.reviewTitle);
-    setReviewVisitedAt(draft.reviewVisitedAt);
-    setReviewBody(draft.reviewBody);
-    setReviewPhotos(draft.reviewPhotos);
   }, []);
 
   const applyTalkPost = useCallback((post: TalkPost) => {
@@ -856,19 +680,6 @@ export function CommunityWriteScreen() {
     setTradeLocation(post.location);
   }, []);
 
-  const applyReviewPost = useCallback((post: NonNullable<typeof reviewPostToEdit>) => {
-    setReviewCategory(post.category);
-    setReviewTarget(post.targetName ?? '');
-    setReviewRating(post.rating);
-    setReviewKindness(post.detailScores?.kindness ?? 5);
-    setReviewPriceScore(post.detailScores?.price ?? 4);
-    setReviewRevisit(post.detailScores?.revisit ?? 5);
-    setReviewTitle(post.title);
-    setReviewVisitedAt(post.visitedAt ?? '');
-    setReviewBody(post.body);
-    setReviewPhotos(post.images ?? []);
-  }, []);
-
   useEffect(() => {
     let active = true;
     if (editRequestKey && appliedEditRequestKey.current === editRequestKey) return undefined;
@@ -880,7 +691,6 @@ export function CommunityWriteScreen() {
     allowNavigation.current = false;
 
     const requestedPost = postId ? getPostById(postId) : null;
-    const requestedReviewPost = postId ? getReviewPostById(postId) : null;
     let ownsRequestedPost = false;
     if (isTalkEditRequested) {
       if (requestedPost?.kind === 'talk' && requestedPost.author.userId === viewerId) {
@@ -890,11 +700,6 @@ export function CommunityWriteScreen() {
     } else if (isMarketEditRequested) {
       if (requestedPost?.kind === 'market' && requestedPost.author.userId === viewerId) {
         applyMarketPost(requestedPost);
-        ownsRequestedPost = true;
-      }
-    } else if (isReviewEditRequested) {
-      if (requestedReviewPost?.author.userId === viewerId) {
-        applyReviewPost(requestedReviewPost);
         ownsRequestedPost = true;
       }
     }
@@ -918,10 +723,6 @@ export function CommunityWriteScreen() {
         .then((draft) => {
           if (!active || !draft) return;
           applyDraft(draft);
-          if (isReviewEditRequested && requestedReviewPost) {
-            setReviewCategory(requestedReviewPost.category);
-            setReviewTarget(requestedReviewPost.targetName ?? '');
-          }
         })
         .finally(() => {
           if (active) setIsDraftReady(true);
@@ -948,17 +749,14 @@ export function CommunityWriteScreen() {
   }, [
     applyDraft,
     applyMarketPost,
-    applyReviewPost,
     applyTalkPost,
     editRequestKey,
     getPostById,
-    getReviewPostById,
     hasLoadError,
     initialTab,
     isEditRequested,
     isReady,
     isMarketEditRequested,
-    isReviewEditRequested,
     isTalkEditRequested,
     postId,
     viewerId,
@@ -1043,11 +841,7 @@ export function CommunityWriteScreen() {
     void (async () => {
       draftCompleted.current = true;
       try {
-        const photos = initialTab === 'talk'
-          ? talkPhotos
-          : initialTab === 'market'
-            ? marketPhotos
-            : reviewPhotos;
+        const photos = initialTab === 'talk' ? talkPhotos : marketPhotos;
         await communityRepository.discardWriteDraft(
           viewerId,
           initialTab,
@@ -1087,7 +881,6 @@ export function CommunityWriteScreen() {
     pendingSubmittedPostId,
     performBack,
     postId,
-    reviewPhotos,
     showAlert,
     talkPhotos,
     viewerId,
@@ -1174,32 +967,6 @@ export function CommunityWriteScreen() {
     setPhotos(nextPhotos);
   };
 
-  const selectReviewDate = (date: Date) => {
-    setReviewVisitedAt(formatDateValue(date));
-  };
-
-  const handleAndroidReviewDateChange = (event: DateTimePickerEvent, date?: Date) => {
-    if (event.type === 'set' && date) selectReviewDate(date);
-  };
-
-  const openReviewCalendar = () => {
-    const initialDate = parseDateValue(reviewVisitedAt) ?? new Date();
-
-    if (Platform.OS === 'android') {
-      DateTimePickerAndroid.open({
-        display: 'calendar',
-        maximumDate: new Date(),
-        mode: 'date',
-        onChange: handleAndroidReviewDateChange,
-        value: initialDate,
-      });
-      return;
-    }
-
-    setPendingReviewDate(initialDate);
-    setReviewCalendarVisible(true);
-  };
-
   const selectExpiryDate = (date: Date) => {
     setExpiresAt(formatDateValue(date));
   };
@@ -1249,31 +1016,6 @@ export function CommunityWriteScreen() {
   const marketPrice = getPositiveMarketPrice(price);
   const marketNeedsLocation = tradeMethods.includes('직거래') || tradeMethods.includes('비대면 나눔');
   const hasInvalidExpiry = Boolean(expiresAt.trim() && !isFutureDateValue(expiresAt));
-  const reviewInput = getValidReviewInput({
-    body: reviewBody,
-    detailScores: {
-      kindness: reviewKindness,
-      price: reviewPriceScore,
-      revisit: reviewRevisit,
-    },
-    rating: reviewRating,
-    title: reviewTitle,
-    visitedAt: reviewVisitedAt,
-  });
-  const normalizedReviewTarget = getValidReviewTarget(reviewTarget);
-  const reviewValidationMessage =
-    getReviewTargetValidationMessage(reviewTarget) ??
-    getReviewInputValidationMessage({
-      body: reviewBody,
-      detailScores: {
-        kindness: reviewKindness,
-        price: reviewPriceScore,
-        revisit: reviewRevisit,
-      },
-      rating: reviewRating,
-      title: reviewTitle,
-      visitedAt: reviewVisitedAt,
-    });
   const canSubmitMarket = Boolean(
     productName.trim() &&
       marketBody.trim() &&
@@ -1283,13 +1025,10 @@ export function CommunityWriteScreen() {
       !hasInvalidExpiry &&
       (!marketNeedsLocation || tradeLocation.trim()),
   );
-  const canSubmitReview = reviewValidationMessage === null;
   const canSubmit =
     initialTab === 'talk'
       ? canSubmitTalk
-      : initialTab === 'market'
-        ? canSubmitMarket
-        : canSubmitReview;
+      : canSubmitMarket;
 
   const getSubmitBlockMessage = () => {
     if (initialTab === 'talk') {
@@ -1311,7 +1050,7 @@ export function CommunityWriteScreen() {
       return null;
     }
 
-    return reviewValidationMessage;
+    return null;
   };
 
   const openSubmittedPost = (savedPostId: string) => {
@@ -1475,48 +1214,6 @@ export function CommunityWriteScreen() {
         return;
       }
 
-      if (!reviewInput || !normalizedReviewTarget) {
-        showAlert('필수 항목을 확인해주세요', '리뷰 입력 내용을 다시 확인해주세요.');
-        return;
-      }
-
-      const reviewPayload = {
-        body: reviewInput.body,
-        detailScores: {
-          kindness: reviewKindness,
-          price: reviewPriceScore,
-          revisit: reviewRevisit,
-        },
-        images: reviewPhotos,
-        rating: reviewRating,
-        title: reviewInput.title,
-        visitedAt: reviewInput.visitedAt,
-      };
-      if (isReviewEditMode && postId) {
-        const result = await updateReviewPost(postId, reviewPayload);
-        if (result.ok) {
-          await finalizeSubmittedPost(postId);
-          return;
-        }
-
-        await communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
-        showAlert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
-        return;
-      }
-
-      const result = await addReviewPost({
-        ...reviewPayload,
-        author,
-        baseReactionCounts: { helpful: 0, notHelpful: 0 },
-        category: reviewCategory,
-        targetName: normalizedReviewTarget,
-      });
-      if (result.ok && result.postId) {
-        await finalizeSubmittedPost(result.postId);
-        return;
-      }
-
-      showAlert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
     } finally {
       submitLock.current = false;
       setSubmitting(false);
@@ -1528,12 +1225,8 @@ export function CommunityWriteScreen() {
       ? '소통 수정'
       : isMarketEditMode
         ? '장터 수정'
-        : isReviewEditMode
-      ? '리뷰 수정'
       : initialTab === 'market'
       ? '장터 글쓰기'
-      : initialTab === 'review'
-        ? '리뷰 글쓰기'
         : '소통 글쓰기';
   const submitLabel = pendingSubmittedPostId ? '다시 시도' : isEditMode ? '저장' : '등록';
   const submitReady = canSubmit || Boolean(pendingSubmittedPostId);
@@ -1880,115 +1573,6 @@ export function CommunityWriteScreen() {
             </>
           ) : null}
 
-          {initialTab === 'review' ? (
-            <>
-              <FieldCard title="리뷰 종류" subtitle="경험한 서비스나 장소를 골라주세요">
-                {isReviewEditMode ? (
-                  <View style={styles.lockedReviewCategory}>
-                    <Text style={styles.lockedReviewCategoryText}>{reviewCategory}</Text>
-                  </View>
-                ) : (
-                  <ChipGroup onChange={setReviewCategory} value={reviewCategory} values={REVIEW_WRITE_CATEGORIES} />
-                )}
-                <Text style={styles.sectionLabel}>
-                  대상
-                  <Text style={styles.requiredMark}> *</Text>
-                </Text>
-                <AppInput
-                  editable={!isReviewEditMode}
-                  leftElement={<AppIcon color={COLORS.primary} name="search-outline" size={18} />}
-                  maxLength={REVIEW_TARGET_MAX_LENGTH}
-                  onChangeText={setReviewTarget}
-                  placeholder={getReviewTargetPlaceholder(reviewCategory)}
-                  value={reviewTarget}
-                />
-                {isReviewEditMode ? (
-                  <Text style={styles.lockedReviewGuide}>리뷰 종류와 대상은 수정할 수 없어요.</Text>
-                ) : null}
-              </FieldCard>
-
-              <FieldCard title="평점" subtitle="별점과 세부 만족도를 남겨주세요">
-                <StarRating onChange={setReviewRating} value={reviewRating} />
-                <View style={styles.scoreGrid}>
-                  {[
-                    [reviewScoreLabels[0], reviewKindness, setReviewKindness],
-                    [reviewScoreLabels[1], reviewPriceScore, setReviewPriceScore],
-                    [reviewScoreLabels[2], reviewRevisit, setReviewRevisit],
-                  ].map(([label, value, setter]) => (
-                    <Pressable
-                      accessibilityRole="button"
-                      key={label as string}
-                      onPress={() => (setter as (value: number) => void)(((value as number) % 5) + 1)}
-                      style={styles.scoreChip}
-                    >
-                      <Text style={styles.scoreLabel}>{label as string}</Text>
-                      <Text style={styles.scoreValue}>{value as number}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </FieldCard>
-
-              <FieldCard brandPaw title="리뷰 정보">
-                <View style={styles.formRow}>
-                  <FormLabel required title="제목" />
-                  <AppInput
-                    containerStyle={styles.formInput}
-                    maxLength={REVIEW_TITLE_MAX_LENGTH}
-                    onChangeText={setReviewTitle}
-                    placeholder="제목을 입력해주세요"
-                    value={reviewTitle}
-                  />
-                </View>
-                <View style={styles.formRow}>
-                  <FormLabel required title="이용 날짜" />
-                  <AppInput
-                    containerStyle={styles.formInput}
-                    leftElement={
-                      <Pressable
-                        accessibilityLabel="캘린더에서 이용 날짜 선택"
-                        accessibilityRole="button"
-                        hitSlop={SPACING.sm}
-                        onPress={openReviewCalendar}
-                        style={({ pressed }) => [styles.dateIconButton, pressed && styles.pressed]}
-                      >
-                        <AppIcon color={COLORS.primary} name="calendar-outline" size={18} />
-                      </Pressable>
-                    }
-                    keyboardType="number-pad"
-                    maxLength={10}
-                    onChangeText={(value) => setReviewVisitedAt(formatDateInput(value))}
-                    placeholder="2026.07.05"
-                    value={reviewVisitedAt}
-                  />
-                </View>
-              </FieldCard>
-
-              <FieldCard required title="후기 내용" subtitle="좋았던 점과 아쉬웠던 점을 솔직하게 남겨주세요">
-                <AppInput
-                  inputStyle={styles.marketBodyInput}
-                  maxLength={REVIEW_BODY_MAX_LENGTH}
-                  multiline
-                  onChangeText={setReviewBody}
-                  placeholder="예) 진료 설명이 자세했고 대기 시간이 짧았어요. 비용 안내도 미리 받을 수 있어서 좋았어요."
-                  value={reviewBody}
-                />
-                <Text style={styles.counter}>{reviewBody.length} / {REVIEW_BODY_MAX_LENGTH}</Text>
-              </FieldCard>
-
-              <FieldCard title="사진 첨부" subtitle="방문 사진이나 영수증을 선택할 수 있어요">
-                <PhotoPickerRow
-                  onAdd={() => void pickPhotos(reviewPhotos, setReviewPhotos)}
-                  onRemove={(uri) => removePhoto(reviewPhotos, setReviewPhotos, uri)}
-                  onReorder={(fromIndex, toIndex) => reorderPhotos(reviewPhotos, setReviewPhotos, fromIndex, toIndex)}
-                  photos={reviewPhotos}
-                />
-              </FieldCard>
-              <Text style={styles.photoGuide}>
-                사진에 개인정보가 노출되지 않았는지 확인해주세요.{'\n'}
-                사실과 다른 내용이나 과도한 비방은 삼가주세요.
-              </Text>
-            </>
-          ) : null}
         </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
       </ScreenLayout>
@@ -2021,34 +1605,6 @@ export function CommunityWriteScreen() {
               onChange={(_, date) => date && setPendingExpiryDate(date)}
               themeVariant="light"
               value={pendingExpiryDate}
-            />
-          </AppModal>
-          <AppModal
-            onClose={() => setReviewCalendarVisible(false)}
-            primaryAction={{
-              label: '선택',
-              onPress: () => {
-                selectReviewDate(pendingReviewDate);
-                setReviewCalendarVisible(false);
-              },
-            }}
-            secondaryAction={{
-              label: '취소',
-              onPress: () => setReviewCalendarVisible(false),
-            }}
-            title="이용 날짜 선택"
-            variant="center"
-            visible={reviewCalendarVisible}
-          >
-            <DateTimePicker
-              accentColor={COLORS.primary}
-              display="inline"
-              locale="ko-KR"
-              maximumDate={new Date()}
-              mode="date"
-              onChange={(_, date) => date && setPendingReviewDate(date)}
-              themeVariant="light"
-              value={pendingReviewDate}
             />
           </AppModal>
         </>
@@ -2322,23 +1878,6 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.label,
     color: COLORS.black,
     marginTop: SPACING.sm,
-  },
-  lockedReviewCategory: {
-    alignSelf: 'flex-start',
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primary,
-    borderRadius: RADIUS.round,
-    borderWidth: 1,
-    paddingHorizontal: SPACING.xxl,
-    paddingVertical: SPACING.sm,
-  },
-  lockedReviewCategoryText: {
-    ...TYPOGRAPHY.label,
-    color: COLORS.primary,
-  },
-  lockedReviewGuide: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.gray500,
   },
   formRow: {
     alignItems: 'flex-start',

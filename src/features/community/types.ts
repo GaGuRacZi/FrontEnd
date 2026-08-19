@@ -1,12 +1,10 @@
-export type PostKind = 'market' | 'review' | 'talk';
+export type PostKind = 'market' | 'talk';
 
-export type ReactionKind = 'helpful' | 'like' | 'notHelpful';
+export type ReactionKind = 'like';
 
 export type TalkCategory = '건강상담' | '동네정보' | '산책친구' | '전체' | '헌혈소식';
 
 export type MarketCategory = '기타' | '사료·간식' | '영양제' | '용품' | '전체';
-
-export type ReviewCategory = '미용실' | '병원' | '산책 장소' | '용품샵' | '전체';
 
 export type MarketTradeType = '교환' | '구해요' | '나눔' | '판매';
 
@@ -67,27 +65,6 @@ export type MarketPost = CommunityPostBase & {
 
 export type CommunityPost = MarketPost | TalkPost;
 
-export type ReviewPost = {
-  author: CommunityAuthorSnapshot;
-  baseReactionCounts?: Partial<Record<ReactionKind, number>>;
-  body: string;
-  category: Exclude<ReviewCategory, '전체'>;
-  createdAt: string;
-  detailScores: {
-    kindness: number;
-    price: number;
-    revisit: number;
-  };
-  id: string;
-  images?: CommunityImageAsset[];
-  photoUris?: string[];
-  placeholderPhotoCount?: number;
-  rating: number;
-  targetName?: string;
-  title: string;
-  visitedAt?: string;
-};
-
 export type CommunityComment = {
   author: CommunityAuthorSnapshot;
   body: string;
@@ -106,7 +83,6 @@ export type CommunityViewerState = {
     marketCategory: MarketCategory;
     marketStatuses: MarketStatus[];
     marketTradeTypes: MarketTradeType[];
-    reviewCategory: ReviewCategory;
     searchQuery: string;
     searchTab: PostKind;
     talkCategory: TalkCategory;
@@ -143,24 +119,10 @@ export type CommunityWriteDraft = CommunityWriteDraftBase & (
       tradeMethods: MarketTradeMethod[];
       tradeType: MarketTradeType;
     }
-  | {
-      reviewBody: string;
-      reviewCategory: Exclude<ReviewCategory, '전체'>;
-      reviewKindness: number;
-      reviewPhotos: CommunityImageAsset[];
-      reviewPriceScore: number;
-      reviewRating: number;
-      reviewRevisit: number;
-      reviewTarget: string;
-      reviewTitle: string;
-      reviewVisitedAt: string;
-      tab: 'review';
-    }
 );
 
 export type StoredCommunityState = {
   comments: CommunityComment[];
   posts: CommunityPost[];
-  reviewPosts: ReviewPost[];
   viewerStates: Record<string, CommunityViewerState>;
 };

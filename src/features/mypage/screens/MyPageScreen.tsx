@@ -104,7 +104,7 @@ export function MyPageScreen() {
 
         <MyPageCard title="커뮤니티">
           <MyPageRow
-            description="내가 작성한 소통·장터·리뷰 글"
+            description="내가 작성한 소통·장터 글"
             iconName="create-outline"
             onPress={() => navigateOnce(() => router.push('/mypage/activity/authored'))}
             title="작성글 보기"

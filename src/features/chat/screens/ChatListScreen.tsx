@@ -83,7 +83,7 @@ function ChatRoomRow({
 export function ChatListScreen() {
   const router = useRouter();
   const { currentUserId } = useAuthSession();
-  const { posts, reviewPosts, isReady: communityReady } = useCommunityStore();
+  const { posts, isReady: communityReady } = useCommunityStore();
   const { profile } = useMyPageStore();
   const { selectedPet } = usePetStore();
   const {
@@ -178,13 +178,13 @@ export function ChatListScreen() {
       !currentUserId ||
       !isReady ||
       !communityReady ||
-      (!posts.length && !reviewPosts.length)
+      !posts.length
     ) {
       return;
     }
 
     const authorById = new Map(
-      [...posts, ...reviewPosts]
+      posts
         .filter((post) => post.author.userId !== currentUserId)
         .map((post) => [post.author.userId, post.author]),
     );
@@ -244,7 +244,6 @@ export function ChatListScreen() {
     isReady,
     posts,
     profile,
-    reviewPosts,
     selectedPet,
   ]);
 

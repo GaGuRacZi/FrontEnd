@@ -3,14 +3,12 @@ import type {
   MarketStatus,
   MarketTradeMethod,
   MarketTradeType,
-  ReviewCategory,
   TalkCategory,
 } from './types';
 
 export const COMMUNITY_TABS = [
   { id: 'talk', label: '소통' },
   { id: 'market', label: '장터' },
-  { id: 'review', label: '리뷰' },
 ] as const;
 
 export const TALK_CATEGORIES: TalkCategory[] = [
@@ -34,8 +32,6 @@ export const MARKET_TRADE_TYPES: MarketTradeType[] = ['나눔', '판매', '교�
 export const MARKET_TRADE_METHODS: MarketTradeMethod[] = ['직거래', '택배', '비대면 나눔'];
 
 export const MARKET_STATUSES: MarketStatus[] = ['진행 중', '예약 중', '완료'];
-
-export const REVIEW_CATEGORIES: ReviewCategory[] = ['전체', '산책 장소', '병원', '용품샵', '미용실'];
 
 export const COMMUNITY_AD_TEXT = '우리 아이와 함께한 오늘을 이웃과 나눠보세요.';
 
