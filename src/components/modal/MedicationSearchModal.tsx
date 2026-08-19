@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, AppIcon } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
@@ -27,7 +27,7 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 	const [query, setQuery] = useState('');
 	const [selected, setSelected] = useState<MedicationEntry[]>([]);
 	const [manualForm, setManualForm] = useState({ name: '', ingredient: '', description: '', warningNote: '' });
-	const [showOcrFailedToast, setShowOcrFailedToast] = useState(false);
+	const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
 	const ocrTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,11 +37,17 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 		if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
 	};
 
+	const showFeedback = (message: string) => {
+		if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+		setFeedbackMessage(message);
+		toastTimerRef.current = setTimeout(() => setFeedbackMessage(null), 2500);
+	};
+
 	useEffect(() => {
 		if (!visible) {
 			clearTimers();
 			setMode('idle');
-			setShowOcrFailedToast(false);
+			setFeedbackMessage(null);
 		}
 		return () => clearTimers();
 	}, [visible]);
@@ -50,12 +56,17 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 
 	const handleOcrPress = async () => {
 		try {
-			const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-			if (status !== 'granted') {
-				return;
+			if (Platform.OS === 'ios') {
+				const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+				if (status !== 'granted') {
+					showFeedback('사진 접근 권한을 허용해주세요.');
+					return;
+				}
 			}
 
 			const result = await ImagePicker.launchImageLibraryAsync({
+				allowsMultipleSelection: false,
+				defaultTab: 'photos',
 				mediaTypes: ['images'],
 				quality: 0.8,
 				allowsEditing: false,
@@ -64,18 +75,25 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 			if (result.canceled) return;
 
 			setMode('ocrLoading');
-			setShowOcrFailedToast(false);
+			setFeedbackMessage(null);
 			clearTimers();
 
-			// TODO: 실제 OCR 연동 전까지는 인식 실패 목업 처리
 			ocrTimerRef.current = setTimeout(() => {
 				setMode('idle');
-				setShowOcrFailedToast(true);
-				toastTimerRef.current = setTimeout(() => setShowOcrFailedToast(false), 2500);
+				showFeedback('처방전에서 약물을 찾지 못했어요. 직접 입력해주세요.');
 			}, 1800);
 		} catch {
 			setMode('idle');
+			showFeedback('사진첩을 열지 못했어요. 잠시 후 다시 시도해주세요.');
 		}
+	};
+
+	const handleSearch = () => {
+		if (!query.trim()) {
+			showFeedback('검색어를 입력해주세요.');
+			return;
+		}
+		showFeedback('일치하는 약물을 찾지 못했어요. 직접 입력해주세요.');
 	};
 
 	const handleManualSubmit = () => {
@@ -122,7 +140,7 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 
 	return (
 		<>
-			<AppModal onClose={onClose} variant="bottomSheet" visible={visible}>
+			<AppModal avoidKeyboard={false} onClose={onClose} variant="bottomSheet" visible={visible}>
 				<View style={styles.header}>
 					<View style={styles.headerLeft}>
 						<View style={styles.headerBadge}>
@@ -147,8 +165,9 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 						containerStyle={styles.searchInputContainer}
 						inputContainerStyle={styles.searchInputBox}
 						inputStyle={styles.searchInputText}
+						leftElement={<View style={styles.cameraButtonPlaceholder} />}
 						onChangeText={setQuery}
-						placeholder="약물명 또는 성분명으로 검색"
+						placeholder="약물·성분명 검색"
 						rightElement={
 							<Pressable
 								accessibilityLabel="처방전 사진으로 검색"
@@ -175,14 +194,12 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 								style={styles.searchButtonIcon}
 							/>
 						}
-						onPress={() => {
-							// TODO: 실제 약물 검색 API 연동
-						}}
+						onPress={handleSearch}
 						title="검색"
 					/>
 				</View>
 
-				<Text style={styles.helperText}>검색 후 선택하거나 카메라로 처방전을 찍으면 자동으로 담겨요</Text>
+				<Text style={styles.helperText}>약물명·성분명으로 검색하거나 직접 입력해 추가할 수 있어요</Text>
 
 				{mode !== 'ocrLoading' ? manualToggleButton : null}
 
@@ -261,20 +278,19 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 
 			<Modal
 				animationType="fade"
-				onRequestClose={() => setShowOcrFailedToast(false)}
+				onRequestClose={() => setFeedbackMessage(null)}
 				statusBarTranslucent
 				transparent
-				visible={showOcrFailedToast}
+				visible={Boolean(feedbackMessage)}
 			>
 				<Pressable
 					accessibilityLabel="닫기"
 					accessibilityRole="button"
-					onPress={() => setShowOcrFailedToast(false)}
+					onPress={() => setFeedbackMessage(null)}
 					style={styles.ocrFailedBackdrop}
 				>
 					<View style={styles.ocrFailedCard}>
-						<Text style={styles.ocrFailed}>입력된 약물을 찾지 못했어요.</Text>
-						<Text style={styles.ocrFailed}>직접 입력을 통해 기록해주세요.</Text>
+						<Text style={styles.ocrFailed}>{feedbackMessage}</Text>
 					</View>
 				</Pressable>
 			</Modal>
@@ -396,23 +412,24 @@ const styles = StyleSheet.create({
 	searchInputBox: { backgroundColor: COLORS.gray100 },
 	searchInputText: {
 		fontFamily: TYPOGRAPHY.selection.fontFamily,
-		fontSize: 14,
+		fontSize: 12,
 		minHeight: 0,
 		paddingVertical: 0,
 		textAlign: 'center',
-		textAlignVertical: 'bottom',
+		textAlignVertical: 'center',
 		includeFontPadding: false,
 	},
 	searchButtonIcon: { height: 16, marginBottom: -2, tintColor: COLORS.background, width: 16 },
 	cameraButton: {
 		alignItems: 'center',
 		backgroundColor: COLORS.primarySoft,
-		borderRadius: RADIUS.sm,
-		height: 30,
+		borderRadius: RADIUS.md,
+		height: 44,
 		justifyContent: 'center',
-		width: 30,
+		width: 44,
 	},
-	cameraIcon: { height: 16, width: 16 },
+	cameraButtonPlaceholder: { width: 48 },
+	cameraIcon: { height: 20, width: 20 },
 	helperText: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
 	manualToggle: {
 		alignItems: 'center',

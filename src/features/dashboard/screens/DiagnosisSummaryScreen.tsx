@@ -64,14 +64,15 @@ export function DiagnosisSummaryScreen() {
 		setSaveConfirmVisible(true);
 	};
 
+	const handleDeleteMedication = () => {
+		if (!detailMedication) return;
+		setMedications((current) => current.filter((medication) => medication.id !== detailMedication.id));
+		setDetailMedication(null);
+	};
+
 	return (
 		<ScreenLayout
 			headerVariant="auth"
-			onRightPress={() => {
-				// TODO: 네이티브 Share API 연동
-			}}
-			rightAccessibilityLabel="공유하기"
-			rightIcon="share-social-outline"
 			title="진료 요약"
 		>
 			<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -163,7 +164,7 @@ export function DiagnosisSummaryScreen() {
 			<AiSummaryCoinModal
 				onClose={() => setCoinModalVisible(false)}
 				onConfirm={() => {
-					setAiSummary(PLACEHOLDER_SUMMARY); // TODO: 실제 AI 요약 API 연동
+					setAiSummary(PLACEHOLDER_SUMMARY);
 					setCoinModalVisible(false);
 				}}
 				visible={coinModalVisible}
@@ -188,6 +189,7 @@ export function DiagnosisSummaryScreen() {
 					ingredientLabel={detailMedication.dosageLabel}
 					name={detailMedication.name}
 					onClose={() => setDetailMedication(null)}
+					onDelete={handleDeleteMedication}
 					visible={Boolean(detailMedication)}
 					warningNote={detailMedication.warningNote}
 				/>

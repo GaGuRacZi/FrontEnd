@@ -27,6 +27,8 @@ export function MyPageHeader({
         centerContent={<PetProfileSelector />}
         headerFullWidth
         leftContent={<BrandLogoButton />}
+        onRightPress={() => router.push('/notifications')}
+        rightAccessibilityLabel="알림 열기"
         rightIcon="notifications-outline"
       >
         {children}
