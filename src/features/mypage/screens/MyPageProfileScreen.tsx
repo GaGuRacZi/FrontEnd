@@ -228,7 +228,6 @@ export function MyPageProfileScreen() {
         onBack={() => setAddressSearchVisible(false)}
         onSelect={(address) => {
           setAddressSearchVisible(false);
-          if (locating) return;
           void (async () => {
             const isActiveRequest = startLocationRequest();
             setLocating(true);
@@ -474,6 +473,10 @@ export function MyPageProfileScreen() {
                 accessibilityRole="button"
                 disabled={!draft.profileImageUri}
                 onPress={() => {
+                  if (draft.profileImageUri === committedImageUriRef.current) {
+                    showAlert('사진을 삭제할 수 없어요', '등록된 사진은 새 사진으로 변경할 수 있어요.');
+                    return;
+                  }
                   const uri = draftImageUriRef.current;
                   draftImageUriRef.current = null;
                   void removeDraftOnlyImage(uri);

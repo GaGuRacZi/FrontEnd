@@ -379,9 +379,7 @@ export function PetProvider({ children }: PropsWithChildren) {
           nextPets.push(pet);
         }
 
-        await petRepository
-          .saveState(userId, { pets: nextPets, selectedPetId: pet.id })
-          .catch(() => undefined);
+        await petRepository.saveState(userId, { pets: nextPets, selectedPetId: pet.id });
 
         if (activeUserRef.current === userId) {
           loadRevisionRef.current += 1;

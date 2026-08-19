@@ -440,7 +440,7 @@ export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityId
       ...base,
       baseBookmarkCount: 0,
       baseReactionCounts: { like: remote.likeCount },
-      category: TALK_CATEGORY_BY_CODE[remote.tagCode] ?? '동네정보',
+      category: TALK_CATEGORY_BY_CODE[remote.tagCode] ?? (remote.tagName as Exclude<TalkCategory, '전체'>),
       kind: 'talk',
       showNeighborhood: false,
     };
@@ -451,7 +451,7 @@ export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityId
   return {
     ...base,
     baseBookmarkCount: 0,
-    category: MARKET_CATEGORY_BY_CODE[remote.tagCode] ?? '기타',
+    category: MARKET_CATEGORY_BY_CODE[remote.tagCode] ?? (remote.tagName as Exclude<MarketCategory, '전체'>),
     expiresAt: formatExpiryDate(remote.expiryDate),
     imageCount: remote.photos.length || (remote.thumbnailUrl ? 1 : 0),
     kind: 'market',

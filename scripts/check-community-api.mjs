@@ -79,6 +79,14 @@ assert.deepEqual(
   },
 );
 
+assert.equal(
+  communityApi.mapRemotePost(
+    { ...page.items[0], tagCode: 'NEW_TAG', tagName: '새 소통 카테고리' },
+    { profile: null, userId: 'user-me' },
+  ).category,
+  '새 소통 카테고리',
+);
+
 assert.deepEqual(
   communityApi.parseRemoteCommunityTags({
     code: 'COMMUNITY_TAG_LIST_200',

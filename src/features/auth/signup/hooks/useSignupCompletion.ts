@@ -225,7 +225,13 @@ export function useSignupCompletion() {
         ? await uploadRemoteProfileImage(data.profileImageUri)
         : await loadRemoteUserProfile();
       const signupPet = signupDataToPetEntity(data, userId);
-      const initialPet = mergeRemotePet(signupPet, await createRemotePet(signupPet));
+      const createdPetId = ownsStoredTransaction ? transaction?.createdPetId : undefined;
+      const initialPet = createdPetId
+        ? { ...signupPet, id: createdPetId }
+        : mergeRemotePet(signupPet, await createRemotePet(signupPet));
+      if (!createdPetId) {
+        await saveSignupTransaction(transactionOwner, 'committed', initialPet.id);
+      }
       await registerSignupPet(userId, initialPet);
       await registerRemoteProfile(remoteProfile, data.method);
       await finalizeSignupConsents(userId);

@@ -67,3 +67,44 @@ assert.equal(parseStoredSignupDraft(JSON.stringify(unsupportedSchemaDraft)), nul
 const draftWithPassword = JSON.parse(serialized);
 draftWithPassword.data.password = secretValues[0];
 assert.equal(parseStoredSignupDraft(JSON.stringify(draftWithPassword)), null);
+
+const transactionSource = readFileSync(
+  new URL('../src/features/auth/signup/services/signupTransactionStore.ts', import.meta.url),
+  'utf8',
+);
+const transactionCompiled = ts.transpileModule(transactionSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const transactionStorage = new Map();
+const transactionModule = { exports: {} };
+new Function('module', 'exports', 'require', transactionCompiled)(
+  transactionModule,
+  transactionModule.exports,
+  (id) => {
+    if (id === '@react-native-async-storage/async-storage') {
+      return {
+        __esModule: true,
+        default: {
+          getItem: async (key) => transactionStorage.get(key) ?? null,
+          multiRemove: async (keys) => keys.forEach((key) => transactionStorage.delete(key)),
+          multiSet: async (entries) => entries.forEach(([key, value]) => transactionStorage.set(key, value)),
+          removeItem: async (key) => transactionStorage.delete(key),
+        },
+      };
+    }
+    throw new Error(`Unexpected import: ${id}`);
+  },
+);
+const transactionOwner = {
+  email: 'paw@example.com',
+  method: 'local',
+  sessionId: 'signup-session',
+  userId: 'user-id',
+};
+await transactionModule.exports.saveSignupTransaction(transactionOwner, 'committed');
+await transactionModule.exports.saveSignupTransaction(transactionOwner, 'committed', '42');
+await transactionModule.exports.saveSignupTransaction(transactionOwner, 'committed');
+assert.equal(
+  (await transactionModule.exports.loadSignupTransaction(transactionOwner.userId)).transaction.createdPetId,
+  '42',
+);

@@ -254,12 +254,14 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   }, []);
 
   const loadRemoteState = useCallback(async () => {
-    const [storedState, talkPage, marketPage, talkTags, marketTags] = await Promise.all([
+    const [storedState, talkPage, marketPage] = await Promise.all([
       communityRepository.loadState(),
       getRemoteCommunityPage('COMMUNICATION'),
       getRemoteCommunityPage('MARKET'),
-      getRemoteCommunityTags('COMMUNICATION'),
-      getRemoteCommunityTags('MARKET'),
+    ]);
+    const [talkTags, marketTags] = await Promise.all([
+      getRemoteCommunityTags('COMMUNICATION').catch(() => []),
+      getRemoteCommunityTags('MARKET').catch(() => []),
     ]);
     remoteCursorsRef.current = {
       market: marketPage.nextCursor,
