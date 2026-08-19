@@ -14,8 +14,19 @@ function loadModule(path, dependencies) {
   return module.exports;
 }
 
+let likeRequest;
 const communityApi = loadModule('../src/features/community/services/communityApi.ts', {
-  '@/src/services/apiClient': { apiRequest: async () => undefined },
+  '@/src/services/apiClient': {
+    apiRequest: async (path, options) => {
+      likeRequest = { options, path };
+      return {
+        code: 'LIKE_TOGGLE_200',
+        isSuccess: true,
+        message: 'ok',
+        result: { liked: true, likeCount: 4 },
+      };
+    },
+  },
   '@/src/services/locationApi': { getRemoteUserLocation: async () => ({ regionCode: '1111000000' }) },
   '@/src/utils/file': { appendMultipartImage: () => undefined, appendMultipartJson: () => undefined },
   '../utils/marketValidation': {
@@ -151,6 +162,12 @@ assert.deepEqual(
   }),
   { liked: true, likeCount: 4 },
 );
+
+assert.deepEqual(await communityApi.toggleRemoteCommunityLike('10'), { liked: true, likeCount: 4 });
+assert.deepEqual(likeRequest, {
+  options: { method: 'PATCH' },
+  path: '/communities/10/likes',
+});
 
 assert.deepEqual(
   communityApi.parseRemoteCommentMutation({

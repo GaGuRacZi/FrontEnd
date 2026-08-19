@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { flushQueuedProfileImageRemovals } from '@/src/features/mypage/services/profileImageStorage';
+import { ApiError } from '@/src/services/apiClient';
 
 import { COMMUNITY_GUEST_ID } from './communityData';
 import {
@@ -48,9 +49,17 @@ import type {
 
 type MutationResult =
   | { ok: true }
-  | { ok: false; reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-yours' };
+  | {
+      ok: false;
+      reason: 'empty' | 'error' | 'not-found' | 'not-ready' | 'not-yours';
+      message?: string;
+    };
 
-const mutationError = (): MutationResult => ({ ok: false, reason: 'error' });
+const mutationError = (error: unknown): MutationResult => ({
+  ok: false,
+  reason: 'error',
+  ...(error instanceof ApiError && error.message.trim() ? { message: error.message } : {}),
+});
 
 type TalkPostForm = Pick<TalkPost, 'body' | 'category' | 'images' | 'showNeighborhood' | 'tags' | 'title'>;
 type MarketPostForm = Pick<
@@ -90,6 +99,7 @@ type CommunityStoreContextValue = {
   isBookmarked: (postId: string) => boolean;
   isReady: boolean;
   isReacted: (postId: string, kind: ReactionKind) => boolean;
+  loadCommentActivity: () => Promise<MutationResult>;
   loadComments: (postId: string) => Promise<MutationResult>;
   loadMorePosts: (kind: 'market' | 'talk') => Promise<MutationResult>;
   loadPostDetail: (postId: string) => Promise<MutationResult>;
@@ -252,12 +262,15 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     communityTagsRef.current = [...talkTags, ...marketTags];
     updateHasMorePosts({ market: marketPage.hasNext, talk: talkPage.hasNext });
 
+    const posts = [...talkPage.items, ...marketPage.items]
+      .map((post) => mapRemotePost(post, identity))
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+    const postIds = new Set(posts.map((post) => post.id));
+
     return {
       ...storedState,
-      comments: [],
-      posts: [...talkPage.items, ...marketPage.items]
-        .map((post) => mapRemotePost(post, identity))
-        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+      comments: storedState.comments.filter((comment) => postIds.has(comment.postId)),
+      posts,
     };
   }, [identity, updateHasMorePosts]);
 
@@ -594,16 +607,39 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       enqueueMutation(async (): Promise<MutationResult> => {
         if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
         const comments = await fetchRemoteComments(postId);
-        applyState({
+        return persistMutation({
           ...stateRef.current,
           comments: [
             ...stateRef.current.comments.filter((comment) => comment.postId !== postId),
             ...comments,
           ],
         });
-        return { ok: true };
       }).catch(mutationError),
-    [applyState, enqueueMutation, fetchRemoteComments, sessionReady],
+    [enqueueMutation, fetchRemoteComments, persistMutation, sessionReady],
+  );
+
+  const loadCommentActivity = useCallback(
+    () =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        if (!sessionReady || !readyRef.current) return { ok: false, reason: 'not-ready' };
+
+        const current = stateRef.current;
+        const postIds = current.posts
+          .filter((post) => post.kind === 'talk' && (post.baseCommentCount ?? 0) > 0)
+          .map((post) => post.id);
+        if (postIds.length === 0) return { ok: true };
+
+        const commentPages = await Promise.all(postIds.map((postId) => fetchRemoteComments(postId)));
+        const postIdSet = new Set(postIds);
+        return persistMutation({
+          ...current,
+          comments: [
+            ...current.comments.filter((comment) => !postIdSet.has(comment.postId)),
+            ...commentPages.flat(),
+          ],
+        });
+      }).catch(mutationError),
+    [enqueueMutation, fetchRemoteComments, persistMutation, sessionReady],
   );
 
   const isReacted = useCallback(
@@ -1212,6 +1248,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       isBookmarked,
       isReady,
       isReacted,
+      loadCommentActivity,
       loadComments,
       loadMorePosts,
       loadPostDetail,
@@ -1248,6 +1285,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       isBookmarked,
       isReady,
       isReacted,
+      loadCommentActivity,
       loadComments,
       loadMorePosts,
       loadPostDetail,

@@ -109,7 +109,7 @@ function normalizeSearchText(value: string) {
 
 function useMarketBookmarkHandler(
   toggleBookmark: ToggleBookmark,
-  showError: () => void,
+  showError: (message?: string) => void,
 ) {
   const pendingPostIds = useRef(new Set<string>());
 
@@ -120,7 +120,7 @@ function useMarketBookmarkHandler(
 
       try {
         const result = await toggleBookmark(postId);
-        if (!result.ok) showError();
+        if (!result.ok) showError(result.message);
       } catch {
         showError();
       } finally {
@@ -570,8 +570,9 @@ function CommentItem({
   );
 }
 
-function CommunityEmptyPosts({ icon, title }: {
+function CommunityEmptyPosts({ icon, onReset, title }: {
   icon: Parameters<typeof AppIcon>[0]['name'];
+  onReset?: () => void;
   title: string;
 }) {
   return (
@@ -580,6 +581,15 @@ function CommunityEmptyPosts({ icon, title }: {
         <AppIcon color={COLORS.primary} name={icon} size={30} />
       </View>
       <Text style={styles.emptyPostsTitle}>{title}</Text>
+      {onReset ? (
+        <AppButton
+          fullWidth={false}
+          onPress={onReset}
+          size="medium"
+          title="필터 초기화"
+          variant="outline"
+        />
+      ) : null}
     </View>
   );
 }
@@ -674,9 +684,9 @@ export function CommunityPostDetailScreen({
   const commentDeletingRef = useRef(false);
   const [imageIndex, setImageIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>(null);
-  const showBookmarkError = useCallback(() => {
+  const showBookmarkError = useCallback((message?: string) => {
     setModal({
-      description: '잠시 후 다시 시도해주세요.',
+      description: message?.trim() || '잠시 후 다시 시도해주세요.',
       title: '찜을 저장하지 못했어요',
     });
   }, []);
@@ -1930,9 +1940,9 @@ export function CommunityScreen() {
   });
   const [searchVisibleCount, setSearchVisibleCount] = useState(COMMUNITY_BATCH_SIZE);
   const [modal, setModal] = useState<ModalState>(null);
-  const showBookmarkError = useCallback(() => {
+  const showBookmarkError = useCallback((message?: string) => {
     setModal({
-      description: '잠시 후 다시 시도해주세요.',
+      description: message?.trim() || '잠시 후 다시 시도해주세요.',
       title: '찜을 저장하지 못했어요',
     });
   }, []);
@@ -2167,6 +2177,20 @@ export function CommunityScreen() {
     setSearchVisibleCount(COMMUNITY_BATCH_SIZE);
     searchScrollRef.current?.scrollTo({ animated: false, y: 0 });
   }, []);
+
+  const hasTalkFilter = talkCategory !== '전체';
+  const marketFilterCount = marketStatuses.length + marketTradeTypes.length;
+  const hasMarketFilter = marketCategory !== '전체' || marketFilterCount > 0;
+  const resetTalkFilters = useCallback(() => {
+    setTalkCategory('전체');
+    resetVisibleCount('talk');
+  }, [resetVisibleCount]);
+  const resetMarketFilters = useCallback(() => {
+    setMarketCategory('전체');
+    setMarketStatuses([]);
+    setMarketTradeTypes([]);
+    resetVisibleCount('market');
+  }, [resetVisibleCount]);
 
   const handleListScroll = useCallback(
     (
@@ -2478,7 +2502,11 @@ export function CommunityScreen() {
                 />
               ))
             ) : (
-              <CommunityEmptyPosts icon="chatbubble-ellipses-outline" title="아직 등록된 소통 글이 없어요" />
+              <CommunityEmptyPosts
+                icon="chatbubble-ellipses-outline"
+                onReset={hasTalkFilter ? resetTalkFilters : undefined}
+                title={hasTalkFilter ? '선택한 필터에 맞는 소통 글이 없어요' : '아직 등록된 소통 글이 없어요'}
+              />
             )}
           </>
         ) : null}
@@ -2503,7 +2531,9 @@ export function CommunityScreen() {
                 style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}
               >
                 <AppIcon color={COLORS.primary} name="options-outline" size={17} />
-                <Text style={styles.filterButtonText}>필터</Text>
+                <Text style={styles.filterButtonText}>
+                  {marketFilterCount > 0 ? `필터 ${marketFilterCount}` : '필터'}
+                </Text>
               </Pressable>
             </View>
             {marketPosts.length ? (
@@ -2517,7 +2547,11 @@ export function CommunityScreen() {
                 />
               ))
             ) : (
-              <CommunityEmptyPosts icon="bag-outline" title="아직 등록된 장터 글이 없어요" />
+              <CommunityEmptyPosts
+                icon="bag-outline"
+                onReset={hasMarketFilter ? resetMarketFilters : undefined}
+                title={hasMarketFilter ? '선택한 필터에 맞는 장터 글이 없어요' : '아직 등록된 장터 글이 없어요'}
+              />
             )}
           </>
         ) : null}
