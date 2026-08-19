@@ -10,6 +10,8 @@ import { WeightRecord } from '../types';
 import { MonthNavigator } from './MonthNavigator';
 
 const CHART_HEIGHT = 120;
+const CHART_BASELINE = 3.8;
+const GRID_BOTTOM_OFFSET = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const parseRecordDate = (value: string) => {
@@ -263,9 +265,17 @@ const styles = StyleSheet.create({
 	gridLineBottom: { backgroundColor: COLORS.gray200, bottom: 30, height: 1, left: 0, position: 'absolute', right: 0 },
 	chartLineSegment: { backgroundColor: COLORS.primary, height: 2, position: 'absolute' },
 	chartPointsRow: { flexDirection: 'row', height: '100%' },
-	pointColumn: { alignItems: 'center', flex: 1, height: '100%', justifyContent: 'flex-end', position: 'relative' },
+	pointColumn: { alignItems: 'center', flex: 1, height: '100%', position: 'relative' },
 	chartDot: { backgroundColor: COLORS.background, borderColor: COLORS.primary, borderRadius: 6, borderWidth: 3, height: 12, position: 'absolute', width: 12 },
-	chartXLabel: { ...TYPOGRAPHY.caption, color: COLORS.gray500, marginTop: 14 },
+	chartXLabel: {
+		...TYPOGRAPHY.caption,
+		color: COLORS.gray500,
+		left: 0,
+		position: 'absolute',
+		right: 0,
+		textAlign: 'center',
+		top: CHART_HEIGHT - GRID_BOTTOM_OFFSET + 24,
+	},
 	recordItem: { alignItems: 'center', backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl },
 	recordItemLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
 	cameraBadge: { alignItems: 'center', backgroundColor: COLORS.summarycontainer, borderRadius: RADIUS.round, height: 36, justifyContent: 'center', width: 36 },
