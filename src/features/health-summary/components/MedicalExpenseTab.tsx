@@ -1,4 +1,4 @@
-﻿import { Href, useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -7,6 +7,8 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { MOCK_EXPENSE_RECORDS } from '../mock';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { MonthNavigator } from './MonthNavigator';
+
+const CARROT_AD_IMAGE = require('@/assets/images/health-summary/ad.jpg');
 
 export function MedicalExpenseTab() {
 	const router = useRouter();
@@ -19,14 +21,13 @@ export function MedicalExpenseTab() {
 	);
 
 	const monthlyExpenseTotal = filteredRecords.reduce((sum, record) => sum + record.totalCost, 0);
-
 	const allTimeExpenseTotal = MOCK_EXPENSE_RECORDS.reduce((sum, record) => sum + record.totalCost, 0);
 
 	return (
 		<View style={styles.container}>
 			<View style={styles.promoCard}>
 				<Text style={styles.promoTitle}>우리아이 맞춤 보험</Text>
-				<View style={styles.promoBlankSpace} />
+				<Image source={CARROT_AD_IMAGE} style={styles.promoImage} />
 				<Text style={styles.promoSubtitle}>
 					우리아이 맞춤 보험을 유지하는 동안, PAW 요금제가 매달 50% 할인 됩니다.
 				</Text>
@@ -89,11 +90,26 @@ export function MedicalExpenseTab() {
 }
 
 const styles = StyleSheet.create({
-	container: { gap: SPACING.xl },
-	promoCard: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.xxl },
-	promoTitle: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
-	promoBlankSpace: { height: 80 },
-	promoSubtitle: { ...TYPOGRAPHY.small, color: COLORS.gray500 },
+	container: { gap: SPACING.jumbo },
+	promoCard: { 
+        backgroundColor: COLORS.background, 
+        borderColor: COLORS.gray200, 
+        borderRadius: RADIUS.lg, 
+        borderWidth: 1, 
+        padding: SPACING.xl, // 카드의 전체적인 안쪽 여백을 타이트하게 조절합니다.
+        gap: SPACING.md // 💡 타이틀 - 사진 - 서브타이틀 사이의 간격만 딱 예쁘게 띄워줍니다.
+    },
+    promoTitle: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
+    promoImage: {
+        width: '100%',
+        height: 170, // 💡 핵심: % 대신 170 픽셀로 고정! 이전의 그 예쁜 비율이 확정적으로 나옵니다.
+        resizeMode: 'contain', // 원본이 잘리지 않고 완벽하게 쏙 들어갑니다.
+    },
+    promoSubtitle: { 
+        ...TYPOGRAPHY.small, 
+        color: COLORS.gray500, 
+        marginBottom: 0 
+    },
 	summaryCard: {
 		alignItems: 'center',
 		backgroundColor: COLORS.yellow,
