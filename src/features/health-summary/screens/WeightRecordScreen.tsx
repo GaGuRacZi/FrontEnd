@@ -90,8 +90,7 @@ export function WeightRecordScreen() {
 			if (!result.canceled && result.assets && result.assets[0]) {
 				setSelectedImageUri(result.assets[0].uri);
 			}
-		} catch (error) {
-			console.error('Image picker error:', error);
+		} catch {
 			Alert.alert('오류', '사진을 불러오는 중 문제가 발생했어요.');
 		}
 	};

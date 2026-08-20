@@ -21,6 +21,7 @@ const SIGNUP_CONSENT_STORAGE_KEY_PREFIX = `${CONSENT_STORAGE_KEY_PREFIX}${encode
 )}`;
 const CONSENT_SCHEMA_VERSION = 1;
 const SIGNUP_CONSENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const LEGACY_MARKETING_TERM_ID = 'marketing-communications';
 
 type StoredConsentHistory = {
   records: ConsentRecord[];
@@ -43,6 +44,26 @@ function copyRecord(record: ConsentRecord) {
 
 function storageKey(userId: string) {
   return `${CONSENT_STORAGE_KEY_PREFIX}${encodeURIComponent(userId)}`;
+}
+
+function removeLegacyMarketingRecords(value: string | null) {
+  if (!value) return value;
+
+  const parsed: unknown = JSON.parse(value);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return value;
+
+  const stored = parsed as Record<string, unknown>;
+  if (!Array.isArray(stored.records)) return value;
+
+  const records = stored.records.filter(
+    (record) =>
+      !record ||
+      typeof record !== 'object' ||
+      Array.isArray(record) ||
+      (record as Record<string, unknown>).termId !== LEGACY_MARKETING_TERM_ID,
+  );
+
+  return records.length === stored.records.length ? value : JSON.stringify({ ...stored, records });
 }
 
 function parseHistory(value: string | null, userId: string) {
@@ -93,7 +114,11 @@ export class LocalConsentStore implements ConsentStore {
     const stored = await AsyncStorage.getItem(key);
 
     try {
-      return parseHistory(stored, userId);
+      const normalizedStored = removeLegacyMarketingRecords(stored);
+      if (normalizedStored && normalizedStored !== stored) {
+        await AsyncStorage.setItem(key, normalizedStored);
+      }
+      return parseHistory(normalizedStored, userId);
     } catch {
       await AsyncStorage.removeItem(key);
       return [];

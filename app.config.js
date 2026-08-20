@@ -13,6 +13,7 @@ if (
 module.exports = ({ config }) => {
   const configuredPluginNames = new Set([
     '@react-native-seoul/kakao-login',
+    'expo-asset',
     'expo-build-properties',
   ]);
   const plugins = (config.plugins ?? []).filter((plugin) => {
@@ -32,6 +33,7 @@ module.exports = ({ config }) => {
       ...(hasKakaoAppKey
         ? [['@react-native-seoul/kakao-login', { kakaoAppKey }]]
         : []),
+      'expo-asset',
       [
         'expo-build-properties',
         {

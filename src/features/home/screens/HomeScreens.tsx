@@ -1,7 +1,7 @@
 // src/features/home/screens/HomeScreens.tsx
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BrandLogoButton, EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
@@ -159,7 +159,11 @@ export function HomeScreen() {
           todos={todayTodos}
         />
 
-        <EmergencyBanner onPress={() => router.push('/emergency' as Href)} />
+        <EmergencyBanner
+          onPress={() => {
+            void Linking.openURL('https://kcbda.kr/blood-donation?mode=policy').catch(() => undefined);
+          }}
+        />
 
         <View style={styles.row}>
           <RecentDiagnosisCard

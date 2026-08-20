@@ -16,7 +16,6 @@ function nowIso() {
 export function createDefaultNotificationSettings(): NotificationSettings {
   return {
     aiAnalysis: true,
-    benefit: false,
     chat: false,
     community: true,
     doNotDisturbEnabled: true,
@@ -32,7 +31,6 @@ export function disablePushNotifications(
 ): NotificationSettings {
   if (
     !settings.aiAnalysis &&
-    !settings.benefit &&
     !settings.chat &&
     !settings.community &&
     !settings.doNotDisturbEnabled &&
@@ -45,7 +43,6 @@ export function disablePushNotifications(
   return {
     ...settings,
     aiAnalysis: false,
-    benefit: false,
     chat: false,
     community: false,
     doNotDisturbEnabled: false,

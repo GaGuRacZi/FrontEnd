@@ -1,16 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import {
-  formatTermDecisionDate,
-  isValidConsentRecord,
-  TERM_IDS,
-} from '../src/features/auth/terms/types.ts';
-
-const localBoundary = '2026-08-13T15:30:00.000Z';
-
-assert.equal(formatTermDecisionDate(localBoundary), '2026.08.14');
-assert.equal(formatTermDecisionDate('invalid'), '');
+import { isValidConsentRecord, TERM_IDS } from '../src/features/auth/terms/types.ts';
 
 const decisionAt = '2026-08-15T09:00:00.000Z';
 const consentRecord = {
@@ -18,7 +9,7 @@ const consentRecord = {
   agreedAt: decisionAt,
   decidedAt: decisionAt,
   id: 'consent-1',
-  termId: TERM_IDS.marketing,
+  termId: TERM_IDS.privacy,
   termVersion: '1.0.0',
   userId: 'user-1',
   withdrawnAt: null,

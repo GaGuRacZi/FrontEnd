@@ -8,6 +8,7 @@ export type RemotePet = {
   breed: string;
   gender: PetGender;
   id: string;
+  main: boolean | null;
   name: string;
   neutered: boolean;
   profileImageUri: string | null;
@@ -49,11 +50,12 @@ function readEnvelope(value: unknown, expectedCode: string) {
   return envelope.result;
 }
 
-function readRemotePet(value: unknown): RemotePet {
+function readRemotePet(value: unknown, requireMain = false): RemotePet {
   const pet = readRecord(value);
   const id = pet.petId;
   const type = pet.petType;
   const gender = pet.gender;
+  const main = pet.main;
   const profileUrl = pet.profileUrl;
 
   if (
@@ -66,6 +68,8 @@ function readRemotePet(value: unknown): RemotePet {
     !Number.isFinite(pet.petWeight) ||
     pet.petWeight <= 0 ||
     typeof pet.neutering !== 'boolean' ||
+    (main !== undefined && typeof main !== 'boolean') ||
+    (requireMain && typeof main !== 'boolean') ||
     (profileUrl !== null && profileUrl !== undefined && typeof profileUrl !== 'string')
   ) {
     throw new PetApiContractError();
@@ -79,6 +83,7 @@ function readRemotePet(value: unknown): RemotePet {
     breed: readString(pet.breedName),
     gender: gender === 'MALE' ? 'male' : 'female',
     id: String(id),
+    main: typeof main === 'boolean' ? main : null,
     name: readString(pet.petName),
     neutered: pet.neutering,
     profileImageUri: typeof profileUrl === 'string' && profileUrl.trim() ? profileUrl.trim() : null,
@@ -111,6 +116,17 @@ function createPetFormData(pet: PetEntity, imageUri?: string | null) {
 
 export function parseRemotePetEnvelope(value: unknown, expectedCode: 'PET_CREATE_200' | 'PET_UPDATE_200') {
   return readRemotePet(readEnvelope(value, expectedCode));
+}
+
+export function parseRemotePetListEnvelope(value: unknown) {
+  const result = readEnvelope(value, 'PET_LIST_200');
+  if (!Array.isArray(result)) throw new PetApiContractError();
+  return result.map((pet) => readRemotePet(pet, true));
+}
+
+function parseRemoteMainPetEnvelope(value: unknown) {
+  const envelope = readRecord(value);
+  if (envelope.isSuccess !== true) throw new PetApiContractError();
 }
 
 export function parseRemoteBreedEnvelope(value: unknown): RemoteBreed[] {
@@ -157,6 +173,23 @@ export async function updateRemotePet(previous: PetEntity, next: PetEntity) {
     method: 'PUT',
   });
   return parseRemotePetEnvelope(response, 'PET_UPDATE_200');
+}
+
+export async function getRemotePets() {
+  const response = await apiRequest<unknown>('/pets');
+  return parseRemotePetListEnvelope(response);
+}
+
+export async function updateRemoteMainPet(petId: string) {
+  const numericPetId = Number(petId);
+  if (!Number.isSafeInteger(numericPetId) || numericPetId <= 0) {
+    throw new PetApiContractError();
+  }
+
+  const response = await apiRequest<unknown>(`/pets/${numericPetId}/main`, {
+    method: 'PATCH',
+  });
+  parseRemoteMainPetEnvelope(response);
 }
 
 export async function searchRemoteBreeds(type: PetType, query = '') {

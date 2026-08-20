@@ -23,7 +23,6 @@ export type UserProfile = {
 
 export type NotificationSettings = {
   aiAnalysis: boolean;
-  benefit: boolean;
   chat: boolean;
   community: boolean;
   doNotDisturbEnd: string;

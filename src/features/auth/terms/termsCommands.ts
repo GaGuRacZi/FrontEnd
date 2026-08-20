@@ -1,9 +1,8 @@
 import type { ConsentStore } from './ConsentStore';
-import type { TermsRepository } from './TermsRepository';
 import type { ConsentRecord, TermDefinition, TermId } from './types';
-import { REQUIRED_SIGNUP_TERM_IDS, TERM_IDS } from './types';
+import { REQUIRED_SIGNUP_TERM_IDS } from './types';
 
-export function getLatestConsent(
+function getLatestConsent(
   history: readonly ConsentRecord[],
   termId: TermId,
   termVersion?: string,
@@ -62,26 +61,4 @@ export async function recordTermDecision({
     termVersion: term.version,
     userId,
   });
-}
-
-type ChangeMarketingConsentOptions = {
-  agreed: boolean;
-  consentStore: ConsentStore;
-  repository: TermsRepository;
-  userId: string;
-};
-
-export async function changeMarketingConsent({
-  agreed,
-  consentStore,
-  repository,
-  userId,
-}: ChangeMarketingConsentOptions) {
-  const term = await repository.getTerm(TERM_IDS.marketing);
-
-  if (!term) {
-    throw new Error('마케팅 정보 수신 약관을 찾을 수 없습니다.');
-  }
-
-  return recordTermDecision({ agreed, consentStore, term, userId });
 }

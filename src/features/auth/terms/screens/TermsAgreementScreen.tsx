@@ -173,8 +173,8 @@ export function TermsAgreementScreen() {
             ))}
           </View>
 
-          <Text style={styles.marketingNotice}>
-            마케팅과 위치 약관에 동의하지 않아도 회원가입할 수 있어요.
+          <Text style={styles.locationNotice}>
+            위치 약관에 동의하지 않아도 회원가입할 수 있어요.
           </Text>
           <Link
             asChild
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xl,
     marginTop: SPACING.xxl,
   },
-  marketingNotice: {
+  locationNotice: {
     ...TYPOGRAPHY.caption,
     color: COLORS.gray600,
     marginTop: SPACING.xxl,

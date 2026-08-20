@@ -94,7 +94,6 @@ function createNotificationSettings(
 
   return {
     aiAnalysis: isBoolean(value.aiAnalysis) ? value.aiAnalysis : defaults.aiAnalysis,
-    benefit: isBoolean(value.benefit) ? value.benefit : defaults.benefit,
     chat: isBoolean(value.chat) ? value.chat : defaults.chat,
     community: isBoolean(value.community) ? value.community : defaults.community,
     doNotDisturbEnabled: isBoolean(value.doNotDisturbEnabled)

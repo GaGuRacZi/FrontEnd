@@ -227,7 +227,7 @@ export function useSignupCompletion() {
           agreements: {
             AGE_OVER_14: hasCurrentConsent(TERM_IDS.age),
             LOCATION_SERVICE: hasCurrentConsent(TERM_IDS.location),
-            MARKETING_PUSH: hasCurrentConsent(TERM_IDS.marketing),
+            MARKETING_PUSH: false,
             PRIVACY: hasCurrentConsent(TERM_IDS.privacy),
             PROFILE_EXTRA: hasCurrentConsent(TERM_IDS.profilePrivacy),
             TERMS_OF_SERVICE: hasCurrentConsent(TERM_IDS.service),

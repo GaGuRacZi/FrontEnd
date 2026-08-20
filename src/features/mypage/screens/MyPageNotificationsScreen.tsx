@@ -38,7 +38,6 @@ const NOTIFICATION_ROWS: {
   { description: '진료 요약과 OCR 분석 알림을 설정해요', key: 'aiAnalysis', title: 'AI 분석 완료 알림' },
   { description: '댓글·답글·거래 문의 알림을 설정해요', key: 'community', title: '커뮤니티 알림' },
   { description: '새 메시지와 거래 대화 알림을 설정해요', key: 'chat', title: '채팅 알림' },
-  { description: 'PAW 혜택과 이벤트 알림을 설정해요', key: 'benefit', title: '혜택·이벤트 알림' },
 ];
 
 function formatClockInput(value: string) {

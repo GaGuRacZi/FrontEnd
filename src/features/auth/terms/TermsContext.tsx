@@ -18,14 +18,12 @@ import {
   type TermsRepository,
 } from './TermsRepository';
 import {
-  changeMarketingConsent,
-  getLatestConsent,
   hasCurrentRequiredSignupConsents,
   hasCurrentTermConsent,
   recordTermDecision,
 } from './termsCommands';
 import type { ConsentRecord, TermDefinition, TermId } from './types';
-import { REQUIRED_SIGNUP_TERM_IDS, TERM_IDS } from './types';
+import { REQUIRED_SIGNUP_TERM_IDS } from './types';
 const EMPTY_CONSENT_HISTORY: ConsentRecord[] = [];
 const EMPTY_SIGNUP_SELECTIONS: Partial<Record<TermId, boolean>> = {};
 
@@ -36,14 +34,12 @@ type TermsContextValue = {
   commitSignupConsents: () => Promise<void>;
   deleteConsentHistory: () => Promise<void>;
   error: string | null;
-  getLatestConsentRecord: (termId: TermId) => ConsentRecord | undefined;
   getTerm: (termId: TermId) => TermDefinition | undefined;
   loadTerm: (termId: TermId) => Promise<TermDefinition | null>;
   hasCurrentConsent: (termId: TermId) => boolean;
   hasRequiredSignupConsents: boolean;
   hasRequiredSignupSelections: boolean;
   finalizeSignupConsents: (userId: string) => Promise<void>;
-  marketingConsent: boolean;
   recordConsent: (termId: TermId, agreed: boolean) => Promise<void>;
   reload: () => Promise<void>;
   requiredReconsentTerms: TermDefinition[];
@@ -55,7 +51,6 @@ type TermsContextValue = {
   status: TermsStatus;
   terms: TermDefinition[];
   toggleAllSignupTerms: (selected: boolean) => void;
-  updateMarketingConsent: (agreed: boolean) => Promise<void>;
 };
 
 const TermsContext = createContext<TermsContextValue | null>(null);
@@ -210,11 +205,6 @@ export function TermsProvider({
     [repository],
   );
 
-  const getLatestConsentRecord = useCallback(
-    (termId: TermId) => getLatestConsent(currentConsentHistory, termId),
-    [currentConsentHistory],
-  );
-
   const hasCurrentConsent = useCallback(
     (termId: TermId) => {
       const term = terms.find(({ id }) => id === termId);
@@ -264,7 +254,6 @@ export function TermsProvider({
       ),
     [hasCurrentConsent, terms],
   );
-  const marketingConsent = hasCurrentConsent(TERM_IDS.marketing);
   const deleteConsentHistory = useCallback(async () => {
     if (scope !== 'session') {
       throw new Error('로그인한 계정의 동의 이력만 삭제할 수 있습니다.');
@@ -390,31 +379,6 @@ export function TermsProvider({
     ],
   );
 
-  const updateMarketingConsent = useCallback(
-    async (agreed: boolean) => {
-      if (currentStatus !== 'ready' || !targetUserId) {
-        throw new Error('약관을 불러온 뒤 다시 시도해주세요.');
-      }
-
-      const operationUserId = targetUserId;
-      const result = await changeMarketingConsent({
-        agreed,
-        consentStore,
-        repository,
-        userId: operationUserId,
-      });
-
-      mergeDecisionRecords([result], operationUserId);
-    },
-    [
-      consentStore,
-      currentStatus,
-      mergeDecisionRecords,
-      repository,
-      targetUserId,
-    ],
-  );
-
   const finalizeSignupConsents = useCallback(
     async (completedUserId: string) => {
       if (scope !== 'signup') {
@@ -458,13 +422,11 @@ export function TermsProvider({
       deleteConsentHistory,
       error: currentError,
       finalizeSignupConsents,
-      getLatestConsentRecord,
       getTerm,
       loadTerm,
       hasCurrentConsent,
       hasRequiredSignupConsents,
       hasRequiredSignupSelections,
-      marketingConsent,
       recordConsent,
       reload: load,
       requiredReconsentTerms,
@@ -476,7 +438,6 @@ export function TermsProvider({
       status: currentStatus,
       terms,
       toggleAllSignupTerms,
-      updateMarketingConsent,
     }),
     [
       allSignupTermsSelected,
@@ -486,14 +447,12 @@ export function TermsProvider({
       currentStatus,
       deleteConsentHistory,
       finalizeSignupConsents,
-      getLatestConsentRecord,
       getTerm,
       loadTerm,
       hasCurrentConsent,
       hasRequiredSignupConsents,
       hasRequiredSignupSelections,
       load,
-      marketingConsent,
       recordConsent,
       requiredReconsentTerms,
       requiredSignupTermsReady,
@@ -502,7 +461,6 @@ export function TermsProvider({
       signupTerms,
       terms,
       toggleAllSignupTerms,
-      updateMarketingConsent,
     ],
   );
 

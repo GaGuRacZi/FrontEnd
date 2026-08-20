@@ -45,6 +45,7 @@ assert.deepEqual(petApi.parseRemotePetEnvelope(petEnvelope, 'PET_CREATE_200'), {
   breed: '말티즈',
   gender: 'male',
   id: '1',
+  main: null,
   name: '초코',
   neutered: true,
   profileImageUri: 'https://cdn.example.com/pets/1.jpg',
@@ -52,6 +53,46 @@ assert.deepEqual(petApi.parseRemotePetEnvelope(petEnvelope, 'PET_CREATE_200'), {
   weight: 3.5,
 });
 assert.throws(() => petApi.parseRemotePetEnvelope({ ...petEnvelope, code: 'PET_UPDATE_200' }, 'PET_CREATE_200'));
+assert.deepEqual(
+  petApi.parseRemotePetListEnvelope({
+    code: 'PET_LIST_200',
+    isSuccess: true,
+    message: 'ok',
+    result: [
+      { ...petEnvelope.result, main: true },
+      { ...petEnvelope.result, main: false, petId: 2 },
+    ],
+  }),
+  [
+    { ...petApi.parseRemotePetEnvelope(petEnvelope, 'PET_CREATE_200'), main: true },
+    { ...petApi.parseRemotePetEnvelope(petEnvelope, 'PET_CREATE_200'), id: '2', main: false },
+  ],
+);
+
+const petRequests = [];
+const petMutations = loadModule('../src/features/pet/services/petApi.ts', {
+  '@/src/services/apiClient': {
+    apiRequest: async (path, options) => {
+      petRequests.push([path, options]);
+      if (path === '/pets') {
+        return {
+          code: 'PET_LIST_200',
+          isSuccess: true,
+          message: 'ok',
+          result: [{ ...petEnvelope.result, main: true }],
+        };
+      }
+      return { code: 'PET_MAIN_UPDATE_200', isSuccess: true, message: 'ok', result: null };
+    },
+  },
+  '@/src/utils/file': { appendMultipartImage: () => undefined, appendMultipartJson: () => undefined },
+});
+await petMutations.getRemotePets();
+await petMutations.updateRemoteMainPet('1');
+assert.deepEqual(petRequests, [
+  ['/pets', undefined],
+  ['/pets/1/main', { method: 'PATCH' }],
+]);
 
 const petValidation = loadModule('../src/features/pet/petValidation.ts', {});
 const today = new Date();
@@ -185,7 +226,6 @@ assert.deepEqual(
   }, 'MYPAGE_NOTI_200'),
   {
     aiAnalysis: true,
-    benefit: false,
     chat: false,
     community: true,
     doNotDisturbEnabled: true,
@@ -309,7 +349,6 @@ const termsApi = loadModule('../src/features/auth/terms/TermsRepository.ts', {
     TERM_IDS: {
       age: 'age-confirmation',
       location: 'location-service',
-      marketing: 'marketing-communications',
       privacy: 'privacy-collection',
       profilePrivacy: 'profile-privacy-collection',
       service: 'service-terms',
@@ -321,7 +360,10 @@ assert.deepEqual(
     code: 'TERMS_LIST_200',
     isSuccess: true,
     message: 'ok',
-    result: [{ effectiveAt: '2025-01-01', required: true, title: '서비스 이용약관', type: 'TERMS_OF_SERVICE', version: '1.0' }],
+    result: [
+      { effectiveAt: '2025-01-01', required: true, title: '서비스 이용약관', type: 'TERMS_OF_SERVICE', version: '1.0' },
+      { type: 'MARKETING_PUSH' },
+    ],
   }),
   ['TERMS_OF_SERVICE'],
 );
@@ -387,7 +429,7 @@ assert.deepEqual(
     message: 'ok',
     result: [{ agreed: true, type: 'MARKETING_PUSH', version: '1.0' }],
   }),
-  [{ agreed: true, id: 'marketing-communications', version: '1.0' }],
+  [],
 );
 assert.throws(() =>
   termsApi.parseTermDetailEnvelope({
@@ -408,7 +450,6 @@ assert.throws(() =>
 const mypageMappers = loadModule('../src/features/mypage/mypageMappers.ts', {});
 const enabledNotificationSettings = {
   aiAnalysis: true,
-  benefit: true,
   chat: true,
   community: true,
   doNotDisturbEnabled: true,
@@ -422,7 +463,6 @@ assert.deepEqual(
   {
     ...enabledNotificationSettings,
     aiAnalysis: false,
-    benefit: false,
     chat: false,
     community: false,
     doNotDisturbEnabled: false,

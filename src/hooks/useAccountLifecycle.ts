@@ -7,7 +7,6 @@ import { logoutRemoteSession } from '@/src/features/auth/services/kakaoAuthServi
 import { useTerms } from '@/src/features/auth/terms';
 import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useCommunityStore } from '@/src/features/community/CommunityStore';
-import { useMedicationStore } from '@/src/features/home/MedicationStore';
 import { useHealthSummaryStore } from '@/src/features/health-summary/HealthSummaryStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import {
@@ -61,9 +60,6 @@ export function useAccountLifecycle() {
   } = useSupportStore();
   const { clearDrafts, deleteUserPetData } = usePetStore();
   const {
-    clearScreenSession: clearMedicationSession,
-  } = useMedicationStore();
-  const {
     clearScreenSession: clearHealthSummarySession,
     deleteUserHealthSummaryData,
   } = useHealthSummaryStore();
@@ -79,7 +75,6 @@ export function useAccountLifecycle() {
       runWithRetry(clearCommunitySession),
       runWithRetry(clearSupportSession),
       runWithRetry(async () => clearScreenSession()),
-      runWithRetry(clearMedicationSession),
       runWithRetry(clearHealthSummarySession),
       userId ? runWithRetry(() => clearDrafts(userId)) : Promise.resolve(),
     ]);
@@ -88,7 +83,6 @@ export function useAccountLifecycle() {
     clearChatSession,
     clearCommunitySession,
     clearDrafts,
-    clearMedicationSession,
     clearHealthSummarySession,
     clearScreenSession,
     clearSession,

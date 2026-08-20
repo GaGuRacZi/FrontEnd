@@ -112,8 +112,7 @@ export function MedicalExpenseRecordScreen() {
 			if (!result.canceled && result.assets && result.assets[0]) {
 				setReceiptImageUri(result.assets[0].uri);
 			}
-		} catch (error) {
-			console.error('Receipt scan error:', error);
+		} catch {
 			Alert.alert('오류', '영수증 이미지를 불러오는 중 문제가 발생했어요.');
 		}
 	};

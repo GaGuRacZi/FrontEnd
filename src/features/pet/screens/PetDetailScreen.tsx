@@ -142,7 +142,12 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
 
       if (result.reason !== 'last-pet') {
         setDeleteModalVisible(false);
-        showAlert('삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert(
+          result.reason === 'not-supported' ? '삭제할 수 없어요' : '삭제하지 못했어요',
+          result.reason === 'not-supported'
+            ? '반려동물 삭제 기능은 아직 지원되지 않아요.'
+            : '잠시 후 다시 시도해주세요.',
+        );
       }
       missingAlertShown.current = false;
     } catch {

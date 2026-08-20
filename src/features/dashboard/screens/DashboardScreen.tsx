@@ -1,7 +1,8 @@
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Modal, Pressable, ScrollView, StyleSheet, View, Text } from 'react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BrandLogoButton, EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
@@ -27,6 +28,12 @@ export function DashboardScreen() {
 	const [showSummarizingToast, setShowSummarizingToast] = useState(false);
 	const [toastMessage, setToastMessage] = useState('아직 요약 중이에요!\n완료되면 알려 드릴게요.');
 	const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const hasFocusedRef = useRef(false);
+
+	useFocusEffect(useCallback(() => {
+		if (hasFocusedRef.current) reloadMedications();
+		hasFocusedRef.current = true;
+	}, [reloadMedications]));
 
 	const handleDiagnosisPress = (diagnosis: DiagnosisListItem) => {
 		if (diagnosis.status !== 'completed') {

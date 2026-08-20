@@ -10,7 +10,6 @@ export interface TermsRepository {
 const TERM_METADATA = {
   AGE_OVER_14: { id: TERM_IDS.age, kind: 'age', scope: 'signup' },
   LOCATION_SERVICE: { id: TERM_IDS.location, kind: 'location', scope: 'location' },
-  MARKETING_PUSH: { id: TERM_IDS.marketing, kind: 'marketing', scope: 'signup' },
   PRIVACY: { id: TERM_IDS.privacy, kind: 'privacy', scope: 'signup' },
   PROFILE_EXTRA: { id: TERM_IDS.profilePrivacy, kind: 'profilePrivacy', scope: 'signup' },
   TERMS_OF_SERVICE: { id: TERM_IDS.service, kind: 'service', scope: 'signup' },
@@ -124,8 +123,9 @@ export function parseTermsListEnvelope(value: unknown) {
   const result = readEnvelope(value, 'TERMS_LIST_200');
   if (!Array.isArray(result)) throw new TermsApiContractError();
 
-  return result.map((term) => {
+  return result.flatMap((term) => {
     const type = readString(readRecord(term).type);
+    if (type === 'MARKETING_PUSH') return [];
     if (!(type in TERM_METADATA)) throw new TermsApiContractError();
     return type as RemoteTermsType;
   });
@@ -135,7 +135,11 @@ export function parseTermsListDefinitionsEnvelope(value: unknown) {
   const result = readEnvelope(value, 'TERMS_LIST_200');
   if (!Array.isArray(result)) throw new TermsApiContractError();
 
-  return result.map(readRemoteTermSummary);
+  return result.flatMap((term) => {
+    const type = readString(readRecord(term).type);
+    if (type === 'MARKETING_PUSH') return [];
+    return [readRemoteTermSummary(term)];
+  });
 }
 
 export function parseTermDetailEnvelope(value: unknown) {
@@ -146,9 +150,11 @@ export function parseMyPageTermsEnvelope(value: unknown): RemoteMyPageTerm[] {
   const result = readEnvelope(value, 'MYPAGE_TERMS_200');
   if (!Array.isArray(result)) throw new TermsApiContractError();
 
-  return result.map((item) => {
+  return result.flatMap((item) => {
     const term = readRecord(item);
-    const id = getTermIdFromRemoteType(readString(term.type));
+    const type = readString(term.type);
+    if (type === 'MARKETING_PUSH') return [];
+    const id = getTermIdFromRemoteType(type);
     if (!id || typeof term.agreed !== 'boolean') throw new TermsApiContractError();
     return { agreed: term.agreed, id, version: readString(term.version) };
   });

@@ -1,6 +1,5 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, AppIcon } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
@@ -21,11 +20,10 @@ type MedicationSearchModalProps = {
 	visible: boolean;
 };
 
-type Mode = 'idle' | 'manual' | 'ocrLoading';
+type Mode = 'idle' | 'manual';
 
 export function MedicationSearchModal({ onClose, onSubmit, visible }: MedicationSearchModalProps) {
 	const [mode, setMode] = useState<Mode>('idle');
-	const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
 	const [query, setQuery] = useState('');
 	const [selected, setSelected] = useState<MedicationEntry[]>([]);
 	const [searchResults, setSearchResults] = useState<RemoteMedicationSearchResult[]>([]);
@@ -33,13 +31,9 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 	const [manualForm, setManualForm] = useState({ name: '', ingredient: '', description: '', warningNote: '' });
 	const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-	const ocrTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const sourcePickerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const clearTimers = () => {
-		if (ocrTimerRef.current) clearTimeout(ocrTimerRef.current);
-		if (sourcePickerTimerRef.current) clearTimeout(sourcePickerTimerRef.current);
 		if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
 	};
 
@@ -54,74 +48,12 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 			clearTimers();
 			setMode('idle');
 			setFeedbackMessage(null);
-			setSourcePickerVisible(false);
 			setSearchResults([]);
 		}
 		return () => clearTimers();
 	}, [visible]);
 
 	const hasSelection = selected.length > 0;
-
-	const selectPrescriptionImage = async (source: 'camera' | 'library') => {
-		try {
-			if (source === 'camera') {
-				const { status } = await ImagePicker.requestCameraPermissionsAsync();
-				if (status !== 'granted') {
-					showFeedback('카메라 권한을 허용해주세요.');
-					return;
-				}
-			} else if (Platform.OS === 'ios') {
-				const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-				if (status !== 'granted') {
-					showFeedback('사진 접근 권한을 허용해주세요.');
-					return;
-				}
-			}
-
-			const result = await (source === 'camera'
-				? ImagePicker.launchCameraAsync({
-					allowsEditing: false,
-					mediaTypes: ['images'],
-					quality: 0.8,
-				})
-				: ImagePicker.launchImageLibraryAsync({
-				allowsMultipleSelection: false,
-				defaultTab: 'photos',
-				mediaTypes: ['images'],
-				quality: 0.8,
-				allowsEditing: false,
-				}));
-
-			if (result.canceled) return;
-
-			if (!result.assets.length) {
-				showFeedback('사진을 확인하지 못했어요. 다시 시도해주세요.');
-				return;
-			}
-
-			clearTimers();
-			setFeedbackMessage(null);
-			setMode('ocrLoading');
-
-			ocrTimerRef.current = setTimeout(() => {
-				setMode('idle');
-				showFeedback('처방전에서 약물을 찾지 못했어요. 직접 입력해주세요.');
-			}, 1800);
-		} catch {
-			setMode('idle');
-			showFeedback('사진을 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
-		}
-	};
-
-	const handleOcrPress = () => setSourcePickerVisible(true);
-	const choosePrescriptionImage = (source: 'camera' | 'library') => {
-		setSourcePickerVisible(false);
-		if (sourcePickerTimerRef.current) clearTimeout(sourcePickerTimerRef.current);
-		sourcePickerTimerRef.current = setTimeout(() => {
-			sourcePickerTimerRef.current = null;
-			void selectPrescriptionImage(source);
-		}, 220);
-	};
 
 	const handleSearch = () => {
 		if (!query.trim()) {
@@ -230,20 +162,6 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 						inputStyle={styles.searchInputText}
 						onChangeText={setQuery}
 						placeholder="약물·성분명 검색"
-						rightElement={
-							<Pressable
-								accessibilityLabel="처방전 사진으로 검색"
-								accessibilityRole="button"
-								onPress={handleOcrPress}
-								style={styles.cameraButton}
-							>
-								<Image
-									resizeMode="contain"
-									source={require('@/assets/images/modal/MedicationCamera.png')}
-									style={styles.cameraIcon}
-								/>
-							</Pressable>
-						}
 						value={query}
 					/>
 
@@ -263,22 +181,9 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 
 				<Text style={styles.helperText}>약물명·성분명으로 검색하거나 직접 입력해 추가할 수 있어요</Text>
 
-				{mode !== 'ocrLoading' ? manualToggleButton : null}
+				{manualToggleButton}
 
-				{mode === 'ocrLoading' ? (
-					<View style={styles.ocrState}>
-						<View style={styles.ocrIconCircle}>
-							<Image
-								resizeMode="contain"
-								source={require('@/assets/images/modal/MedicationCamera.png')}
-								style={styles.ocrIcon}
-							/>
-						</View>
-						<Text style={styles.ocrTitle}>처방전 사진 인식 중...</Text>
-						<Text style={styles.ocrSubtitle}>처방전을 화면에 맞춰 찍어주세요</Text>
-						<AppButton fullWidth={false} onPress={() => setMode('idle')} size="medium" title="취소" variant="secondary" />
-					</View>
-				) : mode === 'manual' ? (
+				{mode === 'manual' ? (
 					<View style={styles.manualForm}>
 						<AppInput
 							onChangeText={(text) => setManualForm((form) => ({ ...form, name: text }))}
@@ -349,8 +254,6 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 					</>
 				)}
 
-				{mode === 'ocrLoading' ? manualToggleButton : null}
-
 				<AppButton
 					onPress={() => {
 						if (!hasSelection) return;
@@ -360,26 +263,6 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 					title={hasSelection ? '완료' : '약물을 검색해서 담아주세요'}
 				/>
 			</AppModal>
-
-			<AppModal
-				onClose={() => setSourcePickerVisible(false)}
-				primaryAction={{
-					label: '사진첩',
-					onPress: () => choosePrescriptionImage('library'),
-				}}
-				secondaryAction={{
-					label: '카메라',
-					onPress: () => choosePrescriptionImage('camera'),
-				}}
-				title="처방전 사진 선택"
-				variant="center"
-				visible={sourcePickerVisible}
-			>
-				<Text style={styles.sourcePickerDescription}>
-					카메라로 촬영하거나 사진첩에서 처방전을 선택해주세요.
-				</Text>
-			</AppModal>
-
 			<Modal
 				animationType="fade"
 				onRequestClose={() => setFeedbackMessage(null)}
@@ -391,10 +274,10 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 					accessibilityLabel="닫기"
 					accessibilityRole="button"
 					onPress={() => setFeedbackMessage(null)}
-					style={styles.ocrFailedBackdrop}
+					style={styles.feedbackBackdrop}
 				>
-					<View style={styles.ocrFailedCard}>
-						<Text style={styles.ocrFailed}>{feedbackMessage}</Text>
+					<View style={styles.feedbackCard}>
+						<Text style={styles.feedbackText}>{feedbackMessage}</Text>
 					</View>
 				</Pressable>
 			</Modal>
@@ -524,15 +407,6 @@ const styles = StyleSheet.create({
 		includeFontPadding: false,
 	},
 	searchButtonIcon: { height: 16, marginBottom: -2, tintColor: COLORS.background, width: 16 },
-	cameraButton: {
-		alignItems: 'center',
-		backgroundColor: COLORS.primarySoft,
-		borderRadius: RADIUS.md,
-		height: 44,
-		justifyContent: 'center',
-		width: 44,
-	},
-	cameraIcon: { height: 20, width: 20 },
 	helperText: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
 	manualToggle: {
 		alignItems: 'center',
@@ -547,19 +421,6 @@ const styles = StyleSheet.create({
 	},
 	manualToggleIcon: { height: 14, width: 14, tintColor: COLORS.gray500 },
 	manualToggleText: { ...TYPOGRAPHY.segment, color: COLORS.gray500 },
-	ocrState: { alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.xxxl },
-	ocrIconCircle: {
-		alignItems: 'center',
-		backgroundColor: COLORS.primarySoft,
-		borderRadius: RADIUS.round,
-		height: 56,
-		justifyContent: 'center',
-		marginBottom: SPACING.md,
-		width: 56,
-	},
-	ocrIcon: { height: 24, width: 24 },
-	ocrTitle: { ...TYPOGRAPHY.body1, color: COLORS.black },
-	ocrSubtitle: { ...TYPOGRAPHY.small, color: COLORS.gray500, marginBottom: SPACING.md },
 	manualForm: { gap: SPACING.md },
 	emptyState: { alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.xxxl },
 	emptyIconCircle: {
@@ -634,14 +495,14 @@ const styles = StyleSheet.create({
 	chipTextActive: { color: COLORS.background },
 	bottomButtonIcon: { height: 16, tintColor: COLORS.background, width: 16 },
 	bottomButtonInactive: { backgroundColor: COLORS.disabledPrimary },
-	ocrFailedBackdrop: {
+	feedbackBackdrop: {
 		alignItems: 'center',
 		backgroundColor: COLORS.overlay,
 		flex: 1,
 		justifyContent: 'center',
 		paddingHorizontal: SPACING.xxxl,
 	},
-	ocrFailedCard: {
+	feedbackCard: {
 		alignSelf: 'stretch',
 		backgroundColor: COLORS.gray100,
 		borderColor: COLORS.primary,
@@ -651,15 +512,10 @@ const styles = StyleSheet.create({
 		paddingHorizontal: SPACING.xxl,
 		paddingVertical: SPACING.xl,
 	},
-	ocrFailed: {
+	feedbackText: {
 		...TYPOGRAPHY.segmentActive,
 		color: COLORS.black,
 		fontFamily: TYPOGRAPHY.button.fontFamily,
-		textAlign: 'center',
-	},
-	sourcePickerDescription: {
-		...TYPOGRAPHY.body2,
-		color: COLORS.gray600,
 		textAlign: 'center',
 	},
 });

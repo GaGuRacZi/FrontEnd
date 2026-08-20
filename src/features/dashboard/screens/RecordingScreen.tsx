@@ -34,7 +34,7 @@ export function RecordingScreen() {
   const { reloadMedications } = useMedicationStore();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 1000);
-  const [phase, setPhase] = useState<'processing' | 'recording'>('recording');
+  const [processingVisitId, setProcessingVisitId] = useState<string | null>(null);
   const [hasRecording, setHasRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -73,9 +73,9 @@ export function RecordingScreen() {
     try {
       await recorder.stop();
       if (!recorder.uri) throw new Error('recording-uri-required');
-      await createRemoteVisit(selectedPet.id, recorder.uri);
+      const visit = await createRemoteVisit(selectedPet.id, recorder.uri);
       reloadMedications();
-      setPhase('processing');
+      setProcessingVisitId(visit.id);
     } catch {
       setErrorMessage('진료 기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
     } finally {
@@ -102,8 +102,14 @@ export function RecordingScreen() {
 
   if (!selectedPet) return null;
 
-  if (phase === 'processing') {
-    return <AiProcessingScreen onNavigateHome={() => router.replace('/dashboard' as Href)} />;
+  if (processingVisitId) {
+    return (
+      <AiProcessingScreen
+        onNavigateHome={() => router.replace('/dashboard' as Href)}
+        onVisitSettled={reloadMedications}
+        visitId={processingVisitId}
+      />
+    );
   }
 
   const elapsedSeconds = Math.min(

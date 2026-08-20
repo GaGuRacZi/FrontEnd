@@ -89,8 +89,7 @@ export function signupDataToPetEntity(data: SignupData, userId: string): PetEnti
 }
 
 export function mergeRemotePet(current: PetEntity, remote: RemotePet): PetEntity {
-  return {
-    ...current,
+  const next = {
     birthDate: remote.birthDate.replace(/-/g, '.'),
     breed: remote.breed,
     gender: remote.gender,
@@ -99,7 +98,41 @@ export function mergeRemotePet(current: PetEntity, remote: RemotePet): PetEntity
     neutered: remote.neutered,
     profileImageUri: remote.profileImageUri,
     type: remote.type,
-    updatedAt: new Date().toISOString(),
+    weight: remote.weight,
+  };
+  const changed =
+    current.birthDate !== next.birthDate ||
+    current.breed !== next.breed ||
+    current.gender !== next.gender ||
+    current.id !== next.id ||
+    current.name !== next.name ||
+    current.neutered !== next.neutered ||
+    current.profileImageUri !== next.profileImageUri ||
+    current.type !== next.type ||
+    current.weight !== next.weight;
+
+  return {
+    ...current,
+    ...next,
+    updatedAt: changed ? new Date().toISOString() : current.updatedAt,
+  };
+}
+
+export function remotePetToEntity(remote: RemotePet, userId: string): PetEntity {
+  const now = new Date().toISOString();
+
+  return {
+    birthDate: remote.birthDate.replace(/-/g, '.'),
+    breed: remote.breed,
+    createdAt: now,
+    gender: remote.gender,
+    id: remote.id,
+    name: remote.name,
+    neutered: remote.neutered,
+    profileImageUri: remote.profileImageUri,
+    type: remote.type,
+    updatedAt: now,
+    userId,
     weight: remote.weight,
   };
 }

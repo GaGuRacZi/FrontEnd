@@ -121,7 +121,6 @@ export function parseRemoteNotificationSettingsEnvelope(
   const settings = readRecord(readEnvelope(value, expectedCode));
   const booleanKeys = [
     ['aiAnalysis', 'aiAnalysisAlarm'],
-    ['benefit', 'benefitAlarm'],
     ['chat', 'chatAlarm'],
     ['community', 'communityAlarm'],
     ['doNotDisturbEnabled', 'dndEnabled'],
@@ -137,7 +136,7 @@ export function parseRemoteNotificationSettingsEnvelope(
     }),
   ) as Pick<
     NotificationSettings,
-    'aiAnalysis' | 'benefit' | 'chat' | 'community' | 'doNotDisturbEnabled' | 'healthAlert' | 'schedule'
+    'aiAnalysis' | 'chat' | 'community' | 'doNotDisturbEnabled' | 'healthAlert' | 'schedule'
   >;
 
   const doNotDisturbStart = readTime(settings.dndStart);
@@ -188,7 +187,6 @@ export async function updateRemoteNotificationSettings(settings: Partial<Notific
 
   const payload = {
     ...(settings.aiAnalysis === undefined ? {} : { aiAnalysisAlarm: settings.aiAnalysis }),
-    ...(settings.benefit === undefined ? {} : { benefitAlarm: settings.benefit }),
     ...(settings.chat === undefined ? {} : { chatAlarm: settings.chat }),
     ...(settings.community === undefined ? {} : { communityAlarm: settings.community }),
     ...(settings.doNotDisturbEnabled === undefined

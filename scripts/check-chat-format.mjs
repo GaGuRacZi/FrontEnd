@@ -66,11 +66,11 @@ assert.deepEqual(
 );
 assert.throws(
   () => getMultipartImageFile('file:///cache/image.raw'),
-  /unsupported-image-format/,
+  /unsupported-file-format/,
 );
 assert.throws(
   () => getMultipartImageFile('content://media/external/images/42'),
-  /unsupported-image-format/,
+  /unsupported-file-format/,
 );
 
 const participants = [

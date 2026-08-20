@@ -84,13 +84,7 @@ export function MyPageTermsScreen() {
 }
 
 export function MyPageTermDetailScreen() {
-  return (
-    <TermDetailScreen
-      fallbackRoute="/mypage/terms"
-      headerTitle="이용약관"
-      showMarketingConsent
-    />
-  );
+  return <TermDetailScreen fallbackRoute="/mypage/terms" headerTitle="이용약관" />;
 }
 
 const styles = StyleSheet.create({

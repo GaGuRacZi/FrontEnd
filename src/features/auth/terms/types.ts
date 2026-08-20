@@ -2,7 +2,6 @@ export const TERM_IDS = {
   age: 'age-confirmation',
   communityPolicy: 'community-policy',
   location: 'location-service',
-  marketing: 'marketing-communications',
   paidServicePolicy: 'paid-service-policy',
   privacy: 'privacy-collection',
   privacyPolicy: 'privacy-policy',
@@ -23,7 +22,6 @@ export type TermKind =
   | 'age'
   | 'communityPolicy'
   | 'location'
-  | 'marketing'
   | 'paidServicePolicy'
   | 'privacy'
   | 'privacyPolicy'
@@ -117,21 +115,4 @@ export function getTermDateLabel(term: TermDefinition) {
   return term.status === 'draft'
     ? `${term.version} · ${term.effectiveDate} 검토 기준`
     : `${term.version} · ${term.effectiveDate} 시행`;
-}
-
-export function formatTermDecisionDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    day: '2-digit',
-    month: '2-digit',
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-  }).formatToParts(date);
-  const values = Object.fromEntries(
-    parts
-      .filter(({ type }) => type !== 'literal')
-      .map(({ type, value: partValue }) => [type, partValue]),
-  );
-  return `${values.year}.${values.month}.${values.day}`;
 }
