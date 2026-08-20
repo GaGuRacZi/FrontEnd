@@ -31,6 +31,7 @@ import {
   getDayOfWeekKo,
   getDaysInMonth,
   getRoutineDatesInMonth,
+  hasRoutineOccurrence,
   type RoutineType,
 } from '../utils/scheduleHelpers';
 import { styles } from './ScheduleScreen.styles';
@@ -86,6 +87,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
 
   // ── 루틴
   const [routineType, setRoutineType] = useState<RoutineType>('특정요일');
+  const [routineEnabled, setRoutineEnabled] = useState(false);
   const [routineDays, setRoutineDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [routineStart, setRoutineStart] = useState<Date>(
     new Date(today.getFullYear(), today.getMonth(), today.getDate()),
@@ -262,6 +264,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
     setNewTitle('');
     setNewDesc('');
     setNewTag(customTags[0]?.name ?? '');
+    setRoutineEnabled(false);
     setRoutineType('특정요일');
     setRoutineDays([weekday]);
     setRoutineStart(date);
@@ -269,6 +272,37 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
     setRoutineViewYear(viewYear);
     setRoutineViewMonth(viewMonth);
     openSheet(addSheetY, setAddVisible);
+  };
+
+  const openRoutineSheet = () => {
+    if (editingTodoId && !routineEnabled) {
+      Alert.alert('루틴으로 변경할 수 없어요', '기존 일반 할 일은 반복 여부를 변경할 수 없어요. 새 루틴으로 등록해주세요.');
+      return;
+    }
+    if (!routineEnabled) {
+      const monthEnd = new Date(routineStart.getFullYear(), routineStart.getMonth() + 1, 0);
+      setRoutineEnd(monthEnd > routineStart
+        ? monthEnd
+        : new Date(routineStart.getFullYear(), routineStart.getMonth() + 2, 0));
+    }
+    openSheet(routineSheetY, setRoutineModalVisible);
+  };
+
+  const completeRoutineSelection = () => {
+    if (routineEnd < routineStart) {
+      Alert.alert('루틴 기간을 확인해주세요', '종료일은 시작일보다 빠를 수 없어요.');
+      return;
+    }
+    if (routineType === '특정요일' && routineDays.length === 0) {
+      Alert.alert('반복 요일을 선택해주세요');
+      return;
+    }
+    if (!hasRoutineOccurrence(routineType, routineDays, routineStart, routineEnd)) {
+      Alert.alert('루틴 요일을 확인해주세요', '선택한 기간에 해당하는 반복 요일이 없어요.');
+      return;
+    }
+    setRoutineEnabled(true);
+    closeSheet(routineSheetY, setRoutineModalVisible);
   };
 
   const handleEditTodo = (todoId: string) => {
@@ -285,6 +319,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
         setNewTag(detail.tag);
         setNewTimeHour(time ? Number(time[1]) : 20);
         setNewTimeMinute(time ? Number(time[2]) : 0);
+        setRoutineEnabled(detail.routineEnabled);
         const selectedTodoDate = parseTodoDate(selectedDate, today);
         const startDate = parseTodoDate(detail.startDate, selectedTodoDate);
         const weekday = startDate.getDay() === 0 ? 6 : startDate.getDay() - 1;
@@ -303,12 +338,12 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
     })();
   };
 
-  const handleDeleteTodo = (todoId: string) => {
+  const handleDeleteTodo = (todoId: string, deleteAll = false) => {
     if (isSaving) return;
     void (async () => {
       setIsSaving(true);
       try {
-        await deleteScheduleTodo(todoId, selectedDate);
+        await deleteScheduleTodo(todoId, selectedDate, deleteAll);
         void loadCalendarMonth(viewYear, viewMonth + 1).catch(() => undefined);
       } catch {
         Alert.alert('할 일을 삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
@@ -318,11 +353,25 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
     })();
   };
 
-  const handleTodoLongPress = (todoId: string, title: string) => {
+  const handleTodoLongPress = (todoId: string, title: string, routine: boolean) => {
     Alert.alert('할 일을 관리할까요?', title, [
       { style: 'cancel', text: '취소' },
       { onPress: () => handleEditTodo(todoId), text: '수정' },
-      { onPress: () => handleDeleteTodo(todoId), style: 'destructive', text: '삭제' },
+      {
+        onPress: () => {
+          if (!routine) {
+            handleDeleteTodo(todoId);
+            return;
+          }
+          Alert.alert('루틴을 어디까지 삭제할까요?', '', [
+            { style: 'cancel', text: '취소' },
+            { onPress: () => handleDeleteTodo(todoId), text: '이 날만 삭제' },
+            { onPress: () => handleDeleteTodo(todoId, true), style: 'destructive', text: '이 요일 루틴 삭제' },
+          ]);
+        },
+        style: 'destructive',
+        text: '삭제',
+      },
     ]);
   };
 
@@ -341,6 +390,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
         const input = {
           description: newDesc.trim() || undefined,
           endDate: routineEnd,
+          routineEnabled,
           routineDays,
           routineType,
           startDate: routineStart,
@@ -548,7 +598,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
                   <Pressable
                     delayLongPress={350}
                     key={todo.id}
-                    onLongPress={() => handleTodoLongPress(todo.id, todo.title)}
+                    onLongPress={() => handleTodoLongPress(todo.id, todo.title, todo.routineEnabled)}
                     style={styles.taskCard}
                   >
                     <View style={[styles.taskTagDot, { backgroundColor: tagCfg.bg }]} />
@@ -647,7 +697,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
               </View>
               <View style={[styles.inputGroup, styles.flex1]}>
                 <Text style={styles.inputLabel}>루틴 설정</Text>
-                <Pressable onPress={() => openSheet(routineSheetY, setRoutineModalVisible)} style={[styles.rowField, styles.routineField]}>
+                <Pressable onPress={openRoutineSheet} style={[styles.rowField, styles.routineField]}>
                   <AppIcon color={COLORS.primary} name="calendar-outline" size={16} />
                   <View style={styles.flex1}>
                     <Text style={styles.routineDateText}>{routineStart.getMonth() + 1}월 {routineStart.getDate()}일</Text>
@@ -917,7 +967,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
               </View>
             </View>
 
-            <Pressable onPress={() => closeSheet(routineSheetY, setRoutineModalVisible)} style={styles.submitBtn}>
+            <Pressable onPress={completeRoutineSelection} style={styles.submitBtn}>
               <Text style={styles.submitBtnText}>선택 완료</Text>
             </Pressable>
           </Animated.View>

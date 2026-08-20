@@ -48,10 +48,13 @@ assert.match(transcript, /player\.play\(\)/);
 const schedule = read('src/features/home/ScheduleTodoStore.tsx');
 assert.match(schedule, /activeUserRef\.current !== userId/);
 assert.match(schedule, /if \(created > 0\) return 'partial'/);
-assert.match(schedule, /if \(startDate === endDate\) \{[\s\S]*?date: startDate,[\s\S]*?routineEnabled: false/);
+assert.match(schedule, /if \(!input\.routineEnabled\) \{[\s\S]*?date: startDate,[\s\S]*?routineEnabled: false/);
 const scheduleScreen = read('src/features/home/screens/ScheduleScreen.tsx');
 assert.match(scheduleScreen, /const date = new Date\(viewYear, viewMonth, selectedDay\)/);
 assert.match(scheduleScreen, /setRoutineStart\(date\);[\s\S]*?setRoutineEnd\(date\)/);
+assert.match(scheduleScreen, /if \(routineEnd < routineStart\)[\s\S]*?hasRoutineOccurrence[\s\S]*?setRoutineEnabled\(true\);[\s\S]*?closeSheet\(routineSheetY/);
+assert.match(scheduleScreen, /routineEnabled,[\s\S]*?routineDays/);
+assert.match(scheduleScreen, /deleteScheduleTodo\(todoId, selectedDate, deleteAll\)/);
 
 const petStore = read('src/features/pet/PetStore.tsx');
 assert.ok(petStore.indexOf('applyState({ pets: nextPets') < petStore.indexOf('petRepository.saveState(userId'));

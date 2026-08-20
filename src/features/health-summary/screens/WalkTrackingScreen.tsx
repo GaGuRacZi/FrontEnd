@@ -7,6 +7,7 @@ import { AppScreen, TopHeader } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { RecordingPetAnimation } from '@/src/features/dashboard/components/RecordingPetAnimation';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import { formatKoreanServerDateTime, parseKoreanServerDate } from '@/src/utils/koreanDateTime';
 
 import { getActiveWalk, startWalk } from '../services/healthSummaryApi';
 
@@ -28,7 +29,7 @@ export function WalkTrackingScreen() {
 				const walk = await getActiveWalk(selectedPet.id) ?? await startWalk(selectedPet.id);
 				if (!active) return;
 				setStartInfo({ formattedDate: walk.date, startTimeString: walk.startTime });
-				const startedAt = Date.parse(walk.startedAt);
+				const startedAt = parseKoreanServerDate(walk.startedAt)?.getTime() ?? NaN;
 				setSeconds(Number.isNaN(startedAt) ? 0 : Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
 			} catch {
 				if (active) setLoadError(true);
@@ -63,6 +64,7 @@ export function WalkTrackingScreen() {
 				automatic: 'true',
 				date: startInfo.formattedDate,
 				durationSeconds: String(seconds),
+				endTime: formatKoreanServerDateTime(new Date()),
 				startTime: startInfo.startTimeString,
 			},
 		} as unknown as Href);

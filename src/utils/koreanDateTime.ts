@@ -15,6 +15,17 @@ const koreanClockFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: KOREA_TIME_ZONE,
 });
 
+const koreanDateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  day: '2-digit',
+  hour: '2-digit',
+  hourCycle: 'h23',
+  minute: '2-digit',
+  month: '2-digit',
+  second: '2-digit',
+  timeZone: KOREA_TIME_ZONE,
+  year: 'numeric',
+});
+
 export function parseKoreanServerDate(value: string) {
   const normalized = value.trim();
   const date = new Date(
@@ -22,6 +33,14 @@ export function parseKoreanServerDate(value: string) {
   );
 
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function formatKoreanServerDateTime(value: Date) {
+  const parts = koreanDateTimeFormatter.formatToParts(value);
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+
+  return `${read('year')}-${read('month')}-${read('day')}T${read('hour')}:${read('minute')}:${read('second')}`;
 }
 
 export function compareKoreanServerDates(left: string, right: string) {

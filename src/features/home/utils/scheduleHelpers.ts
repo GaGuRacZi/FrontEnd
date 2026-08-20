@@ -22,6 +22,24 @@ export function formatDate(d: Date) {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
+export function hasRoutineOccurrence(
+  routineType: RoutineType,
+  routineDays: number[],
+  startDate: Date,
+  endDate: Date,
+) {
+  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  if (end < start) return false;
+  if (routineType === '매일') return true;
+  const startDay = start.getDay() === 0 ? 6 : start.getDay() - 1;
+  return routineDays.some((day) => {
+    const occurrence = new Date(start);
+    occurrence.setDate(occurrence.getDate() + ((day - startDay + 7) % 7));
+    return occurrence <= end;
+  });
+}
+
 // 루틴 기간·타입에 해당하는 날짜 집합 계산
 export function getRoutineDatesInMonth(
   year: number,

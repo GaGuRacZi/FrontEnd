@@ -105,7 +105,7 @@ export function AppModal({
             duration: 250,
             easing: Easing.out(Easing.cubic),
             toValue: 0,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ]).start();
       } else {
@@ -136,7 +136,7 @@ export function AppModal({
             duration: 200,
             easing: Easing.in(Easing.cubic),
             toValue: windowHeight,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ]).start(({ finished }) => {
           if (finished) setModalVisible(false);

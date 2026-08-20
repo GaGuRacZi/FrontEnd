@@ -10,7 +10,7 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { useHealthSummaryStore } from '../HealthSummaryStore';
-import { getHealthRequestErrorMessage, getWalkRecord } from '../services/healthSummaryApi';
+import { getHealthRequestErrorMessage, getManualWalkTimeError, getWalkRecord } from '../services/healthSummaryApi';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { WalkIntensity, WalkRecord } from '../types';
 
@@ -36,7 +36,7 @@ export function WalkRecordScreen() {
 	const isSaving = useRef(false);
 	const { hasLoadError: petLoadError, isReady: petsReady, reloadPets, selectedPet } = usePetStore();
 	const { deleteWalkRecord, saveWalkRecord, walkRecords } = useHealthSummaryStore();
-	const params = useLocalSearchParams<{ automatic?: string; date?: string; durationSeconds?: string; recordId?: string; startTime?: string }>();
+	const params = useLocalSearchParams<{ automatic?: string; date?: string; durationSeconds?: string; endTime?: string; recordId?: string; startTime?: string }>();
 	const isAutomatic = params.automatic === 'true';
 	const cachedRecord = params.recordId ? walkRecords.find(({ id }) => id === params.recordId) : undefined;
 	const [remoteRecord, setRemoteRecord] = useState<WalkRecord>();
@@ -155,8 +155,13 @@ export function WalkRecordScreen() {
 			Alert.alert('반려동물 선택 필요', '산책을 기록할 반려동물을 먼저 선택해주세요.');
 			return;
 		}
-		if (!isAutomatic && totalMinutes === 0) {
-			Alert.alert('입력 오류', '종료 시간은 시작 시간보다 늦어야 해요.');
+		const timeError = !isAutomatic
+			? !startTimeSelected || !endTimeSelected
+				? '시작 시간과 종료 시간을 모두 선택해주세요.'
+				: getManualWalkTimeError(displayDate, startTimeStr, endTimeStr)
+			: null;
+		if (timeError) {
+			Alert.alert('입력 오류', timeError);
 			return;
 		}
 		if (!weatherText || !isTemperature(temperatureText)) {
@@ -170,7 +175,7 @@ export function WalkRecordScreen() {
 			date: displayDate,
 			dayLabel: existingRecord?.dayLabel ?? '오늘 산책',
 			startTime: startTimeStr,
-			endTime: endTimeStr,
+			endTime: isAutomatic && params.endTime ? params.endTime : endTimeStr,
 			durationMinutes: hasAutomaticDuration ? Math.max(1, Math.ceil(automaticDurationSeconds / 60)) : totalMinutes,
 			distanceKm: existingRecord?.distanceKm ?? 0,
 			intensity,

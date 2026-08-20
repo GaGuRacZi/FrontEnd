@@ -74,6 +74,18 @@ const healthApi = loadModule('../src/features/health-summary/services/healthSumm
           },
         };
       }
+      if (url === '/pets/12/weights/summary') {
+        return {
+          isSuccess: true,
+          result: { currentWeight: 4.2, lastRecordedAt: null, monthChange: null },
+        };
+      }
+      if (url === '/pets/13/weights/summary') {
+        return {
+          isSuccess: true,
+          result: { currentWeight: 4.5, lastRecordedAt: '2026-08-20T21:05:00', monthChange: 0.1 },
+        };
+      }
       if (url === '/api/walks' && options?.method === 'POST') {
         return {
           isSuccess: true,
@@ -172,6 +184,17 @@ const healthApi = loadModule('../src/features/health-summary/services/healthSumm
           },
         };
       }
+      if (url === '/api/walks/start') {
+        return {
+          isSuccess: true,
+          result: {
+            petId: 12,
+            startTime: '2026-08-21T05:50:40',
+            walkDate: '2026-08-21',
+            walkStatus: 'IN_PROGRESS',
+          },
+        };
+      }
       if (url === '/api/walks/statistics/daily?petId=12') {
         return {
           isSuccess: true,
@@ -217,6 +240,34 @@ assert.equal(
 assert.equal(
   healthApi.getHealthRequestErrorMessage(new Error('invalid-health-response'), '저장하지 못했어요.'),
   '저장하지 못했어요.',
+);
+assert.equal(
+  koreanDateTime.formatKoreanServerDateTime(new Date('2026-08-20T20:50:40Z')),
+  '2026-08-21T05:50:40',
+);
+assert.equal(
+  koreanDateTime.parseKoreanServerDate('2026-08-21T05:50:40')?.toISOString(),
+  '2026-08-20T20:50:40.000Z',
+);
+assert.equal(
+  (new Date('2026-08-20T20:51:10Z').getTime() - koreanDateTime.parseKoreanServerDate('2026-08-21T05:50:40').getTime()) / 1000,
+  30,
+);
+assert.equal(
+  healthApi.getManualWalkTimeError('2026.08.20', '18:20', '19:05', new Date(2026, 7, 21, 12, 0, 0)),
+  null,
+);
+assert.equal(
+  healthApi.getManualWalkTimeError('2026.08.20', '19:05', '18:20', new Date(2026, 7, 21, 12, 0, 0)),
+  '종료 시간은 시작 시간보다 늦어야 해요.',
+);
+assert.equal(
+  healthApi.getManualWalkTimeError('2026.08.22', '18:20', '19:05', new Date(2026, 7, 21, 12, 0, 0)),
+  '미래 날짜 또는 시간의 산책은 기록할 수 없어요.',
+);
+assert.equal(
+  healthApi.getManualWalkTimeError('2026.08.21', '12:30', '13:00', new Date(2026, 7, 21, 12, 0, 0)),
+  '미래 날짜 또는 시간의 산책은 기록할 수 없어요.',
 );
 
 assert.deepEqual(
@@ -273,13 +324,13 @@ await healthApi.saveWalkRecord({
   date: '2026.08.20',
   dayLabel: '오늘 산책',
   distanceKm: 0,
-  durationMinutes: 2,
-  endTime: '18:22',
-  excrement: { defecation: true, specialNote: false, urination: true },
+  durationMinutes: 4,
+  endTime: '2026-08-21T00:02:07',
+  excrement: { defecation: true, specialNote: true, urination: true },
   id: '',
   intensity: 'moderate',
   petId: '12',
-  startTime: '18:20',
+  startTime: '23:58',
   temperatureText: '24°C',
   weatherText: '맑음',
 }, true);
@@ -287,8 +338,10 @@ await healthApi.saveWalkRecord({
 assert.deepEqual(requests[0], {
   options: {
     json: {
+      endTime: '2026-08-21T00:02:07',
       isStool: true,
       isUrine: true,
+      significant: '특이사항 있음',
       petId: 12,
       temp: 24,
       walkingAmount: 0,
@@ -299,6 +352,11 @@ assert.deepEqual(requests[0], {
   },
   url: '/api/walks/finish',
 });
+
+await healthApi.startWalk('12');
+const startRequest = requests.find(({ options, url }) => url === '/api/walks/start' && options?.method === 'POST');
+assert.equal(startRequest.options.json.petId, 12);
+assert.match(startRequest.options.json.startTime, /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/);
 
 const savedWeight = await healthApi.saveWeightRecord({
   appetite: 'normal',
@@ -320,6 +378,8 @@ assert.deepEqual(multipartJson[0], {
 });
 assert.deepEqual((await healthApi.getWeightRecords('12', 2026, 8)).map(({ id }) => id), ['30']);
 assert.equal((await healthApi.getWeightRecord('12', '30')).id, '30');
+assert.deepEqual(await healthApi.getWeightSummary('12'), { currentWeight: 0, monthChange: null });
+assert.deepEqual(await healthApi.getWeightSummary('13'), { currentWeight: 4.5, monthChange: 0.1 });
 
 const savedWalk = await healthApi.saveWalkRecord({
   date: '2026.08.20',
@@ -395,3 +455,6 @@ assert.match(storeSource, /recordLoadErrors:/);
 
 const walkTabSource = readFileSync(new URL('../src/features/health-summary/components/WalkTab.tsx', import.meta.url), 'utf8');
 assert.match(walkTabSource, /dailySummaries\.some\(\(entry\) => entry\.totalMinutes > 0\)/);
+
+const weightTabSource = readFileSync(new URL('../src/features/health-summary/components/WeightTab.tsx', import.meta.url), 'utf8');
+assert.match(weightTabSource, /currentWeight !== null \? <Text style=\{styles\.weightUnit\}>kg<\/Text> : null/);

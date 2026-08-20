@@ -20,6 +20,7 @@ export type RemoteTodo = {
   date: string;
   description?: string;
   id: string;
+  routineEnabled: boolean;
   tag: RemoteTodoTag;
   timeLabel: string;
   title: string;
@@ -78,6 +79,14 @@ function readOptionalString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function readTimeLabel(value: unknown) {
+  const time = readOptionalString(value);
+  if (!time) return '';
+  const match = time.match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/);
+  if (!match) throw new TodoApiContractError();
+  return `${match[1]}:${match[2]}`;
+}
+
 function readId(value: unknown) {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
     return String(value);
@@ -123,8 +132,9 @@ function readTodo(value: unknown, date?: string): RemoteTodo {
     date: readOptionalString(todo.date) ?? date ?? readOptionalString(todo.startDate) ?? '',
     description: readOptionalString(todo.subTodo),
     id: readId(todo.todoId),
+    routineEnabled: todo.routineEnabled === true,
     tag: readTag(todo),
-    timeLabel: readOptionalString(todo.todoTime) ?? '',
+    timeLabel: readTimeLabel(todo.todoTime),
     title: readString(todo.todo),
   };
 }
@@ -141,6 +151,7 @@ function readTodoDetail(value: unknown): RemoteTodoDetail {
   const week = todo.week;
   if (
     week !== undefined &&
+    week !== null &&
     week !== 'MON' &&
     week !== 'TUE' &&
     week !== 'WED' &&
@@ -159,9 +170,9 @@ function readTodoDetail(value: unknown): RemoteTodoDetail {
     routineEnabled: todo.routineEnabled === true,
     startDate: readOptionalDate(todo.startDate),
     tag: readTag(todo),
-    timeLabel: readOptionalString(todo.todoTime) ?? '',
+    timeLabel: readTimeLabel(todo.todoTime),
     title: readString(todo.todo),
-    week,
+    week: week ?? undefined,
   };
 }
 
@@ -311,10 +322,10 @@ export async function updateRemoteTodo(todoId: string, input: RemoteTodoInput) {
   );
 }
 
-export async function deleteRemoteTodo(todoId: string, date: string) {
+export async function deleteRemoteTodo(todoId: string, date: string, deleteAll = false) {
   const id = Number(todoId);
   if (!Number.isSafeInteger(id) || id < 0) throw new TodoApiContractError();
-  const query = new URLSearchParams({ date, deleteAll: 'false' });
+  const query = new URLSearchParams({ date, deleteAll: String(deleteAll) });
   readSuccessResult(
     await apiRequest<unknown>(`/api/todos/${id}?${query.toString()}`, { method: 'DELETE' }),
   );

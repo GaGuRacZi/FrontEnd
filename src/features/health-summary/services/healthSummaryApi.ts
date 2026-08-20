@@ -1,6 +1,6 @@
 import { ApiError, apiRequest } from '@/src/services/apiClient';
 import { appendMultipartImage, appendMultipartJson } from '@/src/utils/file';
-import { formatKoreanChatDate, formatKoreanChatTime } from '@/src/utils/koreanDateTime';
+import { formatKoreanChatDate, formatKoreanChatTime, formatKoreanServerDateTime } from '@/src/utils/koreanDateTime';
 
 import type { MedicalExpenseRecord, WalkRecord, WeightRecord } from '../types';
 
@@ -87,6 +87,7 @@ function toServerDate(value: string) {
 }
 
 function toServerDateTime(date: string, time: string) {
+  if (/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(time)) return time;
   const koreanMatch = /^(오전|오후)\s+(\d{1,2}):(\d{2})$/.exec(time);
   const time24Match = /^(\d{1,2}):(\d{2})$/.exec(time);
   if (!koreanMatch && !time24Match) throw new Error('invalid-health-time');
@@ -98,6 +99,14 @@ function toServerDateTime(date: string, time: string) {
   if (koreanMatch?.[1] === '오후' && hour !== 12) hour += 12;
   if (koreanMatch?.[1] === '오전' && hour === 12) hour = 0;
   return `${toServerDate(date)}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+}
+
+export function getManualWalkTimeError(date: string, startTime: string, endTime: string, now = new Date()) {
+  const startAt = toServerDateTime(date, startTime);
+  const endAt = toServerDateTime(date, endTime);
+  if (endAt <= startAt) return '종료 시간은 시작 시간보다 늦어야 해요.';
+  if (endAt > formatKoreanServerDateTime(now)) return '미래 날짜 또는 시간의 산책은 기록할 수 없어요.';
+  return null;
 }
 
 function numericId(value: string) {
@@ -306,8 +315,12 @@ export async function deleteWeightRecord(record: WeightRecord) {
 export async function getWeightSummary(petId: string): Promise<WeightSummary> {
   const response = await apiRequest<unknown>(`/pets/${numericId(petId)}/weights/summary`);
   const result = readRecord(readEnvelope(response));
+  const lastRecordedAt = result.lastRecordedAt;
+  if (lastRecordedAt !== null && (typeof lastRecordedAt !== 'string' || !lastRecordedAt.trim())) {
+    throw new Error('invalid-health-response');
+  }
   return {
-    currentWeight: result.currentWeight === null ? null : readNumber(result.currentWeight),
+    currentWeight: lastRecordedAt === null ? 0 : readNumber(result.currentWeight),
     monthChange: result.monthChange === null ? null : readNumber(result.monthChange),
   };
 }
@@ -341,6 +354,7 @@ export async function getWalkRecord(id: string) {
 export async function saveWalkRecord(record: WalkRecord, automatic = false) {
   const payload = walkPayload(record);
   const finishPayload = {
+    endTime: payload.endTime,
     isStool: payload.isStool,
     isUrine: payload.isUrine,
     ...(payload.significant ? { significant: payload.significant } : {}),
@@ -400,7 +414,10 @@ export async function getActiveWalk(petId: string): Promise<ActiveWalk | null> {
 }
 
 export async function startWalk(petId: string): Promise<ActiveWalk> {
-  const response = await apiRequest<unknown>('/api/walks/start', { json: { petId: numericId(petId) }, method: 'POST' });
+  const response = await apiRequest<unknown>('/api/walks/start', {
+    json: { petId: numericId(petId), startTime: formatKoreanServerDateTime(new Date()) },
+    method: 'POST',
+  });
   const result = readRecord(readEnvelope(response));
   const startedAt = readString(result.startTime);
   return { date: formatDate(readString(result.walkDate)), startedAt, startTime: formatTime24(startedAt) };

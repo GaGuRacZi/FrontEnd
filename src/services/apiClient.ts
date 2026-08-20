@@ -223,7 +223,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   const url = buildApiUrl(path);
   const body = json === undefined ? requestOptions.body : JSON.stringify(json);
   const tokens = authenticated ? await getTokens() : null;
-  const logVisitRequest = typeof __DEV__ !== 'undefined' && __DEV__ && /^\/?visits(?:[/?]|$)/.test(path);
+  const logApiRequest = typeof __DEV__ !== 'undefined' && __DEV__ && /^\/?(?:visits|api\/walks)(?:[/?]|$)/.test(path);
 
   async function send(currentAccessToken: string | null) {
     const requestHeaders = new Headers(headers);
@@ -232,7 +232,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       requestHeaders.set('Authorization', `Bearer ${currentAccessToken}`);
     }
 
-    if (logVisitRequest) {
+    if (logApiRequest) {
       const loggedHeaders: Record<string, string> = {};
       requestHeaders.forEach((value, key) => {
         loggedHeaders[key] = key.toLowerCase() === 'authorization' ? 'Bearer ***' : value;
@@ -272,7 +272,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         body,
         headers: requestHeaders,
       });
-      if (logVisitRequest) {
+      if (logApiRequest) {
         console.info('[API response]', {
           method: requestOptions.method ?? 'GET',
           status: response.status,
@@ -281,7 +281,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       }
       return response;
     } catch (error) {
-      if (logVisitRequest) {
+      if (logApiRequest) {
         console.info('[API network error]', {
           error,
           method: requestOptions.method ?? 'GET',
@@ -306,7 +306,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   const data = await readResponse(response);
 
-  if (logVisitRequest) {
+  if (logApiRequest) {
     console.info('[API response body]', {
       body: data,
       status: response.status,

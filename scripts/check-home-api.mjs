@@ -53,13 +53,14 @@ const todoApi = loadModule('../src/features/home/services/todoApi.ts', {
       const todo = {
         completed: path.includes('/complete?'),
         date: '2026-08-20',
+        routineEnabled: true,
         subTodo: '30분',
         tagColorEnum: 'GREEN',
         tagId: 2,
         tagName: '산책',
         todo: '산책하기',
         todoId: 1,
-        todoTime: '09:00',
+        todoTime: '09:00:30',
       };
       if (path.includes('/complete?')) {
         return { isSuccess: true, result: todo };
@@ -73,6 +74,19 @@ const todoApi = loadModule('../src/features/home/services/todoApi.ts', {
             routineEnabled: true,
             startDate: '2026-08-01',
             week: 'WED',
+          },
+        };
+      }
+      if (path === '/api/todos/2') {
+        return {
+          isSuccess: true,
+          result: {
+            ...todo,
+            endDate: null,
+            routineEnabled: false,
+            startDate: null,
+            todoId: 2,
+            week: null,
           },
         };
       }
@@ -113,6 +127,7 @@ assert.deepEqual(await todoApi.getRemoteTodos('2026-08-20'), [{
   date: '2026-08-20',
   description: '30분',
   id: '1',
+  routineEnabled: true,
   tag: { color: 'GREEN', id: '2', name: '산책' },
   timeLabel: '09:00',
   title: '산책하기',
@@ -135,6 +150,17 @@ assert.deepEqual(await todoApi.getRemoteTodoDetail('1'), {
   timeLabel: '09:00',
   title: '산책하기',
   week: 'WED',
+});
+assert.deepEqual(await todoApi.getRemoteTodoDetail('2'), {
+  description: '30분',
+  endDate: undefined,
+  id: '2',
+  routineEnabled: false,
+  startDate: undefined,
+  tag: { color: 'GREEN', id: '2', name: '산책' },
+  timeLabel: '09:00',
+  title: '산책하기',
+  week: undefined,
 });
 await todoApi.createRemoteTodo({
   date: '2026-08-20',
@@ -190,6 +216,18 @@ assert.deepEqual(todoRequests.at(-1), [
   '/api/todos/1?date=2026-08-20&deleteAll=false',
   { method: 'DELETE' },
 ]);
+await todoApi.deleteRemoteTodo('1', '2026-08-20', true);
+assert.deepEqual(todoRequests.at(-1), [
+  '/api/todos/1?date=2026-08-20&deleteAll=true',
+  { method: 'DELETE' },
+]);
+
+const { hasRoutineOccurrence } = loadModule('../src/features/home/utils/scheduleHelpers.ts', {});
+const monday = new Date(2026, 7, 24);
+assert.equal(hasRoutineOccurrence('매일', [], monday, monday), true);
+assert.equal(hasRoutineOccurrence('특정요일', [0], monday, monday), true);
+assert.equal(hasRoutineOccurrence('특정요일', [1], monday, monday), false);
+assert.equal(hasRoutineOccurrence('특정요일', [6], monday, new Date(2026, 7, 30)), true);
 
 const visitRequests = [];
 const prescription = {

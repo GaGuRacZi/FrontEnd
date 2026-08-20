@@ -1,3 +1,5 @@
+const path = require('node:path');
+
 require('@expo/env').load(__dirname, { silent: true });
 
 const kakaoAppKey = process.env.KAKAO_NATIVE_APP_KEY;
@@ -40,6 +42,10 @@ module.exports = ({ config }) => {
           android: {
             extraMavenRepos: [
               'https://devrepo.kakao.com/nexus/content/groups/public/',
+              path.join(
+                __dirname,
+                'node_modules/@notifee/react-native/android/libs',
+              ),
             ],
           },
         },

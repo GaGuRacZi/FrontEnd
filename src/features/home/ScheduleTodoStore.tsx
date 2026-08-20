@@ -35,6 +35,7 @@ export type ScheduleTodo = {
   description?: string;
   id: string;
   month: number;
+  routineEnabled: boolean;
   status: 'done' | 'pending';
   tag: string;
   tagId: string;
@@ -46,6 +47,7 @@ export type ScheduleTodo = {
 type ScheduleTodoInput = {
   description?: string;
   endDate: Date;
+  routineEnabled: boolean;
   routineDays: number[];
   routineType: RoutineType;
   startDate: Date;
@@ -72,7 +74,7 @@ type ScheduleTodoStoreContextValue = {
   createTag: (name: string, colorIdx: number) => Promise<CustomTag>;
   customTags: CustomTag[];
   deleteTag: (tagId: string) => Promise<void>;
-  deleteScheduleTodo: (todoId: string, date: string) => Promise<void>;
+  deleteScheduleTodo: (todoId: string, date: string, deleteAll?: boolean) => Promise<void>;
   getTag: (tagId: string) => Promise<CustomTag>;
   getScheduleTodoDetail: (todoId: string) => Promise<ScheduleTodoDetail>;
   getDayProgress: (date: string) => TodoDayProgress | undefined;
@@ -110,6 +112,7 @@ function mapRemoteTodo(todo: RemoteTodo): ScheduleTodo {
     description: todo.description,
     id: todo.id,
     month: month - 1,
+    routineEnabled: todo.routineEnabled,
     status: todo.completed ? 'done' : 'pending',
     tag: todo.tag.name,
     tagId: todo.tag.id,
@@ -311,7 +314,7 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
     if (!tag) throw new Error('todo-tag-required');
     const startDate = formatTodoApiDate(input.startDate);
     const endDate = formatTodoApiDate(input.endDate);
-    if (startDate === endDate) {
+    if (!input.routineEnabled) {
       await createRemoteTodo({
         date: startDate,
         description: input.description,
@@ -381,7 +384,7 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
     if (!tag) throw new Error('todo-tag-required');
     const startDate = formatTodoApiDate(input.startDate);
     const endDate = formatTodoApiDate(input.endDate);
-    if (startDate === endDate) {
+    if (!input.routineEnabled) {
       await updateRemoteTodo(todoId, {
         date: startDate,
         description: input.description,
@@ -409,29 +412,36 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
-  const deleteScheduleTodo = useCallback(async (todoId: string, date: string) => {
+  const deleteScheduleTodo = useCallback(async (todoId: string, date: string, deleteAll = false) => {
     const userId = currentUserId;
-    await deleteRemoteTodo(todoId, date);
+    await deleteRemoteTodo(todoId, date, deleteAll);
     if (!userId || activeUserRef.current !== userId) return;
-    const deleted = todosByDateRef.current[date]?.find((todo) => todo.id === todoId);
+    const deletedByDate = Object.fromEntries(
+      Object.entries(todosByDateRef.current).map(([cachedDate, todos]) => [
+        cachedDate,
+        todos.filter((todo) => todo.id === todoId),
+      ]),
+    );
     setTodosByDate((cache) => {
-      const next = {
-        ...cache,
-        [date]: (cache[date] ?? []).filter((todo) => todo.id !== todoId),
-      };
+      const next = Object.fromEntries(
+        Object.entries(cache).map(([cachedDate, todos]) => [
+          cachedDate,
+          deleteAll || cachedDate === date ? todos.filter((todo) => todo.id !== todoId) : todos,
+        ]),
+      );
       todosByDateRef.current = next;
       return next;
     });
     setDayProgress((progress) => {
-      const previous = progress[date];
-      if (!previous) return progress;
-      return {
-        ...progress,
-        [date]: {
-          completed: previous.completed - Number(deleted?.status === 'done'),
-          total: previous.total - 1,
-        },
-      };
+      const next = { ...progress };
+      for (const [cachedDate, deleted] of Object.entries(deletedByDate)) {
+        if ((!deleteAll && cachedDate !== date) || deleted.length === 0 || !next[cachedDate]) continue;
+        next[cachedDate] = {
+          completed: Math.max(0, next[cachedDate].completed - deleted.filter((todo) => todo.status === 'done').length),
+          total: Math.max(0, next[cachedDate].total - deleted.length),
+        };
+      }
+      return next;
     });
   }, [currentUserId]);
 

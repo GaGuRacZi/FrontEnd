@@ -70,7 +70,7 @@ export function WeightTab() {
 					<Text style={styles.cardLabel}>현재 체중</Text>
 					<Text style={styles.weightValue}>
 						{currentWeight !== null ? currentWeight.toFixed(1) : '-'}
-						<Text style={styles.weightUnit}>kg</Text>
+						{currentWeight !== null ? <Text style={styles.weightUnit}>kg</Text> : null}
 					</Text>
 					{weightDiff !== null ? (
 						<Text style={styles.diffValue}>이전 기록 대비 {weightDiff > 0 ? '+' : ''}{weightDiff}kg</Text>
