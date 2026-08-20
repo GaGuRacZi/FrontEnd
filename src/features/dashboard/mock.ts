@@ -24,6 +24,55 @@ export const MOCK_DIAGNOSIS_LIST: DiagnosisListItem[] = [
 ];
 
 export const MOCK_DIAGNOSIS_DETAIL: Record<string, DiagnosisDetail> = {
+	'mock-fallback': {
+		id: 'mock-fallback',
+		date: '2026.07.01',
+		diagnosisTitle: '관절염 정기 진료',
+		status: 'completed',
+		findings: [
+			'앞다리 파행 및 기동성 저하',
+			'관절 부위 촉진 시 통증 반응',
+			'X-ray상 관절 간격 협소 확인',
+		],
+		findingConclusion: '퇴행성 관절염 진단 (11세 고령견 해당)',
+		medications: [
+			{
+				id: 'mock-med-1',
+				name: '카르포펜',
+				dosageLabel: 'Carprofen 25mg',
+				frequencyLabel: '하루 2회',
+				doseLabel: '1정씩',
+				mealTimingLabel: '식사 후',
+				timings: ['morning', 'dinner'],
+				description: '관절 염증과 통증을 줄여주는 비스테로이드 소염진통제(NSAID)예요. 프로스타글란딘 합성을 억제해 염증을 가라앉히고 통증을 완화해요. 퇴행성 관절염이나 수술 후 통증 관리에 주로 쓰여요.',
+				warningNote: '다른 소염제와 함께 쓰면 안 돼요\n공복보다는 식후에 주시는 게 위장에 훨씬 부담이 덜해요',
+			},
+		],
+		careNotes: [
+			'미끄러운 바닥 피하기 (매트 깔아주기)',
+			'격렬 운동·점프 자제, 완만 산책으로 대체',
+			'체중 관리로 관절 부담 줄이기',
+		],
+		careFooterNote: '증상이 심해지거나 식욕 저하 시 즉시 재방문 권장',
+		hospitalName: '하얀마음동물병원',
+		transcriptDuration: '05:25',
+		transcriptRecordedAt: '2026년 7월 1일 (수) 14:00',
+		transcript: [
+			{ id: 't1', speaker: 'vet', text: '안녕하세요! 보호자님, 오늘 어떤 증상으로 내원하셨나요?' },
+			{ id: 't2', speaker: 'owner', text: '요즘 앞다리를 절뚝거리고, 계단 오르내리기를 너무 힘들어해요. 산책도 금방 지쳐서 주저앉더라고요.' },
+			{ id: 't3', speaker: 'vet', text: '언제부터 그런 증상이 나타났나요? 특히 더 아파 보이는 시간대가 있었나요?' },
+			{ id: 't4', speaker: 'owner', text: '한두 달 전부터요. 아침에 일어날 때 특히 뻣뻣해 보이고, 점점 더 심해지는 것 같아서 걱정이에요.' },
+			{ id: 't5', speaker: 'vet', text: '직접 만져서 확인해볼게요. 촉진해보니 앞다리 관절 부위에 통증 반응이 있고, 관절 가동 범위도 많이 줄어들어 있네요.' },
+			{ id: 't6', speaker: 'vet', text: 'X-ray 결과도 확인했는데, 퇴행성 관절염으로 진단됩니다. 11살 고령견에서 흔하게 나타나는 상태예요.' },
+			{ id: 't7', speaker: 'owner', text: '많이 심각한가요? 많이 아픈 건지 걱정되네요.' },
+			{ id: 't8', speaker: 'vet', text: '완치보다는 통증 관리와 삶의 질 유지가 목표예요. 꾸준히 관리하면 일상생활 충분히 가능합니다.' },
+			{ id: 't9', speaker: 'vet', text: '소염진통제인 카르포펜을 처방해드릴게요. 미끄러운 바닥은 매트로 덮어주시고, 격한 운동은 자제해주세요.' },
+			{ id: 't10', speaker: 'owner', text: '알겠어요. 체중 관리도 해줘야 할까요?' },
+			{ id: 't11', speaker: 'vet', text: '네, 체중이 늘면 관절 부담이 커지기 때문에 체중 관리가 굉장히 중요해요.' },
+			{ id: 't12', speaker: 'vet', text: '증상이 심해지거나 식욕이 떨어지면 바로 내원해주세요.' },
+			{ id: 't13', speaker: 'owner', text: '감사합니다 선생님. 잘 돌봐줄게요.' },
+		],
+	},
 	'diag-1': {
 		id: 'diag-1',
 		date: '2026.07.04',
