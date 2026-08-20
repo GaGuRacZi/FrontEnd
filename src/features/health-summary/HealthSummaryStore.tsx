@@ -1,90 +1,165 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { PropsWithChildren } from 'react';
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import { usePetStore } from '@/src/features/pet/PetStore';
 
+import {
+  deleteMedicalExpenseRecord as deleteRemoteMedicalExpenseRecord,
+  deleteWalkRecord as deleteRemoteWalkRecord,
+  deleteWeightRecord as deleteRemoteWeightRecord,
+  getExpenseSummary,
+  getMedicalExpenseRecords,
+  getWalkDailySummary,
+  getWalkRecords,
+  getWalkWeeklySummary,
+  getWeightGraph,
+  getWeightRecords,
+  getWeightSummary,
+  saveMedicalExpenseRecord as saveRemoteMedicalExpenseRecord,
+  saveWalkRecord as saveRemoteWalkRecord,
+  saveWeightRecord as saveRemoteWeightRecord,
+  type ExpenseSummary,
+  type WalkDailySummary,
+  type WalkWeeklySummary,
+  type WeightGraphPoint,
+  type WeightSummary,
+} from './services/healthSummaryApi';
 import type { MedicalExpenseRecord, WalkRecord, WeightRecord } from './types';
 
-type StoredHealthSummary = {
+type HealthSummaryState = {
+  expenseSummaries: Record<string, ExpenseSummary>;
   medicalExpenseRecords: MedicalExpenseRecord[];
+  walkDailySummaries: Record<string, WalkDailySummary[]>;
   walkRecords: WalkRecord[];
+  walkWeeklySummaries: Record<string, WalkWeeklySummary>;
+  weightGraphs: Record<string, WeightGraphPoint[]>;
   weightRecords: WeightRecord[];
+  weightSummaries: Record<string, WeightSummary>;
 };
 
-type HealthSummaryStoreContextValue = StoredHealthSummary & {
-  addMedicalExpenseRecord: (record: MedicalExpenseRecord) => void;
-  addWalkRecord: (record: WalkRecord) => void;
-  addWeightRecord: (record: WeightRecord) => void;
+type HealthSummaryStoreContextValue = HealthSummaryState & {
   clearScreenSession: () => Promise<void>;
-  deleteMedicalExpenseRecord: (recordId: string) => void;
-  deleteWalkRecord: (recordId: string) => void;
-  deleteWeightRecord: (recordId: string) => void;
-  deleteUserHealthSummaryData: (userId: string) => Promise<void>;
+  deleteMedicalExpenseRecord: (record: MedicalExpenseRecord) => Promise<void>;
+  deleteUserHealthSummaryData: (_userId: string) => Promise<void>;
+  deleteWalkRecord: (record: WalkRecord) => Promise<void>;
+  deleteWeightRecord: (record: WeightRecord) => Promise<void>;
   isReady: boolean;
+  loadMonth: (petId: string, year: number, month: number) => Promise<void>;
+  saveMedicalExpenseRecord: (record: MedicalExpenseRecord) => Promise<MedicalExpenseRecord>;
+  saveWalkRecord: (record: WalkRecord, automatic?: boolean) => Promise<WalkRecord>;
+  saveWeightRecord: (record: WeightRecord) => Promise<WeightRecord>;
 };
 
 const HealthSummaryStoreContext = createContext<HealthSummaryStoreContextValue | null>(null);
-const EMPTY_STATE: StoredHealthSummary = {
+const EMPTY_STATE: HealthSummaryState = {
+  expenseSummaries: {},
   medicalExpenseRecords: [],
+  walkDailySummaries: {},
   walkRecords: [],
+  walkWeeklySummaries: {},
+  weightGraphs: {},
   weightRecords: [],
+  weightSummaries: {},
 };
-const STORAGE_KEY_PREFIX = 'paw:health-summary:';
 
-function storageKey(userId: string) {
-  return `${STORAGE_KEY_PREFIX}${userId}`;
+function isInMonth(date: string, year: number, month: number) {
+  return date.startsWith(`${year}.${String(month).padStart(2, '0')}.`);
 }
 
-function parseStoredHealthSummary(value: string | null): StoredHealthSummary {
-  if (!value) return EMPTY_STATE;
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return EMPTY_STATE;
-    const state = parsed as Partial<StoredHealthSummary>;
-    return {
-      medicalExpenseRecords: Array.isArray(state.medicalExpenseRecords) ? state.medicalExpenseRecords : [],
-      walkRecords: Array.isArray(state.walkRecords) ? state.walkRecords : [],
-      weightRecords: Array.isArray(state.weightRecords) ? state.weightRecords : [],
-    };
-  } catch {
-    return EMPTY_STATE;
-  }
+function replaceMonth<T extends { date: string; petId: string }>(records: T[], petId: string, year: number, month: number, next: T[]) {
+  return [...records.filter((record) => record.petId !== petId || !isInMonth(record.date, year, month)), ...next];
 }
 
 function replaceRecord<T extends { id: string }>(records: T[], record: T) {
-  const exists = records.some(({ id }) => id === record.id);
-  return exists
-    ? records.map((current) => (current.id === record.id ? record : current))
+  return records.some((current) => current.id === record.id)
+    ? records.map((current) => current.id === record.id ? record : current)
     : [...records, record];
+}
+
+function currentMonth() {
+  const now = new Date();
+  return { month: now.getMonth() + 1, year: now.getFullYear() };
 }
 
 export function HealthSummaryProvider({ children }: PropsWithChildren) {
   const { currentUserId, isReady: sessionReady } = useAuthSession();
-  const [state, setState] = useState<StoredHealthSummary>(EMPTY_STATE);
+  const { isReady: petsReady, pets } = usePetStore();
+  const [state, setState] = useState<HealthSummaryState>(EMPTY_STATE);
   const [isReady, setIsReady] = useState(false);
-  const userIdRef = useRef<string | null>(null);
+
+  const loadMonth = useCallback(async (petId: string, year: number, month: number) => {
+    const [weightRecords, walkRecords, medicalExpenseRecords] = await Promise.allSettled([
+      getWeightRecords(petId, year, month),
+      getWalkRecords(petId, year, month),
+      getMedicalExpenseRecords(petId, year, month),
+    ]);
+    setState((current) => ({
+      ...current,
+      medicalExpenseRecords: medicalExpenseRecords.status === 'fulfilled'
+        ? replaceMonth(current.medicalExpenseRecords, petId, year, month, medicalExpenseRecords.value)
+        : current.medicalExpenseRecords,
+      walkRecords: walkRecords.status === 'fulfilled'
+        ? replaceMonth(current.walkRecords, petId, year, month, walkRecords.value)
+        : current.walkRecords,
+      weightRecords: weightRecords.status === 'fulfilled'
+        ? replaceMonth(current.weightRecords, petId, year, month, weightRecords.value)
+        : current.weightRecords,
+    }));
+  }, []);
+
+  const refreshPetSummary = useCallback(async (petId: string) => {
+    const { month, year } = currentMonth();
+    const previous = month === 1 ? { month: 12, year: year - 1 } : { month: month - 1, year };
+    await Promise.allSettled([
+      loadMonth(petId, year, month),
+      loadMonth(petId, previous.year, previous.month),
+    ]);
+    const [weightSummary, oneMonthGraph, sixMonthGraph, walkWeeklySummary, walkDailySummary, expenseSummary] = await Promise.allSettled([
+      getWeightSummary(petId),
+      getWeightGraph(petId, 'ONE_MONTH'),
+      getWeightGraph(petId, 'SIX_MONTHS'),
+      getWalkWeeklySummary(petId),
+      getWalkDailySummary(petId),
+      getExpenseSummary(petId, year, month),
+    ]);
+    setState((current) => ({
+      ...current,
+      expenseSummaries: expenseSummary.status === 'fulfilled'
+        ? { ...current.expenseSummaries, [petId]: expenseSummary.value }
+        : current.expenseSummaries,
+      walkDailySummaries: walkDailySummary.status === 'fulfilled'
+        ? { ...current.walkDailySummaries, [petId]: walkDailySummary.value }
+        : current.walkDailySummaries,
+      walkWeeklySummaries: walkWeeklySummary.status === 'fulfilled'
+        ? { ...current.walkWeeklySummaries, [petId]: walkWeeklySummary.value }
+        : current.walkWeeklySummaries,
+      weightGraphs: {
+        ...current.weightGraphs,
+        ...(oneMonthGraph.status === 'fulfilled' ? { [`${petId}:ONE_MONTH`]: oneMonthGraph.value } : {}),
+        ...(sixMonthGraph.status === 'fulfilled' ? { [`${petId}:SIX_MONTHS`]: sixMonthGraph.value } : {}),
+      },
+      weightSummaries: weightSummary.status === 'fulfilled'
+        ? { ...current.weightSummaries, [petId]: weightSummary.value }
+        : current.weightSummaries,
+    }));
+  }, [loadMonth]);
 
   useEffect(() => {
-    if (!sessionReady) return;
+    if (!sessionReady || !petsReady) return;
 
     let active = true;
-    userIdRef.current = currentUserId;
-    setIsReady(false);
     setState(EMPTY_STATE);
-
-    if (!currentUserId) {
+    if (!currentUserId || pets.length === 0) {
       setIsReady(true);
       return () => {
         active = false;
       };
     }
 
-    void AsyncStorage.getItem(storageKey(currentUserId))
-      .then((value) => {
-        if (active) setState(parseStoredHealthSummary(value));
-      })
+    setIsReady(false);
+    void Promise.all(pets.map((pet) => refreshPetSummary(pet.id)))
+      .catch(() => undefined)
       .finally(() => {
         if (active) setIsReady(true);
       });
@@ -92,85 +167,71 @@ export function HealthSummaryProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [currentUserId, sessionReady]);
+  }, [currentUserId, pets, petsReady, refreshPetSummary, sessionReady]);
 
-  const updateState = useCallback((updater: (current: StoredHealthSummary) => StoredHealthSummary) => {
-    setState((current) => {
-      const next = updater(current);
-      const userId = userIdRef.current;
-      if (userId) void AsyncStorage.setItem(storageKey(userId), JSON.stringify(next)).catch(() => undefined);
-      return next;
-    });
-  }, []);
+  const saveWeightRecord = useCallback(async (record: WeightRecord) => {
+    const saved = await saveRemoteWeightRecord(record);
+    setState((current) => ({ ...current, weightRecords: replaceRecord(current.weightRecords, saved) }));
+    await refreshPetSummary(saved.petId);
+    return saved;
+  }, [refreshPetSummary]);
 
-  const addWeightRecord = useCallback((record: WeightRecord) => {
-    updateState((current) => ({
-      ...current,
-      weightRecords: replaceRecord(current.weightRecords, record),
-    }));
-  }, [updateState]);
+  const saveWalkRecord = useCallback(async (record: WalkRecord, automatic = false) => {
+    const saved = await saveRemoteWalkRecord(record, automatic);
+    setState((current) => ({ ...current, walkRecords: replaceRecord(current.walkRecords, saved) }));
+    await refreshPetSummary(saved.petId);
+    return saved;
+  }, [refreshPetSummary]);
 
-  const addWalkRecord = useCallback((record: WalkRecord) => {
-    updateState((current) => ({
-      ...current,
-      walkRecords: replaceRecord(current.walkRecords, record),
-    }));
-  }, [updateState]);
+  const saveMedicalExpenseRecord = useCallback(async (record: MedicalExpenseRecord) => {
+    const saved = await saveRemoteMedicalExpenseRecord(record);
+    setState((current) => ({ ...current, medicalExpenseRecords: replaceRecord(current.medicalExpenseRecords, saved) }));
+    await refreshPetSummary(saved.petId);
+    return saved;
+  }, [refreshPetSummary]);
 
-  const addMedicalExpenseRecord = useCallback((record: MedicalExpenseRecord) => {
-    updateState((current) => ({
-      ...current,
-      medicalExpenseRecords: replaceRecord(current.medicalExpenseRecords, record),
-    }));
-  }, [updateState]);
+  const deleteWeightRecord = useCallback(async (record: WeightRecord) => {
+    await deleteRemoteWeightRecord(record);
+    setState((current) => ({ ...current, weightRecords: current.weightRecords.filter(({ id }) => id !== record.id) }));
+    await refreshPetSummary(record.petId);
+  }, [refreshPetSummary]);
 
-  const deleteWeightRecord = useCallback((recordId: string) => {
-    updateState((current) => ({
-      ...current,
-      weightRecords: current.weightRecords.filter(({ id }) => id !== recordId),
-    }));
-  }, [updateState]);
+  const deleteWalkRecord = useCallback(async (record: WalkRecord) => {
+    await deleteRemoteWalkRecord(record.id);
+    setState((current) => ({ ...current, walkRecords: current.walkRecords.filter(({ id }) => id !== record.id) }));
+    await refreshPetSummary(record.petId);
+  }, [refreshPetSummary]);
 
-  const deleteWalkRecord = useCallback((recordId: string) => {
-    updateState((current) => ({
-      ...current,
-      walkRecords: current.walkRecords.filter(({ id }) => id !== recordId),
-    }));
-  }, [updateState]);
-
-  const deleteMedicalExpenseRecord = useCallback((recordId: string) => {
-    updateState((current) => ({
-      ...current,
-      medicalExpenseRecords: current.medicalExpenseRecords.filter(({ id }) => id !== recordId),
-    }));
-  }, [updateState]);
+  const deleteMedicalExpenseRecord = useCallback(async (record: MedicalExpenseRecord) => {
+    await deleteRemoteMedicalExpenseRecord(record.id);
+    setState((current) => ({ ...current, medicalExpenseRecords: current.medicalExpenseRecords.filter(({ id }) => id !== record.id) }));
+    await refreshPetSummary(record.petId);
+  }, [refreshPetSummary]);
 
   const clearScreenSession = useCallback(async () => {
-    userIdRef.current = null;
     setState(EMPTY_STATE);
     setIsReady(false);
   }, []);
 
-  const deleteUserHealthSummaryData = useCallback((userId: string) => AsyncStorage.removeItem(storageKey(userId)), []);
+  const deleteUserHealthSummaryData = useCallback(async (_userId: string) => {
+    setState(EMPTY_STATE);
+  }, []);
 
-  return (
-    <HealthSummaryStoreContext.Provider
-      value={{
-        ...state,
-        addMedicalExpenseRecord,
-        addWalkRecord,
-        addWeightRecord,
-        clearScreenSession,
-        deleteMedicalExpenseRecord,
-        deleteWalkRecord,
-        deleteWeightRecord,
-        deleteUserHealthSummaryData,
-        isReady,
-      }}
-    >
-      {children}
-    </HealthSummaryStoreContext.Provider>
-  );
+  const value = useMemo<HealthSummaryStoreContextValue>(() => ({
+    ...state,
+    clearScreenSession,
+    deleteMedicalExpenseRecord,
+    deleteUserHealthSummaryData,
+    deleteWalkRecord,
+    deleteWeightRecord,
+    isReady,
+    loadMonth,
+    saveMedicalExpenseRecord,
+    saveWalkRecord,
+    saveWeightRecord,
+  }), [clearScreenSession, deleteMedicalExpenseRecord, deleteUserHealthSummaryData, deleteWalkRecord, deleteWeightRecord, isReady, loadMonth, saveMedicalExpenseRecord, saveWalkRecord, saveWeightRecord, state]);
+
+  return <HealthSummaryStoreContext.Provider value={value}>{children}</HealthSummaryStoreContext.Provider>;
 }
 
 export function useHealthSummaryStore() {

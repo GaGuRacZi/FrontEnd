@@ -29,4 +29,5 @@ jobs:
       - run: npm run check:pet-image-removal
       - run: node scripts/check-kakao-auth.mjs
       - run: node scripts/check-api-refresh.mjs
+      - run: npm run check:chat-api
       - run: node scripts/check-chat-format.mjs

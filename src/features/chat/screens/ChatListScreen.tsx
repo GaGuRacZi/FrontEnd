@@ -8,23 +8,14 @@ import { ScreenLayout } from '@/src/components/layout';
 import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
-import { useCommunityStore } from '@/src/features/community/CommunityStore';
-import { createCommunityAuthor } from '@/src/features/community/utils/author';
-import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
-import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { formatChatListTime, normalizeChatSearch } from '../chatFormat';
-import { toChatParticipant, toChatPostReference } from '../communityAdapter';
-import { useChatStore, type ChatMockRoomSeed } from '../ChatStore';
+import { useChatStore } from '../ChatStore';
 import { ChatSafetyBanner, ParticipantAvatar } from '../components';
 import type { ChatMessage, ChatParticipantSnapshot, ChatRoom } from '../types';
 
-function createSeedTime(minutesAgo: number) {
-  return new Date(Date.now() - minutesAgo * 60_000).toISOString();
-}
-
-function getMessagePreview(message: ChatMessage | null, currentUserId: string) {
-  if (!message) return '아직 대화가 없어요.';
+function getMessagePreview(message: ChatMessage | null, currentUserId: string, room: ChatRoom) {
+  if (!message) return room.lastMessagePreview ?? '아직 대화가 없어요.';
   if (message.kind === 'post') return message.postReference?.title ?? '게시글을 공유했어요.';
   if (message.kind === 'images' && !message.text) {
     const count = message.images?.length ?? 1;
@@ -48,7 +39,7 @@ function ChatRoomRow({
   room: ChatRoom;
   unreadCount: number;
 }) {
-  const preview = getMessagePreview(lastMessage, currentUserId);
+  const preview = getMessagePreview(lastMessage, currentUserId, room);
   const time = formatChatListTime(lastMessage?.createdAt ?? room.updatedAt);
   return (
     <Pressable
@@ -83,11 +74,7 @@ function ChatRoomRow({
 export function ChatListScreen() {
   const router = useRouter();
   const { currentUserId } = useAuthSession();
-  const { posts, isReady: communityReady } = useCommunityStore();
-  const { profile } = useMyPageStore();
-  const { selectedPet } = usePetStore();
   const {
-    bootstrapMockRooms,
     getMessages,
     getOtherParticipant,
     getUnreadCount,
@@ -102,7 +89,6 @@ export function ChatListScreen() {
   const [searchText, setSearchText] = useState(searchQuery);
   const [guideVisible, setGuideVisible] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const bootstrapRequestedUserRef = useRef<string | null>(null);
   const renderedUserIdRef = useRef(currentUserId);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -183,81 +169,6 @@ export function ChatListScreen() {
   useEffect(() => {
     if (isReady) setHasLoadedOnce(true);
   }, [isReady]);
-
-  useEffect(() => {
-    if (
-      bootstrapRequestedUserRef.current === currentUserId ||
-      !currentUserId ||
-      !isReady ||
-      !communityReady ||
-      !posts.length
-    ) {
-      return;
-    }
-
-    const authorById = new Map(
-      posts
-        .filter((post) => post.author.userId !== currentUserId)
-        .map((post) => [post.author.userId, post.author]),
-    );
-    const otherParticipants = [...authorById.values()].slice(0, 3);
-    if (!otherParticipants.length) return;
-
-    bootstrapRequestedUserRef.current = currentUserId;
-    const me = toChatParticipant(
-      createCommunityAuthor(profile, selectedPet, currentUserId),
-    );
-    const marketPost = posts.find(
-      (post) =>
-        post.kind === 'market' &&
-        post.status !== '완료' &&
-        post.author.userId === otherParticipants[0]?.userId,
-    );
-    const seeds: ChatMockRoomSeed[] = otherParticipants.map((author, index) => {
-      const other = {
-        ...toChatParticipant(author),
-        ...(index === 0 && marketPost?.kind === 'market' && marketPost.location
-          ? { location: marketPost.location }
-          : {}),
-      };
-      const seed: ChatMockRoomSeed = {
-        messages:
-          index === 0
-            ? [
-                { createdAt: createSeedTime(50), from: 'me', text: '안녕하세요! 게시글 보고 연락드렸어요.' },
-                { createdAt: createSeedTime(46), from: 'other', text: '네, 편하게 문의해주세요!' },
-                { createdAt: createSeedTime(4), from: 'me', text: '주말에도 거래 가능할까요?' },
-              ]
-            : index === 1
-              ? [
-                  { createdAt: createSeedTime(185), from: 'me', text: '오늘 7시에 만나는 걸로 할게요.' },
-                  { createdAt: createSeedTime(178), from: 'other', text: '좋아요. 이따 뵐게요!' },
-                ]
-              : [
-                  { createdAt: createSeedTime(1_540), from: 'other', text: '제품 상태를 한 번 더 확인해볼게요.' },
-                  { createdAt: createSeedTime(1_535), from: 'me', status: 'failed', text: '확인되면 알려주세요.' },
-                ],
-        otherParticipant: other,
-        unreadCount: index === 1 ? 1 : 0,
-      };
-      if (index === 0 && marketPost) seed.postReference = toChatPostReference(marketPost);
-      return seed;
-    });
-
-    void bootstrapMockRooms(me, seeds).then((result) => {
-      if (!result.ok && bootstrapRequestedUserRef.current === currentUserId) {
-        bootstrapRequestedUserRef.current = null;
-      }
-    });
-  }, [
-    bootstrapMockRooms,
-    communityReady,
-    currentUserId,
-    isReady,
-    posts,
-    profile,
-    selectedPet,
-  ]);
 
   const roomRows = useMemo(() => {
     if (!currentUserId) return [];

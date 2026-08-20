@@ -42,14 +42,15 @@ export type MonthlyHealthMetric = {
   valueLabel: string;  // "3.4kg"
 };
 
-export type NotificationCategory = 'ai' | 'community' | 'emergency' | 'schedule';
+export type NotificationCategory = 'ai' | 'chat' | 'community' | 'emergency' | 'schedule';
 export type NotificationFilterValue = 'all' | NotificationCategory;
 
 export type NotificationTarget =
-  | { id: string; type: 'map' | 'post' | 'todo' | 'visit' }
+  | { id: string; type: 'chat_room' | 'map' | 'post' | 'todo' | 'visit' }
   | null;
 
 export type NotificationItem = {
+  actionLabel: string | null;
   category: NotificationCategory;
   categoryLabel: string;
   dateGroupLabel: string;

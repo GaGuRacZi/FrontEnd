@@ -2,7 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { LoadingView } from '@/src/components/common';
+import { EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, SPACING, TYPOGRAPHY, LAYOUT } from '@/src/constants';
 import { getRemoteTranscript, type RemoteTranscript } from '@/src/features/dashboard/services/visitApi';
@@ -27,6 +27,16 @@ export function TranscriptScreen() {
   const [transcript, setTranscript] = useState<RemoteTranscript | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const handleRetry = () => {
+    if (!diagnosisId) return;
+    setIsLoading(true);
+    setError(null);
+    void getRemoteTranscript(diagnosisId)
+      .then(setTranscript)
+      .catch(() => setError('전사 기록을 불러오지 못했어요.'))
+      .finally(() => setIsLoading(false));
+  };
 
   useEffect(() => {
     let active = true;
@@ -67,9 +77,12 @@ export function TranscriptScreen() {
   if (!transcript) {
     return (
       <ScreenLayout headerVariant="auth" title="진료 전문 보기">
-        <View style={styles.emptyState}>
-          <Text accessibilityLiveRegion="polite" style={styles.emptyText}>{error ?? '전사 기록을 찾을 수 없어요.'}</Text>
-        </View>
+        <EmptyState
+          actionLabel="다시 시도"
+          description={error ?? '전사 기록을 찾을 수 없어요.'}
+          onActionPress={handleRetry}
+          title="전사 기록을 불러오지 못했어요"
+        />
       </ScreenLayout>
     );
   }
@@ -113,8 +126,6 @@ export function TranscriptScreen() {
 }
 
 const styles = StyleSheet.create({
-  emptyState: { alignItems: 'center', flex: 1, justifyContent: 'center' },
-  emptyText: { ...TYPOGRAPHY.body2, color: COLORS.gray600, textAlign: 'center' },
   headerCenter: { alignItems: 'center' },
   headerTitle: { ...TYPOGRAPHY.button, color: COLORS.black, textAlign: 'center' },
   headerSubtitle: { ...TYPOGRAPHY.small, color: COLORS.gray500, marginTop: -2, textAlign: 'center' },

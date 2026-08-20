@@ -7,6 +7,7 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import type { NotificationCategory, NotificationItem } from '../types';
 
 type NotificationCardProps = {
+  actionLabel?: string | null;
   notification: NotificationItem;
   onPress: () => void;
 };
@@ -28,6 +29,13 @@ const CATEGORY_META: Record < NotificationCategory,
     chipTint: COLORS.cream,
     chipColor: COLORS.primary,
   },
+  chat: {
+    icon: require('../../../../assets/images/home/notification/chat.png'),
+    iconSize: 20,
+    iconTint: COLORS.communityback,
+    chipTint: COLORS.communityback,
+    chipColor: COLORS.community,
+  },
   community: {
     icon: require('../../../../assets/images/home/notification/chat.png'),
     iconSize: 20,
@@ -44,7 +52,7 @@ const CATEGORY_META: Record < NotificationCategory,
   },
 };
 
-export function NotificationCard({ notification, onPress }: NotificationCardProps) {
+export function NotificationCard({ actionLabel, notification, onPress }: NotificationCardProps) {
   const meta = CATEGORY_META[notification.category];
 
   return (
@@ -79,7 +87,10 @@ export function NotificationCard({ notification, onPress }: NotificationCardProp
 
       <View style={styles.rightColumn}>
         <View style={[styles.unreadDot, notification.isRead && styles.unreadDotHidden]} />
-        <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
+        <View style={styles.actionRow}>
+          {actionLabel ? <Text numberOfLines={1} style={styles.actionLabel}>{actionLabel}</Text> : null}
+          <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
+        </View>
         <Text style={styles.time}>{notification.timeLabel}</Text>
       </View>
     </Pressable>
@@ -129,6 +140,8 @@ const styles = StyleSheet.create({
     width: 7,
   },
   unreadDotHidden: { opacity: 0 },
+  actionRow: { alignItems: 'center', flexDirection: 'row', gap: 2, maxWidth: 88 },
+  actionLabel: { ...TYPOGRAPHY.caption, color: COLORS.primary },
   time: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
   rightColumn: { alignItems: 'flex-end', gap: SPACING.sm },
 });

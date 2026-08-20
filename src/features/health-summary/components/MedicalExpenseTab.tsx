@@ -1,30 +1,35 @@
 import { Href, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { usePetStore } from '@/src/features/pet/PetStore';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { useHealthSummaryStore } from '../HealthSummaryStore';
 import { MonthNavigator } from './MonthNavigator';
+import { usePetStore } from '@/src/features/pet/PetStore';
 
 const CARROT_AD_IMAGE = require('@/assets/images/health-summary/ad.jpg');
 
 export function MedicalExpenseTab() {
     const router = useRouter();
+    const { expenseSummaries, loadMonth, medicalExpenseRecords } = useHealthSummaryStore();
     const { selectedPet } = usePetStore();
-    const { medicalExpenseRecords } = useHealthSummaryStore();
     const [year, setYear] = useState(() => new Date().getFullYear());
     const [month, setMonth] = useState(() => new Date().getMonth() + 1);
 
     const formattedTargetMonth = `${year}.${String(month).padStart(2, '0')}`;
-    const filteredRecords = (medicalExpenseRecords || []).filter((record) =>
-        record.date.startsWith(formattedTargetMonth)
+    const filteredRecords = medicalExpenseRecords.filter((record) =>
+        record.petId === selectedPet?.id && record.date.startsWith(formattedTargetMonth)
     );
 
-    const monthlyExpenseTotal = filteredRecords.reduce((sum, record) => sum + record.totalCost, 0);
-    const allTimeExpenseTotal = (medicalExpenseRecords || []).reduce((sum, record) => sum + record.totalCost, 0);
+    const summary = selectedPet ? expenseSummaries[selectedPet.id] : undefined;
+    const monthlyExpenseTotal = summary?.monthlyTotalAmount ?? filteredRecords.reduce((sum, record) => sum + record.totalCost, 0);
+    const allTimeExpenseTotal = summary?.totalAmount ?? filteredRecords.reduce((sum, record) => sum + record.totalCost, 0);
+
+    useEffect(() => {
+        if (selectedPet) void loadMonth(selectedPet.id, year, month).catch(() => undefined);
+    }, [loadMonth, month, selectedPet, year]);
 
     return (
         <View style={styles.container}>

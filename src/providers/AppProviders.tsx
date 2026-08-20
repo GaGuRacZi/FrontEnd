@@ -1,6 +1,6 @@
 import { usePathname } from 'expo-router';
 import type { PropsWithChildren } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, EmptyState, LoadingView } from '@/src/components/common';
@@ -14,7 +14,7 @@ import {
 } from '@/src/features/auth/session/AuthSessionStore';
 import { TermsProvider } from '@/src/features/auth/terms';
 import { ChatDataBridge } from '@/src/features/chat/ChatDataBridge';
-import { ChatProvider } from '@/src/features/chat/ChatStore';
+import { ChatProvider, useChatStore } from '@/src/features/chat/ChatStore';
 import { CommunityProvider } from '@/src/features/community/CommunityStore';
 import { MyPageProvider } from '@/src/features/mypage/MyPageStore';
 import { SupportProvider } from '@/src/features/mypage/support';
@@ -23,6 +23,42 @@ import { MedicationProvider } from '@/src/features/home/MedicationStore';
 import { ScheduleTodoProvider } from '@/src/features/home/ScheduleTodoStore';
 import { PetProvider } from '@/src/features/pet/PetStore';
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
+import { listenForForegroundPushes, subscribeForegroundPush } from '@/src/services/pushNotifications';
+
+function ForegroundPushBridge() {
+  const { isReady, refreshChatRoom, refreshChatRooms } = useChatStore();
+  const pendingRoomIdsRef = useRef(new Set<string>());
+
+  const refreshRoom = useCallback((roomId: string) => {
+    pendingRoomIdsRef.current.add(roomId);
+    if (!isReady) return;
+    void Promise.all([refreshChatRoom(roomId), refreshChatRooms()]).then((results) => {
+      if (results.some((result) => result.ok)) pendingRoomIdsRef.current.delete(roomId);
+    });
+  }, [isReady, refreshChatRoom, refreshChatRooms]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeForegroundPush((data) => {
+      const roomId = data.roomId;
+      if (data.type !== 'CHAT_MESSAGE' || data.category !== 'CHAT' || !roomId || !/^\d+$/.test(roomId)) {
+        return;
+      }
+      refreshRoom(roomId);
+    });
+    const stopListening = listenForForegroundPushes();
+    return () => {
+      unsubscribe();
+      stopListening();
+    };
+  }, [refreshRoom]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    pendingRoomIdsRef.current.forEach((roomId) => refreshRoom(roomId));
+  }, [isReady, refreshRoom]);
+
+  return null;
+}
 
 function AccountDataGuard({ children }: PropsWithChildren) {
   const pathname = usePathname();
@@ -145,6 +181,7 @@ function SessionProviders({ children }: PropsWithChildren) {
                   <ChatProvider>
                     <AccountDataGuard>
                       <ChatDataBridge />
+                      <ForegroundPushBridge />
                       {children}
                     </AccountDataGuard>
                   </ChatProvider>

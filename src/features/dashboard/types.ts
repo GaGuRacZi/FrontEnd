@@ -1,8 +1,8 @@
 export type DiagnosisStatus = 'completed' | 'failed' | 'summarizing';
 
 type BaseDiagnosisListItem = {
-	date: string; // '2026.07.04' 형태의 표시용 라벨
-	diagnosisTitle: string; // '관절염 정기 진료'
+	date: string;
+	diagnosisTitle: string;
 	id: string;
 	petId?: string;
 };
@@ -16,11 +16,11 @@ export type DiagnosisMedicationTiming = 'bedtime' | 'dinner' | 'lunch' | 'mornin
 
 export type DiagnosisMedication = {
 	description?: string;
-	doseLabel: string; // '1정씩'
-	dosageLabel: string; // 'Meloxicam 1.5mg/ml'
-	frequencyLabel: string; // '하루 2회'
+	doseLabel: string;
+	dosageLabel: string;
+	frequencyLabel: string;
 	id: string;
-	mealTimingLabel: string; // '식사 후'
+	mealTimingLabel: string;
 	name: string;
 	timings: DiagnosisMedicationTiming[];
 	warningNote?: string;

@@ -89,9 +89,11 @@ const petMutations = loadModule('../src/features/pet/services/petApi.ts', {
 });
 await petMutations.getRemotePets();
 await petMutations.updateRemoteMainPet('1');
+await petMutations.deleteRemotePet('1');
 assert.deepEqual(petRequests, [
   ['/pets', undefined],
   ['/pets/1/main', { method: 'PATCH' }],
+  ['/pets/1', { method: 'DELETE' }],
 ]);
 
 const petValidation = loadModule('../src/features/pet/petValidation.ts', {});
@@ -250,6 +252,18 @@ const mypageMutations = loadModule('../src/features/mypage/services/mypageApi.ts
   '@/src/services/apiClient': {
     apiRequest: async (path, options) => {
       mypageMutationRequests.push([path, options]);
+      if (path === '/mypage/withdrawal/preview') {
+        return {
+          code: 'MYPAGE_WITHDRAWAL_PREVIEW_200',
+          isSuccess: true,
+          message: 'ok',
+          result: {
+            hasOngoingMarketTrade: false,
+            subscribePlan: 'FREE',
+            subscribing: false,
+          },
+        };
+      }
       return {
         code: {
           '/mypage/profile/image': 'MYPAGE_PROFILE_IMAGE_DELETE_200',
@@ -267,11 +281,17 @@ const mypageMutations = loadModule('../src/features/mypage/services/mypageApi.ts
 await mypageMutations.updateRemoteMyPageRegion('11680');
 await mypageMutations.registerRemotePushToken(null);
 await mypageMutations.deleteRemoteProfileImage();
+assert.deepEqual(await mypageMutations.getRemoteWithdrawalPreview(), {
+  hasOngoingMarketTrade: false,
+  subscribePlan: 'FREE',
+  subscribing: false,
+});
 await mypageMutations.deleteRemoteAccount();
 assert.deepEqual(mypageMutationRequests, [
   ['/mypage/region', { json: { regionCode: '11680' }, method: 'PATCH' }],
   ['/users/me/push-token', { json: { pushToken: '' }, method: 'PUT' }],
   ['/mypage/profile/image', { method: 'DELETE' }],
+  ['/mypage/withdrawal/preview', undefined],
   ['/mypage/withdrawal', { method: 'DELETE' }],
 ]);
 

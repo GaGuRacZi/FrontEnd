@@ -1,5 +1,5 @@
 import { apiRequest } from '@/src/services/apiClient';
-import { getRemoteUserLocation } from '@/src/services/locationApi';
+import { getRemoteUserLocation, searchRemoteRegions } from '@/src/services/locationApi';
 import { appendMultipartImage, appendMultipartJson } from '@/src/utils/file';
 
 import type { UserProfile } from '@/src/features/mypage/types';
@@ -375,6 +375,15 @@ async function getMarketRegionCode() {
   return (await getRemoteUserLocation()).regionCode;
 }
 
+async function getExistingMarketRegionCode(location: string) {
+  const normalizedLocation = location.trim();
+  const region = (await searchRemoteRegions(normalizedLocation)).find(
+    ({ name }) => name === normalizedLocation,
+  );
+  if (!region) throw new CommunityApiContractError();
+  return region.code;
+}
+
 export function createRemotePostData(
   post: TalkPost | MarketPost,
   tags: readonly RemoteCommunityTag[],
@@ -594,14 +603,37 @@ export async function createRemoteCommunityPost(post: TalkPost | MarketPost, tag
   );
 }
 
-export async function updateRemoteCommunityPost(post: TalkPost | MarketPost, tags: readonly RemoteCommunityTag[]) {
+async function putRemoteCommunityPost(
+  post: TalkPost | MarketPost,
+  tags: readonly RemoteCommunityTag[],
+  marketRegionCode?: string,
+) {
   const request = createRemotePostData(post, tags, true);
   const data = post.kind === 'market'
-    ? withMarketRegion(request.data, await getMarketRegionCode())
+    ? withMarketRegion(request.data, marketRegionCode ?? await getMarketRegionCode())
     : request.data;
   return parseRemoteCommunityMutation(
     await apiRequest<unknown>(`/communities/${encodeURIComponent(post.id)}`, { body: createPostFormData(data, request.images), method: 'PUT' }),
     'COMMUNITY_UPDATE_200',
+  );
+}
+
+export function updateRemoteCommunityPost(post: TalkPost | MarketPost, tags: readonly RemoteCommunityTag[]) {
+  return putRemoteCommunityPost(post, tags);
+}
+
+export async function updateRemoteMarketStatus(
+  postId: string,
+  status: MarketStatus,
+  tags: readonly RemoteCommunityTag[],
+  identity: CommunityIdentity,
+) {
+  const post = mapRemotePost(await getRemoteCommunityDetail(postId), identity);
+  if (post.kind !== 'market') throw new CommunityApiContractError();
+  return putRemoteCommunityPost(
+    { ...post, status },
+    tags,
+    await getExistingMarketRegionCode(post.location),
   );
 }
 

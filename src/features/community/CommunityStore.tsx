@@ -21,6 +21,7 @@ import {
   toggleRemoteCommunityLike,
   updateRemoteComment,
   updateRemoteCommunityPost,
+  updateRemoteMarketStatus,
   type CommunityIdentity,
   type RemoteCommunityTag,
 } from './services/communityApi';
@@ -887,9 +888,11 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (post.status === status) return { ok: true };
         if (post.status === '완료') return { ok: false, reason: 'not-ready' };
 
-        const remotePost = await updateRemoteCommunityPost(
-          { ...post, status },
+        const remotePost = await updateRemoteMarketStatus(
+          postId,
+          status,
           communityTagsRef.current,
+          identity,
         );
         const updatedPost = mapRemotePost(remotePost, identity);
         return persistMutation({

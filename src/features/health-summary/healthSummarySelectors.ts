@@ -18,7 +18,11 @@ function parseKoreanTime(value?: string) {
   return { hour, minute };
 }
 
-export function getHealthRecordTime(date: string, time?: string) {
+export function getHealthRecordTime(date: string, time?: string, recordedAt?: string) {
+  if (recordedAt) {
+    const timestamp = Date.parse(recordedAt);
+    if (!Number.isNaN(timestamp)) return timestamp;
+  }
   const { day, month, year } = parseDateParts(date);
   const { hour, minute } = parseKoreanTime(time);
   return new Date(year, month - 1, day, hour, minute).getTime();
@@ -26,7 +30,7 @@ export function getHealthRecordTime(date: string, time?: string) {
 
 export function getSortedWeightRecords(records: WeightRecord[]) {
   return [...records].sort(
-    (first, second) => getHealthRecordTime(first.date, first.time) - getHealthRecordTime(second.date, second.time),
+    (first, second) => getHealthRecordTime(first.date, first.time, first.recordedAt) - getHealthRecordTime(second.date, second.time, second.recordedAt),
   );
 }
 
@@ -100,8 +104,8 @@ export function getMedicalExpenseOverview(records: MedicalExpenseRecord[], now =
   };
 }
 
-export function getRecordsForMonth<T extends { date: string; time?: string }>(records: T[], year: number, month: number) {
+export function getRecordsForMonth<T extends { date: string; recordedAt?: string; time?: string }>(records: T[], year: number, month: number) {
 	return records
 		.filter((record) => isSameMonth(record.date, year, month))
-		.sort((first, second) => getHealthRecordTime(second.date, second.time) - getHealthRecordTime(first.date, first.time));
+		.sort((first, second) => getHealthRecordTime(second.date, second.time, second.recordedAt) - getHealthRecordTime(first.date, first.time, first.recordedAt));
 }

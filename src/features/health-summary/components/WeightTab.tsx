@@ -1,5 +1,5 @@
 import { Href, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
@@ -8,12 +8,11 @@ import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { useHealthSummaryStore } from '../HealthSummaryStore';
-import { getHealthRecordTime, getRecordsForMonth, getWeightOverview } from '../healthSummarySelectors';
+import { getRecordsForMonth, getWeightOverview } from '../healthSummarySelectors';
 import { MonthNavigator } from './MonthNavigator';
 
 const CHART_HEIGHT = 120;
 const GRID_BOTTOM_OFFSET = 30;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const toChartLabel = (value: string) => {
 	const [, month, day] = value.split('.');
@@ -23,7 +22,7 @@ const toChartLabel = (value: string) => {
 export function WeightTab() {
 	const router = useRouter();
 	const { selectedPet } = usePetStore();
-	const { weightRecords } = useHealthSummaryStore();
+	const { loadMonth, weightGraphs, weightRecords, weightSummaries } = useHealthSummaryStore();
 	const [rangeTab, setRangeTab] = useState<'1m' | '6m'>('1m');
 	const [year, setYear] = useState(() => new Date().getFullYear());
 	const [month, setMonth] = useState(() => new Date().getMonth() + 1);
@@ -33,21 +32,18 @@ export function WeightTab() {
 		? weightRecords.filter((record) => record.petId === selectedPet.id)
 		: [];
 	const filteredRecords = getRecordsForMonth(records, year, month);
-	const { currentWeight, difference: weightDiff } = getWeightOverview(records);
+	const fallbackOverview = getWeightOverview(records);
+	const summary = selectedPet ? weightSummaries[selectedPet.id] : undefined;
+	const currentWeight = summary?.currentWeight ?? fallbackOverview.currentWeight;
+	const weightDiff = summary?.monthChange ?? fallbackOverview.difference;
+	const chartPoints = selectedPet
+		? (weightGraphs[`${selectedPet.id}:${rangeTab === '1m' ? 'ONE_MONTH' : 'SIX_MONTHS'}`] ?? [])
+			.map((point) => ({ label: toChartLabel(point.date), weight: point.weight }))
+		: [];
 
-	const rangeDays = rangeTab === '1m' ? 30 : 180;
-	const cutoffTime = Date.now() - rangeDays * MS_PER_DAY;
-
-	const chartPointsByDate = new Map<string, { label: string; weight: number }>();
-	records
-		.filter((record) => getHealthRecordTime(record.date, record.time) >= cutoffTime)
-		.sort((first, second) => getHealthRecordTime(first.date, first.time) - getHealthRecordTime(second.date, second.time))
-		.forEach((record) => {
-			chartPointsByDate.set(record.date, { label: toChartLabel(record.date), weight: record.weight });
-	});
-
-	const chartPoints = Array.from(chartPointsByDate.values())
-		.map((entry) => ({ label: entry.label, weight: entry.weight }));
+	useEffect(() => {
+		if (selectedPet) void loadMonth(selectedPet.id, year, month).catch(() => undefined);
+	}, [loadMonth, month, selectedPet, year]);
 
 	const weightValues = chartPoints.map((p) => p.weight);
 	const minWeight = weightValues.length ? Math.min(...weightValues) : 0;

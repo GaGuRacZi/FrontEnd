@@ -193,7 +193,7 @@ export function MyPageNotificationsScreen() {
               notificationSettings[row.key],
               (value) => void updateSetting(row.key, value),
               row.key,
-              Boolean(checkingPermissionKey),
+              checkingPermissionKey === row.key,
             ),
           )}
 

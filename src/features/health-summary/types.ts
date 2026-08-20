@@ -14,6 +14,7 @@ export interface WeightRecord {
     appetite: AppetiteCondition;
     memo?: string;
     photoUri?: string;
+    recordedAt?: string;
     isDirectInput?: boolean;
 }
 
@@ -32,6 +33,7 @@ export interface WalkRecord {
     weatherText?: string;
     temperatureText?: string;
     routePoints?: { latitude: number; longitude: number }[];
+    significant?: string;
     excrement: {
         urination: boolean;
         defecation: boolean;
@@ -53,7 +55,6 @@ export interface MedicalExpenseRecord {
     totalCost: number;
     paymentMethod: string;
     items: MedicalExpenseItem[];
-    receiptScanned?: boolean;
 }
 
 export interface MonthlySummary {

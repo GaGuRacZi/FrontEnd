@@ -147,7 +147,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
     hasLoadError,
     isReady,
     markRoomRead,
-    reloadChat,
+    refreshChatRoom,
     removeDraftImage,
     retryMessage,
     sendDraft,
@@ -168,6 +168,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const [pickingImages, setPickingImages] = useState(false);
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [hasCheckedRoom, setHasCheckedRoom] = useState(false);
   const [refreshPromptVisible, setRefreshPromptVisible] = useState(false);
   const composerInputRef = useRef<TextInput>(null);
   const initializedRoomRef = useRef('');
@@ -190,6 +191,10 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   useEffect(() => {
     if (isReady) setHasLoadedOnce(true);
   }, [isReady]);
+
+  useEffect(() => {
+    setHasCheckedRoom(false);
+  }, [roomId]);
 
   const persistDraftText = useCallback(
     (value: string) => {
@@ -251,9 +256,14 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      reloadChat();
-      return undefined;
-    }, [reloadChat]),
+      let active = true;
+      void refreshChatRoom(roomId).finally(() => {
+        if (active) setHasCheckedRoom(true);
+      });
+      return () => {
+        active = false;
+      };
+    }, [refreshChatRoom, roomId]),
   );
 
   useFocusEffect(
@@ -272,8 +282,8 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const refreshMessages = useCallback(() => {
     if (!isReady) return;
     setRefreshPromptVisible(false);
-    reloadChat();
-  }, [isReady, reloadChat]);
+    void refreshChatRoom(roomId);
+  }, [isReady, refreshChatRoom, roomId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -441,9 +451,17 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
         <EmptyState
           actionLabel="다시 시도"
           description="잠시 후 다시 대화방을 열어주세요."
-          onActionPress={reloadChat}
+          onActionPress={() => void refreshChatRoom(roomId)}
           title="대화방을 불러오지 못했어요"
         />
+      </ChatRoomState>
+    );
+  }
+
+  if (!room && !hasCheckedRoom) {
+    return (
+      <ChatRoomState onBack={handleBack}>
+        <LoadingView label="대화방을 불러오고 있어요." />
       </ChatRoomState>
     );
   }

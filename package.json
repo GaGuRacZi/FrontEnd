@@ -17,6 +17,7 @@
     "check:mypage-support": "node scripts/check-mypage-support.mjs",
     "check:mypage-terms": "node scripts/check-mypage-terms.mjs",
     "check:notifications": "node scripts/check-notifications.mjs",
+    "check:chat-api": "node scripts/check-chat-api.mjs",
     "check:pet-image-removal": "node scripts/check-pet-image-removal.mjs",
     "check:health-summary": "node scripts/check-health-summary.mjs",
     "check:home-api": "node scripts/check-home-api.mjs"

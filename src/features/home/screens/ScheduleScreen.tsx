@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
-import { ScreenLayout } from '@/src/components/layout';
+import { KeyboardAwareScrollView, ScreenLayout } from '@/src/components/layout';
 import { COLORS, SIZE, SPACING } from '@/src/constants';
 import { useScheduleTodoStore } from '../ScheduleTodoStore';
 import { formatTodoApiDate } from '../services/todoApi';
@@ -43,7 +43,11 @@ function parseTodoDate(value: string | undefined, fallback: Date) {
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
-export function ScheduleScreen() {
+type ScheduleScreenProps = {
+  notificationTodoId?: string;
+};
+
+export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const today = new Date();
@@ -98,6 +102,7 @@ export function ScheduleScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const focusedTodoIdRef = useRef<string | null>(null);
 
   // ── 태그 모달 입력
   const [newTagName, setNewTagName] = useState('');
@@ -138,6 +143,27 @@ export function ScheduleScreen() {
   useEffect(() => {
     void loadCalendarMonth(viewYear, viewMonth + 1).catch(() => undefined);
   }, [loadCalendarMonth, viewMonth, viewYear]);
+
+  useEffect(() => {
+    if (!notificationTodoId || focusedTodoIdRef.current === notificationTodoId) return;
+
+    focusedTodoIdRef.current = notificationTodoId;
+    let active = true;
+    void getScheduleTodoDetail(notificationTodoId)
+      .then((detail) => {
+        if (!active) return;
+        const date = parseTodoDate(detail.startDate, new Date());
+        setViewYear(date.getFullYear());
+        setViewMonth(date.getMonth());
+        setSelectedDay(date.getDate());
+        setSelectedTag('전체');
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [getScheduleTodoDetail, notificationTodoId]);
 
   const dayTodos = getTodosForDate(selectedDate);
   const filtered = selectedTag === '전체' ? dayTodos : dayTodos.filter((t) => t.tag === selectedTag);
@@ -376,7 +402,7 @@ export function ScheduleScreen() {
                     const todayCell = isToday(d);
                     const isSelected = d === selectedDay;
                     const progress = getDayProgress(formatTodoApiDate(new Date(viewYear, viewMonth, d)));
-                    const dotColor = progress
+                    const dotColor = progress && progress.total > 0
                       ? progress.completed === 0
                         ? COLORS.danger
                         : progress.completed === progress.total
@@ -474,14 +500,15 @@ export function ScheduleScreen() {
       {/* ── 할일 추가 모달 */}
       <Modal animationType="none" onRequestClose={closeAddSheet} statusBarTranslucent transparent visible={addVisible}>
         <Pressable onPress={closeAddSheet} style={styles.overlay}>
-          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: addSheetY }] }]}>
-            <View style={styles.handle} />
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>{editingTodoId ? '할 일 수정' : '할 일 추가'}</Text>
-              <Pressable hitSlop={8} onPress={closeAddSheet} style={styles.closeCircleBtn}>
-                <AppIcon color={COLORS.gray600} name="close" size={18} />
-              </Pressable>
-            </View>
+          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, styles.addSheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: addSheetY }] }]}>
+            <KeyboardAwareScrollView contentContainerStyle={styles.addSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.handle} />
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>{editingTodoId ? '할 일 수정' : '할 일 추가'}</Text>
+                <Pressable hitSlop={8} onPress={closeAddSheet} style={styles.closeCircleBtn}>
+                  <AppIcon color={COLORS.gray600} name="close" size={18} />
+                </Pressable>
+              </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>할 일</Text>
@@ -552,10 +579,11 @@ export function ScheduleScreen() {
               </View>
             </View>
 
-            {formError ? <Text accessibilityLiveRegion="polite" style={styles.formError}>{formError}</Text> : null}
-            <Pressable disabled={isSaving} onPress={handleAdd} style={[styles.submitBtn, isSaving && styles.submitBtnDisabled]}>
-              <Text style={styles.submitBtnText}>{editingTodoId ? '수정하기' : '추가하기'}</Text>
-            </Pressable>
+              {formError ? <Text accessibilityLiveRegion="polite" style={styles.formError}>{formError}</Text> : null}
+              <Pressable disabled={isSaving} onPress={handleAdd} style={[styles.submitBtn, isSaving && styles.submitBtnDisabled]}>
+                <Text style={styles.submitBtnText}>{editingTodoId ? '수정하기' : '추가하기'}</Text>
+              </Pressable>
+            </KeyboardAwareScrollView>
           </Animated.View>
         </Pressable>
       </Modal>

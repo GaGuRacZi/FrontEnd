@@ -1,5 +1,5 @@
 import { Href, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
@@ -8,7 +8,7 @@ import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { useHealthSummaryStore } from '../HealthSummaryStore';
-import { getHealthRecordTime, getRecordsForMonth, getWalkOverview } from '../healthSummarySelectors';
+import { getRecordsForMonth, getWalkOverview } from '../healthSummarySelectors';
 import { MonthNavigator } from './MonthNavigator';
 
 const toChartLabel = (value: string) => {
@@ -19,7 +19,7 @@ const toChartLabel = (value: string) => {
 export function WalkTab() {
 	const router = useRouter();
 	const { selectedPet } = usePetStore();
-	const { walkRecords } = useHealthSummaryStore();
+	const { loadMonth, walkDailySummaries, walkRecords, walkWeeklySummaries } = useHealthSummaryStore();
 	const [year, setYear] = useState(() => new Date().getFullYear());
 	const [month, setMonth] = useState(() => new Date().getMonth() + 1);
 
@@ -27,22 +27,17 @@ export function WalkTab() {
 		? walkRecords.filter((record) => record.petId === selectedPet.id)
 		: [];
 	const filteredRecords = getRecordsForMonth(records, year, month);
-	const { average: thisWeekAvg, difference: weeklyDiff, records: thisWeekRecords } = getWalkOverview(records);
+	const fallbackOverview = getWalkOverview(records);
+	const weeklySummary = selectedPet ? walkWeeklySummaries[selectedPet.id] : undefined;
+	const thisWeekAvg = weeklySummary?.averageMinutes ?? fallbackOverview.average;
+	const weeklyDiff = weeklySummary?.diffMinutes ?? fallbackOverview.difference;
+	const barPoints = selectedPet
+		? (walkDailySummaries[selectedPet.id] ?? []).map((entry) => ({ label: toChartLabel(entry.date), minutes: entry.totalMinutes }))
+		: [];
 
-	const barPointsByDate = new Map<string, { date: string; minutes: number }>();
-	thisWeekRecords.forEach((record) => {
-		const existing = barPointsByDate.get(record.date);
-		if (existing) {
-			existing.minutes += record.durationMinutes;
-		} else {
-			barPointsByDate.set(record.date, { date: record.date, minutes: record.durationMinutes });
-		}
-	});
-
-	const barPoints = Array.from(barPointsByDate.values())
-		.sort((a, b) => getHealthRecordTime(a.date) - getHealthRecordTime(b.date))
-		.slice(-7)
-		.map((entry) => ({ label: toChartLabel(entry.date), minutes: entry.minutes }));
+	useEffect(() => {
+		if (selectedPet) void loadMonth(selectedPet.id, year, month).catch(() => undefined);
+	}, [loadMonth, month, selectedPet, year]);
 
 	return (
 		<View style={styles.container}>

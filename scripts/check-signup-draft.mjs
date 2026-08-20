@@ -130,8 +130,22 @@ const termsSource = readFileSync(
   new URL('../src/features/auth/terms/screens/TermsAgreementScreen.tsx', import.meta.url),
   'utf8',
 );
-assert.equal(credentialsScreenSource.includes('signUpWithLocalCredentials'), false);
-assert.equal(completionSource.includes('signUpWithLocalCredentials(data.email, data.password)'), true);
+const draftFlushIndex = credentialsScreenSource.indexOf('await flushSignupDraft()');
+const localSignupIndex = credentialsScreenSource.indexOf(
+  'await signUpWithLocalCredentials(data.email, data.password)',
+);
+const pendingSessionIndex = credentialsScreenSource.indexOf(
+  "await prepareRemoteSignup(outcome.session, 'local', signupSessionId)",
+);
+const userInfoRouteIndex = credentialsScreenSource.indexOf(
+  "router.push('/signup/user-info')",
+  pendingSessionIndex,
+);
+assert.equal(draftFlushIndex < localSignupIndex, true);
+assert.equal(localSignupIndex < pendingSessionIndex, true);
+assert.equal(pendingSessionIndex < userInfoRouteIndex, true);
+assert.equal(credentialsScreenSource.includes("outcome.kind === 'link-required'"), true);
+assert.equal(completionSource.includes('signUpWithLocalCredentials'), false);
 assert.equal(termsSource.includes("if (!pendingRemoteSignupUserId)"), true);
 assert.equal(termsSource.includes("router.replace('/login');"), true);
 

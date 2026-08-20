@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Href, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppButton, AppIcon, DatePickerSheet, TimePickerSheet } from '@/src/components/common';
 import { AppScreen, TopHeader } from '@/src/components/layout';
@@ -41,7 +41,7 @@ export function WeightRecordScreen() {
 	const router = useRouter();
 	const isSaving = useRef(false);
 	const { selectedPet } = usePetStore();
-	const { addWeightRecord, deleteWeightRecord, weightRecords } = useHealthSummaryStore();
+	const { deleteWeightRecord, saveWeightRecord, weightRecords } = useHealthSummaryStore();
 	const { recordId } = useLocalSearchParams<{ recordId?: string }>();
 	const existingRecord = recordId ? weightRecords.find(({ id }) => id === recordId) : undefined;
 	const [isEditing, setIsEditing] = useState(!existingRecord);
@@ -74,16 +74,19 @@ export function WeightRecordScreen() {
 	const handlePickImage = async () => {
 		if (!isEditing) return;
 		try {
-			const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-			if (!permission.granted) {
-				Alert.alert('권한 필요', '사진 라이브러리 접근 권한이 허용되어야 사진을 추가할 수 있어요.');
-				return;
+			if (Platform.OS === 'ios') {
+				const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+				if (!permission.granted) {
+					Alert.alert('권한 필요', '사진 라이브러리 접근 권한이 허용되어야 사진을 추가할 수 있어요.');
+					return;
+				}
 			}
 
 			const result = await ImagePicker.launchImageLibraryAsync({
-				mediaTypes: ['images'],
 				allowsEditing: true,
 				aspect: [1, 1],
+				defaultTab: 'photos',
+				mediaTypes: ['images'],
 				quality: 0.8,
 			});
 
@@ -95,7 +98,7 @@ export function WeightRecordScreen() {
 		}
 	};
 
-	const handleSaveRecord = () => {
+	const handleSaveRecord = async () => {
 		if (isSaving.current) return;
 		if (!selectedPet) {
 			Alert.alert('반려동물 선택 필요', '체중을 기록할 반려동물을 먼저 선택해주세요.');
@@ -108,7 +111,7 @@ export function WeightRecordScreen() {
 		}
 		isSaving.current = true;
 		const newRecord: WeightRecord = {
-			id: existingRecord?.id ?? String(Date.now()),
+			id: existingRecord?.id ?? '',
 			petId: existingRecord?.petId ?? selectedPet.id,
 			date: recordDate,
 			time: recordTime,
@@ -120,12 +123,17 @@ export function WeightRecordScreen() {
 			isDirectInput: true,
 		};
 
-		addWeightRecord(newRecord);
-
-		router.replace({
-			pathname: '/health-summary',
-			params: { tab: 'weight' },
-		} as Href);
+		try {
+			await saveWeightRecord(newRecord);
+			router.replace({
+				pathname: '/health-summary',
+				params: { tab: 'weight' },
+			} as Href);
+		} catch {
+			Alert.alert('저장할 수 없어요', '체중 기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+		} finally {
+			isSaving.current = false;
+		}
 	};
 
 	const handleDeleteRecord = () => {
@@ -136,8 +144,14 @@ export function WeightRecordScreen() {
 				style: 'destructive',
 				text: '삭제',
 				onPress: () => {
-					deleteWeightRecord(existingRecord.id);
-					router.replace({ pathname: '/health-summary', params: { tab: 'weight' } } as Href);
+					void (async () => {
+						try {
+							await deleteWeightRecord(existingRecord);
+							router.replace({ pathname: '/health-summary', params: { tab: 'weight' } } as Href);
+						} catch {
+							Alert.alert('삭제할 수 없어요', '체중 기록을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.');
+						}
+					})();
 				},
 			},
 		]);
@@ -266,7 +280,7 @@ export function WeightRecordScreen() {
 							<AppButton onPress={handleDeleteRecord} style={styles.actionButton} title="삭제" variant="danger" />
 						</View>
 					) : (
-						<AppButton onPress={handleSaveRecord} title={existingRecord ? '저장하기' : '체중 기록 저장'} />
+							<AppButton onPress={() => void handleSaveRecord()} title={existingRecord ? '저장하기' : '체중 기록 저장'} />
 					)}
 				</View>
 			</AppScreen>
@@ -304,7 +318,7 @@ const styles = StyleSheet.create({
 	cardLabel: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
 	cardHint: { ...TYPOGRAPHY.small, color: COLORS.gray500, marginVertical: 4 },
 	inputRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xl, paddingBottom: SPACING.xs, borderBottomWidth: 2, borderBottomColor: COLORS.primary },
-	inputValue: { ...TYPOGRAPHY.title1, color: COLORS.black, fontSize: 28, height: 38, lineHeight: 38, margin: 0, padding: 0, textAlignVertical: 'center' },
+	inputValue: { ...TYPOGRAPHY.title1, color: COLORS.black, flex: 1, fontSize: 28, height: 38, lineHeight: 38, margin: 0, paddingHorizontal: 2, paddingVertical: 0, textAlign: 'left', textAlignVertical: 'center' },
 	inputPlaceholder: { color: COLORS.gray500, fontFamily: TYPOGRAPHY.body2.fontFamily, fontSize: 16, lineHeight: 24 },
 	inputUnit: { ...TYPOGRAPHY.body1, color: COLORS.gray600 },
 	chipRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },

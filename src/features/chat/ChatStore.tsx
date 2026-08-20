@@ -14,6 +14,7 @@ import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import {
   flushQueuedChatImageRemovals,
   getChatImageAssetKey,
+  getChatImageUri,
   persistChatImages,
   queueChatImageRemovals,
   removeChatImages,
@@ -21,9 +22,18 @@ import {
 import {
   chatRepository,
   EMPTY_CHAT_STATE,
-  getDirectChatRoomKey,
   getMarketChatRoomKey,
 } from './services/chatRepository';
+import {
+  createRemoteChatRoom,
+  getRemoteChatMessages,
+  getRemoteChatRoom,
+  getRemoteChatRooms,
+  markRemoteChatRoomRead,
+  sendRemoteChatMessage,
+  type RemoteChatMessage,
+  type RemoteChatRoom,
+} from './services/chatApi';
 import type {
   ChatDraft,
   ChatImageAsset,
@@ -38,24 +48,8 @@ import type {
   StoredChatState,
 } from './types';
 
-export type ChatMockRoomSeed = {
-  messages: {
-    createdAt: string;
-    from: 'me' | 'other';
-    status?: 'failed' | 'sent';
-    text: string;
-  }[];
-  otherParticipant: ChatParticipantSnapshot;
-  postReference?: ChatPostReferenceSnapshot;
-  unreadCount?: number;
-};
-
 type ChatStoreContextValue = {
   addDraftImages: (roomId: string, sourceUris: string[]) => Promise<ChatMutationResult>;
-  bootstrapMockRooms: (
-    me: ChatParticipantSnapshot,
-    seeds: ChatMockRoomSeed[],
-  ) => Promise<ChatMutationResult>;
   canSendMessage: (roomId: string) => boolean;
   clearScreenSession: () => Promise<void>;
   deleteUserChatData: (userId?: string) => Promise<void>;
@@ -68,11 +62,9 @@ type ChatStoreContextValue = {
   isReady: boolean;
   markPostDeleted: (postId: string) => Promise<ChatMutationResult>;
   markRoomRead: (roomId: string) => Promise<ChatMutationResult>;
-  openMarketRoom: (
-    buyer: ChatParticipantSnapshot,
-    seller: ChatParticipantSnapshot,
-    postReference: ChatPostReferenceSnapshot,
-  ) => Promise<ChatRoomMutationResult>;
+  openMarketRoom: (postId: string) => Promise<ChatRoomMutationResult>;
+  refreshChatRoom: (roomId: string) => Promise<ChatMutationResult>;
+  refreshChatRooms: () => Promise<ChatMutationResult>;
   reloadChat: () => void;
   removeDraftImage: (roomId: string, assetId: string) => Promise<ChatMutationResult>;
   retryMessage: (messageId: string) => Promise<ChatMessageMutationResult>;
@@ -169,6 +161,80 @@ function samePostReference(
   );
 }
 
+function toMarketStatus(status: RemoteChatRoom['post']['marketStatus']) {
+  if (status === 'COMPLETED') return '완료' as const;
+  if (status === 'RESERVED') return '예약 중' as const;
+  return '진행 중' as const;
+}
+
+function toPriceLabel(price: number | null, priceNegotiable: boolean | null) {
+  if (price === null) return priceNegotiable ? '가격 제안 가능' : '가격 정보 없음';
+  return `${price.toLocaleString('ko-KR')}원${priceNegotiable ? ' · 가격 제안 가능' : ''}`;
+}
+
+function toRemoteRoom(
+  remote: RemoteChatRoom,
+  currentUserId: string,
+  previous?: ChatRoom,
+): ChatRoom {
+  const updatedAt = remote.lastMessageAt ?? previous?.updatedAt ?? new Date().toISOString();
+  const postReference: ChatPostReferenceSnapshot = {
+    authorId: remote.opponent.userId,
+    authorNickname: remote.opponent.nickname,
+    kind: 'market',
+    marketStatus: toMarketStatus(remote.post.marketStatus),
+    postId: remote.post.postId,
+    priceLabel: toPriceLabel(remote.post.price, remote.post.priceNegotiable),
+    thumbnailUri: remote.post.thumbnailUrl ?? undefined,
+    title: remote.post.title ?? '삭제된 게시글',
+    ...(remote.post.deleted ? { deletedAt: updatedAt } : {}),
+  };
+  return {
+    createdAt: previous?.createdAt ?? updatedAt,
+    dedupeKey: getMarketChatRoomKey(remote.post.postId, currentUserId, remote.opponent.userId),
+    id: remote.roomId,
+    kind: 'market',
+    ...(remote.lastMessagePreview ? { lastMessagePreview: remote.lastMessagePreview } : {}),
+    participants: [
+      previous?.participants.find(({ userId }) => userId === currentUserId) ?? {
+        nickname: '나',
+        userId: currentUserId,
+      },
+      {
+        nickname: remote.opponent.nickname,
+        profileImageUri: remote.opponent.profileUrl,
+        userId: remote.opponent.userId,
+      },
+    ],
+    postReference,
+    unreadCount: remote.unreadCount,
+    updatedAt,
+  };
+}
+
+function toRemoteMessage(message: RemoteChatMessage, roomId: string): ChatMessage {
+  return {
+    clientMessageId: `server-${message.messageId}`,
+    createdAt: message.sentAt,
+    id: message.messageId,
+    ...(message.type === 'IMAGE' && message.imageUrl
+      ? {
+          images: [{
+            assetId: message.messageId,
+            ownerId: message.senderId,
+            url: message.imageUrl,
+          }],
+        }
+      : {}),
+    kind: message.type === 'IMAGE' ? 'images' : 'text',
+    roomId,
+    senderId: message.senderId,
+    status: 'sent',
+    ...(message.content ? { text: message.content } : {}),
+    updatedAt: message.sentAt,
+  };
+}
+
 export function ChatProvider({ children }: PropsWithChildren) {
   const { currentUserId, isReady: sessionReady } = useAuthSession();
   const [state, setState] = useState<StoredChatState>(EMPTY_CHAT_STATE);
@@ -228,8 +294,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
     };
   }, [applyState, currentUserId, enqueueMutation, loadRequest, sessionReady]);
 
-  const reloadChat = useCallback(() => setLoadRequest((current) => current + 1), []);
-
   const persist = useCallback(
     async (nextState: StoredChatState) => {
       await chatRepository.saveState(nextState);
@@ -237,6 +301,72 @@ export function ChatProvider({ children }: PropsWithChildren) {
     },
     [applyState],
   );
+
+  const refreshChatRooms = useCallback(
+    () =>
+      enqueueMutation(async (): Promise<ChatMutationResult> => {
+        const userId = currentUserId;
+        if (!userId || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        try {
+          const remoteRooms = await getRemoteChatRooms();
+          const previousById = new Map(stateRef.current.rooms.map((room) => [room.id, room]));
+          const rooms = remoteRooms.map((room) => toRemoteRoom(room, userId, previousById.get(room.roomId)));
+          const roomIds = new Set(rooms.map((room) => room.id));
+          const messages = stateRef.current.messages.filter((message) => roomIds.has(message.roomId));
+          await persist({ ...stateRef.current, messages, rooms });
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
+      }),
+    [currentUserId, enqueueMutation, persist],
+  );
+
+  const refreshChatRoom = useCallback(
+    (roomId: string) =>
+      enqueueMutation(async (): Promise<ChatMutationResult> => {
+        const userId = currentUserId;
+        if (!userId || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        try {
+          const [remoteRoom, remoteMessages] = await Promise.all([
+            getRemoteChatRoom(roomId),
+            getRemoteChatMessages(roomId),
+          ]);
+          const previous = stateRef.current.rooms.find((room) => room.id === remoteRoom.roomId);
+          const room = toRemoteRoom(remoteRoom, userId, previous);
+          const pendingMessages = stateRef.current.messages.filter(
+            (message) => message.roomId === room.id && message.status !== 'sent',
+          );
+          const messages = [
+            ...stateRef.current.messages.filter((message) => message.roomId !== room.id),
+            ...remoteMessages.map((message) => toRemoteMessage(message, room.id)),
+            ...pendingMessages,
+          ];
+          await persist({
+            ...stateRef.current,
+            messages,
+            rooms: [
+              ...stateRef.current.rooms.filter((candidate) => candidate.id !== room.id),
+              room,
+            ],
+          });
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
+      }),
+    [currentUserId, enqueueMutation, persist],
+  );
+
+  useEffect(() => {
+    if (!currentUserId || !isReady) return;
+    void refreshChatRooms();
+  }, [currentUserId, isReady, refreshChatRooms]);
+
+  const reloadChat = useCallback(() => {
+    setLoadRequest((current) => current + 1);
+    void refreshChatRooms();
+  }, [refreshChatRooms]);
 
   const mutate = useCallback(
     (
@@ -304,10 +434,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
       .sort((first, second) => {
         const firstTime =
           visibleMessagesByRoomId.get(first.id)?.at(-1)?.createdAt ??
-          first.createdAt;
+          first.updatedAt;
         const secondTime =
           visibleMessagesByRoomId.get(second.id)?.at(-1)?.createdAt ??
-          second.createdAt;
+          second.updatedAt;
         return secondTime.localeCompare(firstTime);
       });
   }, [currentUserId, state.rooms, visibleMessagesByRoomId]);
@@ -348,8 +478,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const getUnreadCount = useCallback(
     (roomId: string) => {
-      if (!currentUserId || !getRoomById(roomId)) return 0;
+      const room = getRoomById(roomId);
+      if (!currentUserId || !room) return 0;
       const messages = messagesByRoomId.get(roomId) ?? EMPTY_MESSAGES;
+      if (!messages.length) return room.unreadCount ?? 0;
       const lastReadMessageId = getViewerState(state, currentUserId).lastReadMessageIds[roomId];
       const lastReadIndex = lastReadMessageId
         ? messages.findIndex((message) => message.id === lastReadMessageId)
@@ -377,161 +509,25 @@ export function ChatProvider({ children }: PropsWithChildren) {
   );
 
   const openMarketRoom = useCallback(
-    (
-      buyer: ChatParticipantSnapshot,
-      seller: ChatParticipantSnapshot,
-      postReference: ChatPostReferenceSnapshot,
-    ) =>
-      enqueueMutation(async (): Promise<ChatRoomMutationResult> => {
-        const userId = currentUserId;
-        if (!userId || !readyRef.current) return { ok: false, reason: 'not-ready' };
-        if (postReference.kind !== 'market' || buyer.userId !== userId) {
-          return { ok: false, reason: 'invalid' };
-        }
-        if (seller.userId === userId) return { ok: false, reason: 'self' };
-        const dedupeKey = getMarketChatRoomKey(postReference.postId, userId, seller.userId);
-        const existing = stateRef.current.rooms.find((room) => room.dedupeKey === dedupeKey);
-        if (existing) return { ok: true, roomId: existing.id };
-        if (postReference.deletedAt) return { ok: false, reason: 'deleted-post' };
-        if (postReference.marketStatus === '완료') {
-          return { ok: false, reason: 'completed-post' };
-        }
-        if (seller.withdrawnAt) return { ok: false, reason: 'read-only' };
-
-        const now = new Date().toISOString();
-        const storedReference = { ...postReference, authorId: seller.userId };
-        const room: ChatRoom = {
-          createdAt: now,
-          dedupeKey,
-          id: createId('chat-room'),
-          kind: 'market',
-          participants: [buyer, seller],
-          postReference: storedReference,
-          updatedAt: now,
-        };
-        const referenceMessage: ChatMessage = {
-          clientMessageId: createId('post-reference'),
-          createdAt: now,
-          id: createId('chat-message'),
-          kind: 'post',
-          postReference: storedReference,
-          roomId: room.id,
-          senderId: buyer.userId,
-          status: 'sent',
-          updatedAt: now,
-        };
-        try {
-          await persist({
-            ...stateRef.current,
-            messages: [...stateRef.current.messages, referenceMessage],
-            rooms: [...stateRef.current.rooms, room],
-          });
-          return { ok: true, roomId: room.id };
-        } catch {
-          return { ok: false, reason: 'error' };
-        }
-      }),
-    [currentUserId, enqueueMutation, persist],
-  );
-
-  const bootstrapMockRooms = useCallback(
-    (me: ChatParticipantSnapshot, seeds: ChatMockRoomSeed[]) =>
-      enqueueMutation(async (): Promise<ChatMutationResult> => {
-        const userId = currentUserId;
-        if (!userId || !readyRef.current || me.userId !== userId) {
-          return { ok: false, reason: 'not-ready' };
-        }
-        const current = stateRef.current;
-        if (current.mockBootstrappedUserIds.includes(userId)) return { ok: true };
-
-        const rooms = [...current.rooms];
-        const messages = [...current.messages];
-        const previousViewer = getViewerState(current, userId);
-        const lastReadMessageIds = { ...previousViewer.lastReadMessageIds };
-
-        for (const seed of seeds) {
-          if (seed.otherParticipant.userId === userId || seed.otherParticipant.withdrawnAt) continue;
-          const postReference = seed.postReference
-            ? {
-                ...seed.postReference,
-                authorId: seed.postReference.authorId ?? seed.otherParticipant.userId,
-              }
-            : undefined;
-          const dedupeKey = postReference?.kind === 'market'
-            ? getMarketChatRoomKey(
-                postReference.postId,
-                userId,
-                seed.otherParticipant.userId,
-              )
-            : getDirectChatRoomKey(userId, seed.otherParticipant.userId);
-          if (rooms.some((room) => room.dedupeKey === dedupeKey)) continue;
-          const firstCreatedAt = seed.messages[0]?.createdAt ?? new Date().toISOString();
-          const room: ChatRoom = {
-            createdAt: firstCreatedAt,
-            dedupeKey,
-            id: createId('chat-room'),
-            kind: postReference?.kind === 'market' ? 'market' : 'direct',
-            participants: [me, seed.otherParticipant],
-            postReference,
-            updatedAt: seed.messages.at(-1)?.createdAt ?? firstCreatedAt,
-          };
-          const seededMessages = seed.messages
-            .filter((message) => Boolean(message.text.trim()))
-            .map<ChatMessage>((message) => ({
-              clientMessageId: createId('mock-client'),
-              createdAt: message.createdAt,
-              id: createId('mock-message'),
-              kind: 'text',
-              roomId: room.id,
-              senderId: message.from === 'me' ? userId : seed.otherParticipant.userId,
-              status: message.status ?? 'sent',
-              text: message.text.trim().slice(0, MAX_MESSAGE_LENGTH),
-              updatedAt: message.createdAt,
-            }));
-          rooms.push(room);
-          messages.push(...seededMessages);
-
-          if ((seed.unreadCount ?? 0) === 0) {
-            const lastSentMessage = seededMessages
-              .filter((message) => message.status === 'sent')
-              .at(-1);
-            if (lastSentMessage) lastReadMessageIds[room.id] = lastSentMessage.id;
-          } else if ((seed.unreadCount ?? 0) > 0) {
-            const unreadIncomingIds = seededMessages
-              .filter((message) => message.senderId !== userId && message.status === 'sent')
-              .slice(-(seed.unreadCount ?? 0))
-              .map((message) => message.id);
-            const firstUnreadIndex = seededMessages.findIndex(
-              (message) => message.id === unreadIncomingIds[0],
-            );
-            if (firstUnreadIndex > 0) {
-              lastReadMessageIds[room.id] = seededMessages[firstUnreadIndex - 1].id;
-            }
-          }
-        }
-
-        try {
-          await persist({
-            ...current,
-            messages,
-            mockBootstrappedUserIds: [...current.mockBootstrappedUserIds, userId],
-            rooms,
-            viewerStates: {
-              ...current.viewerStates,
-              [userId]: { ...previousViewer, lastReadMessageIds },
-            },
-          });
-          return { ok: true };
-        } catch {
-          return { ok: false, reason: 'error' };
-        }
-      }),
-    [currentUserId, enqueueMutation, persist],
+    async (postId: string): Promise<ChatRoomMutationResult> => {
+      if (!currentUserId || !readyRef.current) return { ok: false, reason: 'not-ready' };
+      try {
+        const roomId = await createRemoteChatRoom(postId);
+        const result = await refreshChatRoom(roomId);
+        return result.ok ? { ok: true, roomId } : { ok: false, reason: result.reason };
+      } catch {
+        return { ok: false, reason: 'error' };
+      }
+    },
+    [currentUserId, refreshChatRoom],
   );
 
   const markRoomRead = useCallback(
     (roomId: string) =>
-      mutate((current, userId) => {
+      enqueueMutation(async (): Promise<ChatMutationResult> => {
+        const userId = currentUserId;
+        if (!userId || !readyRef.current) return { ok: false, reason: 'not-ready' };
+        const current = stateRef.current;
         const room = current.rooms.find(
           (candidate) => candidate.id === roomId && hasParticipant(candidate, userId),
         );
@@ -540,7 +536,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
         if (!lastMessage) return { ok: true };
         const previous = getViewerState(current, userId);
         if (previous.lastReadMessageIds[roomId] === lastMessage.id) return { ok: true };
-        return {
+        if (!/^\d+$/.test(lastMessage.id)) return { ok: true };
+        try {
+          await markRemoteChatRoomRead(roomId, lastMessage.id);
+          await persist({
           ...current,
           viewerStates: {
             ...current.viewerStates,
@@ -552,9 +551,13 @@ export function ChatProvider({ children }: PropsWithChildren) {
               },
             },
           },
-        };
+          });
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
       }),
-    [mutate],
+    [currentUserId, enqueueMutation, persist],
   );
 
   const setSearchQuery = useCallback(
@@ -717,23 +720,37 @@ export function ChatProvider({ children }: PropsWithChildren) {
         if (!text && !draft.images.length) return { ok: false, reason: 'empty' };
 
         const now = new Date().toISOString();
-        const message: ChatMessage = {
-          clientMessageId: createId(`client-${userId}`),
-          createdAt: now,
-          id: createId('chat-message'),
-          images: draft.images.length ? draft.images : undefined,
-          kind: draft.images.length ? 'images' : 'text',
-          roomId,
-          senderId: userId,
-          status: 'sending',
-          text: text || undefined,
-          updatedAt: now,
-        };
+        const messages: ChatMessage[] = [
+          ...(text
+            ? [{
+                clientMessageId: createId(`client-${userId}`),
+                createdAt: now,
+                id: createId('chat-message'),
+                kind: 'text' as const,
+                roomId,
+                senderId: userId,
+                status: 'sending' as const,
+                text,
+                updatedAt: now,
+              }]
+            : []),
+          ...draft.images.map((image) => ({
+            clientMessageId: createId(`client-${userId}`),
+            createdAt: now,
+            id: createId('chat-message'),
+            images: [image],
+            kind: 'images' as const,
+            roomId,
+            senderId: userId,
+            status: 'sending' as const,
+            updatedAt: now,
+          })),
+        ];
         const drafts = { ...previousViewer.drafts };
         delete drafts[roomId];
         const sendingState: StoredChatState = {
           ...stateRef.current,
-          messages: [...stateRef.current.messages, message],
+          messages: [...stateRef.current.messages, ...messages],
           rooms: stateRef.current.rooms.map((candidate) =>
             candidate.id === roomId ? { ...candidate, updatedAt: now } : candidate,
           ),
@@ -743,26 +760,34 @@ export function ChatProvider({ children }: PropsWithChildren) {
           },
         };
 
-        let sendingPersisted = false;
         try {
           await persist(sendingState);
-          sendingPersisted = true;
-          const sentAt = new Date().toISOString();
-          await persist({
-            ...stateRef.current,
-            messages: stateRef.current.messages.map((candidate) =>
-              candidate.id === message.id
-                ? { ...candidate, status: 'sent', updatedAt: sentAt }
-                : candidate,
-            ),
-          });
-          return { messageId: message.id, ok: true };
+          let sentMessageId = messages.at(-1)?.id;
+          for (const message of messages) {
+            const image = message.images?.[0];
+            const remoteMessage = await sendRemoteChatMessage(roomId, {
+              ...(image ? { imageUri: getChatImageUri(image) } : {}),
+              ...(message.text ? { text: message.text } : {}),
+            });
+            const sentMessage = toRemoteMessage(remoteMessage, roomId);
+            await persist({
+              ...stateRef.current,
+              messages: stateRef.current.messages.map((candidate) =>
+                candidate.id === message.id ? sentMessage : candidate,
+              ),
+              rooms: stateRef.current.rooms.map((candidate) =>
+                candidate.id === roomId ? { ...candidate, updatedAt: sentMessage.createdAt } : candidate,
+              ),
+            });
+            if (image) await queueChatImageRemovals([image]);
+            sentMessageId = sentMessage.id;
+          }
+          return sentMessageId ? { messageId: sentMessageId, ok: true } : { ok: false, reason: 'error' };
         } catch {
-          if (!sendingPersisted) return { ok: false, reason: 'error' };
           const failedState = {
             ...stateRef.current,
             messages: stateRef.current.messages.map((candidate) =>
-              candidate.id === message.id
+              messages.some((message) => message.id === candidate.id) && candidate.status === 'sending'
                 ? {
                     ...candidate,
                     status: 'failed' as const,
@@ -773,7 +798,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
           };
           await chatRepository.saveState(failedState).catch(() => undefined);
           applyState(failedState);
-          return { messageId: message.id, ok: false, reason: 'error' };
+          return { messageId: messages.at(-1)?.id, ok: false, reason: 'error' };
         }
       }),
     [applyState, currentUserId, enqueueMutation, persist],
@@ -796,27 +821,28 @@ export function ChatProvider({ children }: PropsWithChildren) {
             messages: stateRef.current.messages.map((candidate) =>
               candidate.id === messageId
                 ? { ...candidate, status: 'sending', updatedAt: new Date().toISOString() }
-                : candidate,
+              : candidate,
             ),
           });
-          const sentAt = new Date().toISOString();
+          const image = message.images?.[0];
+          const remoteMessage = await sendRemoteChatMessage(message.roomId, {
+            ...(image ? { imageUri: getChatImageUri(image) } : {}),
+            ...(message.text ? { text: message.text } : {}),
+          });
+          const sentMessage = toRemoteMessage(remoteMessage, message.roomId);
           await persist({
             ...stateRef.current,
             messages: stateRef.current.messages.map((candidate) =>
               candidate.id === messageId
-                ? {
-                    ...candidate,
-                    createdAt: sentAt,
-                    status: 'sent',
-                    updatedAt: sentAt,
-                  }
+                ? sentMessage
                 : candidate,
             ),
             rooms: stateRef.current.rooms.map((room) =>
-              room.id === message.roomId ? { ...room, updatedAt: sentAt } : room,
+              room.id === message.roomId ? { ...room, updatedAt: sentMessage.createdAt } : room,
             ),
           });
-          return { messageId, ok: true };
+          if (image) await queueChatImageRemovals([image]);
+          return { messageId: sentMessage.id, ok: true };
         } catch {
           const failedState = {
             ...stateRef.current,
@@ -1032,9 +1058,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
         const nextState: StoredChatState = {
           ...current,
           messages,
-          mockBootstrappedUserIds: current.mockBootstrappedUserIds.filter(
-            (candidate) => candidate !== userId,
-          ),
           rooms: current.rooms.map((room) => ({
             ...room,
             participants: room.participants.map((participant) =>
@@ -1074,7 +1097,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const value = useMemo<ChatStoreContextValue>(
     () => ({
       addDraftImages,
-      bootstrapMockRooms,
       canSendMessage,
       clearScreenSession,
       deleteUserChatData,
@@ -1088,6 +1110,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       markPostDeleted,
       markRoomRead,
       openMarketRoom,
+      refreshChatRoom,
+      refreshChatRooms,
       reloadChat,
       removeDraftImage,
       retryMessage,
@@ -1102,7 +1126,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }),
     [
       addDraftImages,
-      bootstrapMockRooms,
       canSendMessage,
       clearScreenSession,
       deleteUserChatData,
@@ -1115,6 +1138,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       markPostDeleted,
       markRoomRead,
       openMarketRoom,
+      refreshChatRoom,
+      refreshChatRooms,
       reloadChat,
       removeDraftImage,
       retryMessage,

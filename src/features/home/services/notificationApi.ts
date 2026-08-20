@@ -11,7 +11,7 @@ import type {
   NotificationTarget,
 } from '../types';
 
-type RemoteNotificationCategory = 'AI' | 'COMMUNITY' | 'EMERGENCY' | 'TODO';
+type RemoteNotificationCategory = 'AI' | 'CHAT' | 'COMMUNITY' | 'EMERGENCY' | 'TODO';
 
 type NotificationPage = {
   hasNext: boolean;
@@ -21,6 +21,7 @@ type NotificationPage = {
 
 const CATEGORY_META: Record<RemoteNotificationCategory, Pick<NotificationItem, 'category' | 'categoryLabel'>> = {
   AI: { category: 'ai', categoryLabel: 'AI 분석' },
+  CHAT: { category: 'chat', categoryLabel: '채팅' },
   COMMUNITY: { category: 'community', categoryLabel: '커뮤니티' },
   EMERGENCY: { category: 'emergency', categoryLabel: '건강 알림' },
   TODO: { category: 'schedule', categoryLabel: '할 일' },
@@ -28,6 +29,7 @@ const CATEGORY_META: Record<RemoteNotificationCategory, Pick<NotificationItem, '
 
 const REMOTE_CATEGORY: Record<NotificationCategory, RemoteNotificationCategory> = {
   ai: 'AI',
+  chat: 'CHAT',
   community: 'COMMUNITY',
   emergency: 'EMERGENCY',
   schedule: 'TODO',
@@ -74,7 +76,7 @@ function readTarget(value: Record<string, unknown>): NotificationTarget {
   const type = value.targetType;
   const id = value.targetId;
   if (type === undefined || type === null || id === undefined || id === null) return null;
-  if (type !== 'TODO' && type !== 'VISIT' && type !== 'POST' && type !== 'MAP') {
+  if (type !== 'TODO' && type !== 'VISIT' && type !== 'POST' && type !== 'MAP' && type !== 'CHAT_ROOM') {
     throw new NotificationApiContractError();
   }
 
@@ -97,6 +99,9 @@ function parseRemoteNotification(value: unknown): NotificationItem {
 
   return {
     ...category,
+    actionLabel: typeof notification.ctaLabel === 'string' && notification.ctaLabel.trim()
+      ? notification.ctaLabel.trim()
+      : null,
     dateGroupLabel: getDateGroupLabel(createdAt),
     description: readString(notification.body),
     id: readId(notification.id),

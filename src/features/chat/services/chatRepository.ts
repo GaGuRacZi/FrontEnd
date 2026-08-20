@@ -15,7 +15,6 @@ const CHAT_STORAGE_KEY = 'paw:chat-store';
 
 export const EMPTY_CHAT_STATE: StoredChatState = {
   messages: [],
-  mockBootstrappedUserIds: [],
   rooms: [],
   viewerStates: {},
 };
@@ -203,8 +202,14 @@ function normalizeRoom(value: unknown): ChatRoom | null {
     dedupeKey: normalizedDedupeKey,
     id,
     kind: value.kind,
+    ...(typeof value.lastMessagePreview === 'string'
+      ? { lastMessagePreview: value.lastMessagePreview }
+      : {}),
     participants,
     updatedAt,
+    ...(Number.isSafeInteger(value.unreadCount) && Number(value.unreadCount) >= 0
+      ? { unreadCount: Number(value.unreadCount) }
+      : {}),
     ...(postReference ? { postReference } : {}),
   };
 }
@@ -374,23 +379,7 @@ export function normalizeStoredChatState(value: unknown): StoredChatState {
           ]),
       )
     : {};
-  const participantIds = new Set(
-    rooms.flatMap((room) => room.participants.map((participant) => participant.userId)),
-  );
-  const mockBootstrappedUserIds = Array.isArray(value.mockBootstrappedUserIds)
-    ? [
-        ...new Set(
-          value.mockBootstrappedUserIds
-            .filter(
-              (userId): userId is string =>
-                typeof userId === 'string' && participantIds.has(userId.trim()),
-            )
-            .map((userId) => userId.trim()),
-        ),
-      ]
-    : [];
-
-  return { messages, mockBootstrappedUserIds, rooms, viewerStates };
+  return { messages, rooms, viewerStates };
 }
 
 export const chatRepository = {
@@ -403,7 +392,6 @@ export const chatRepository = {
       if (
         !isRecord(parsed) ||
         !Array.isArray(parsed.messages) ||
-        !Array.isArray(parsed.mockBootstrappedUserIds) ||
         !Array.isArray(parsed.rooms) ||
         !isRecord(parsed.viewerStates)
       ) {

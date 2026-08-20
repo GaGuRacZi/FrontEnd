@@ -76,6 +76,8 @@ export const styles = StyleSheet.create({
     gap: SPACING.xl, paddingBottom: SPACING.jumbo, paddingHorizontal: SPACING.xxl, paddingTop: SPACING.lg,
     ...SHADOWS.modal,
   },
+  addSheet: { maxHeight: '92%' },
+  addSheetContent: { gap: SPACING.xl },
   sheetTall: { paddingBottom: SPACING.jumbo + 16 },
   handle: { alignSelf: 'center', backgroundColor: COLORS.gray300, borderRadius: RADIUS.round, height: 4, marginBottom: SPACING.sm, width: 40 },
   sheetHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },

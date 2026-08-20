@@ -28,7 +28,6 @@ import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SHADOWS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { ChatEntryButton } from '@/src/features/chat/components';
-import { toChatParticipant, toChatPostReference } from '@/src/features/chat/communityAdapter';
 import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
@@ -36,7 +35,6 @@ import { formatKoreanRelativeTime } from '@/src/utils/koreanDateTime';
 import { formatCompactRegion } from '@/src/utils/location';
 
 import {
-  COMMUNITY_AD_TEXT,
   COMMUNITY_TABS,
   MARKET_CATEGORIES,
   MARKET_STATUSES,
@@ -737,18 +735,7 @@ export function CommunityPostDetailScreen({
     chatOpeningRef.current = true;
     setChatOpening(true);
     try {
-      const buyer = toChatParticipant(
-        createCommunityAuthor(profile, selectedPet, currentUserId),
-      );
-      const seller = {
-        ...toChatParticipant(selectedPost.author),
-        ...(selectedPost.location.trim() ? { location: selectedPost.location } : {}),
-      };
-      const result = await openMarketRoom(
-        buyer,
-        seller,
-        toChatPostReference(selectedPost),
-      );
+      const result = await openMarketRoom(selectedPost.id);
       if (result.ok) {
         router.push({
           pathname: '/chat/[roomId]',
@@ -775,7 +762,7 @@ export function CommunityPostDetailScreen({
       chatOpeningRef.current = false;
       setChatOpening(false);
     }
-  }, [currentUserId, openMarketRoom, profile, router, selectedPet, selectedPost]);
+  }, [currentUserId, openMarketRoom, router, selectedPost]);
 
   useEffect(() => {
     setImageIndex(0);

@@ -40,8 +40,10 @@ export type ChatRoom = {
   dedupeKey: string;
   id: string;
   kind: ChatRoomKind;
+  lastMessagePreview?: string;
   participants: ChatParticipantSnapshot[];
   postReference?: ChatPostReferenceSnapshot;
+  unreadCount?: number;
   updatedAt: string;
 };
 
@@ -73,7 +75,6 @@ export type ChatViewerState = {
 
 export type StoredChatState = {
   messages: ChatMessage[];
-  mockBootstrappedUserIds: string[];
   rooms: ChatRoom[];
   viewerStates: Record<string, ChatViewerState>;
 };

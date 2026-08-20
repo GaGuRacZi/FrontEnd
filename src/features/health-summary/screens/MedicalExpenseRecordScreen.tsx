@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Href, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppButton, AppIcon, DatePickerSheet } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
@@ -48,7 +48,7 @@ export function MedicalExpenseRecordScreen() {
 	const router = useRouter();
 	const isSaving = useRef(false);
 	const { selectedPet } = usePetStore();
-	const { addMedicalExpenseRecord, deleteMedicalExpenseRecord, medicalExpenseRecords } = useHealthSummaryStore();
+	const { deleteMedicalExpenseRecord, medicalExpenseRecords, saveMedicalExpenseRecord } = useHealthSummaryStore();
 	const { recordId } = useLocalSearchParams<{ recordId?: string }>();
 	const existingRecord = recordId
 		? medicalExpenseRecords.find(({ id }) => id === recordId)
@@ -68,7 +68,6 @@ export function MedicalExpenseRecordScreen() {
 	const [hospitalName, setHospitalName] = useState(existingRecord?.hospitalName ?? '');
 	const [paymentMethod, setPaymentMethod] = useState<string | null>(existingRecord?.paymentMethod ?? null);
 	const [paymentMethodModalVisible, setPaymentMethodModalVisible] = useState(false);
-	const [receiptImageUri, setReceiptImageUri] = useState<string | null>(null);
 
 	const recordDate = formatRecordDate(recordedAt);
 	const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -95,25 +94,25 @@ export function MedicalExpenseRecordScreen() {
 	};
 
 	const handleScanReceipt = async () => {
-		if (!isEditing) return;
 		try {
-			const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-			if (!permission.granted) {
-				Alert.alert('권한 필요', '영수증 사진을 선택하려면 갤러리 접근 권한이 필요해요.');
-				return;
+			if (Platform.OS === 'ios') {
+				const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+				if (!permission.granted) {
+					Alert.alert('권한 필요', '영수증 사진을 선택하려면 사진 라이브러리 접근 권한이 필요해요.');
+					return;
+				}
 			}
 
 			const result = await ImagePicker.launchImageLibraryAsync({
+				defaultTab: 'photos',
 				mediaTypes: ['images'],
-				allowsEditing: true,
 				quality: 0.8,
 			});
-
-			if (!result.canceled && result.assets && result.assets[0]) {
-				setReceiptImageUri(result.assets[0].uri);
+			if (!result.canceled) {
+				Alert.alert('영수증 스캔에 실패하였습니다.', '의료비 정보를 직접 입력해주세요.');
 			}
 		} catch {
-			Alert.alert('오류', '영수증 이미지를 불러오는 중 문제가 발생했어요.');
+			Alert.alert('영수증 스캔에 실패하였습니다.', '의료비 정보를 직접 입력해주세요.');
 		}
 	};
 
@@ -145,12 +144,7 @@ export function MedicalExpenseRecordScreen() {
 			: [...items, nextItem];
 
 		const newTotalCost = updatedItems.reduce((sum, item) => sum + parseNumericValue(item.cost), 0);
-		const currentAmountNum = parseNumericValue(amount);
-
-		if (newTotalCost > currentAmountNum) {
-			setAmount(newTotalCost.toLocaleString());
-		}
-
+		setAmount(newTotalCost.toLocaleString());
 		setItems(updatedItems);
 		closeItemEditor();
 	};
@@ -158,11 +152,13 @@ export function MedicalExpenseRecordScreen() {
 	const handleDeleteItem = () => {
 		if (!selectedItemId) return;
 		setIsEditing(true);
-		setItems((current) => current.filter(({ id }) => id !== selectedItemId));
+		const next = items.filter(({ id }) => id !== selectedItemId);
+		setItems(next);
+		setAmount(next.reduce((sum, item) => sum + parseNumericValue(item.cost), 0).toLocaleString());
 		setSelectedItemId(null);
 	};
 
-	const handleSaveRecord = () => {
+	const handleSaveRecord = async () => {
 		if (isSaving.current) return;
 		if (!selectedPet) {
 			Alert.alert('반려동물 선택 필요', '의료비를 기록할 반려동물을 먼저 선택해주세요.');
@@ -170,6 +166,14 @@ export function MedicalExpenseRecordScreen() {
 		}
 		if (parseNumericValue(amount) <= 0) {
 			Alert.alert('입력 오류', '결제 금액을 입력해주세요.');
+			return;
+		}
+		if (items.length === 0) {
+			Alert.alert('입력 오류', '세부 항목을 하나 이상 추가해주세요.');
+			return;
+		}
+		if (parseNumericValue(amount) !== totalItemsCost) {
+			Alert.alert('입력 오류', '결제 금액과 세부 항목 금액 합계가 같아야 해요.');
 			return;
 		}
 		if (!hospitalName.trim()) {
@@ -183,13 +187,12 @@ export function MedicalExpenseRecordScreen() {
 		isSaving.current = true;
 		const finalCost = Math.max(parseNumericValue(amount), totalItemsCost);
 		const newRecord: MedicalExpenseRecord = {
-			id: existingRecord?.id ?? String(Date.now()),
+			id: existingRecord?.id ?? '',
 			petId: existingRecord?.petId ?? selectedPet.id,
 			date: recordDate,
 			hospitalName: hospitalName.trim(),
 			totalCost: finalCost,
 			paymentMethod,
-			receiptScanned: existingRecord?.receiptScanned || !!receiptImageUri,
 			items: items.map((item) => ({
 				id: item.id,
 				name: item.name,
@@ -197,12 +200,17 @@ export function MedicalExpenseRecordScreen() {
 			})),
 		};
 
-		addMedicalExpenseRecord(newRecord);
-
-		router.replace({
-			pathname: '/health-summary',
-			params: { tab: 'medical' },
-		} as Href);
+		try {
+			await saveMedicalExpenseRecord(newRecord);
+			router.replace({
+				pathname: '/health-summary',
+				params: { tab: 'medical' },
+			} as Href);
+		} catch {
+			Alert.alert('저장할 수 없어요', '의료비 기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+		} finally {
+			isSaving.current = false;
+		}
 	};
 
 	const handleDeleteRecord = () => {
@@ -213,8 +221,14 @@ export function MedicalExpenseRecordScreen() {
 				style: 'destructive',
 				text: '삭제',
 				onPress: () => {
-					deleteMedicalExpenseRecord(existingRecord.id);
-					router.replace({ pathname: '/health-summary', params: { tab: 'medical' } } as Href);
+					void (async () => {
+						try {
+							await deleteMedicalExpenseRecord(existingRecord);
+							router.replace({ pathname: '/health-summary', params: { tab: 'medical' } } as Href);
+						} catch {
+							Alert.alert('삭제할 수 없어요', '의료비 기록을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.');
+						}
+					})();
 				},
 			},
 		]);
@@ -236,34 +250,19 @@ export function MedicalExpenseRecordScreen() {
 						</View>
 						<View style={styles.scanTextGroup}>
 							<Text style={styles.scanBannerTitle}>영수증으로 빠르게 기록해요</Text>
-							<Text style={styles.scanBannerSub}>OCR로 병원명, 금액, 날짜를 자동 입력해요.</Text>
+							<Text style={styles.scanBannerSub}>영수증 사진을 선택해 정보를 확인해보세요.</Text>
 						</View>
 					</View>
 					<TouchableOpacity
-						accessibilityLabel="영수증 스캔"
+						accessibilityLabel="영수증 사진 선택"
 						accessibilityRole="button"
 						activeOpacity={0.8}
-						disabled={!isEditing}
-						onPress={handleScanReceipt}
+						onPress={() => void handleScanReceipt()}
 						style={styles.scanButton}
 					>
-						<Text style={styles.scanButtonText}>스캔</Text>
+						<Text style={styles.scanButtonText}>선택</Text>
 					</TouchableOpacity>
 				</View>
-
-				{receiptImageUri ? (
-					<View style={styles.receiptPreviewCard}>
-						<Image source={{ uri: receiptImageUri }} style={styles.receiptImage} />
-						<TouchableOpacity
-							activeOpacity={0.8}
-							disabled={!isEditing}
-							onPress={() => setReceiptImageUri(null)}
-							style={styles.removeReceiptButton}
-						>
-							<AppIcon color={COLORS.background} name="close" size={14} />
-						</TouchableOpacity>
-					</View>
-				) : null}
 
 				<View style={styles.card}>
 					<Text style={styles.cardLabel}>결제 금액</Text>
@@ -294,14 +293,14 @@ export function MedicalExpenseRecordScreen() {
 						<AppIcon color={COLORS.gold} name="card-outline" size={22} />
 						<View style={styles.metaTextGroup}>
 							<Text style={styles.metaLabel}>결제수단</Text>
-							<Text style={[styles.metaValue, !paymentMethod && styles.placeholderText]}>{paymentMethod ?? '결제수단을 선택해주세요'}</Text>
+							<Text style={[styles.metaValue, !paymentMethod && styles.placeholderText]}>{paymentMethod ?? '선택해주세요'}</Text>
 						</View>
 					</TouchableOpacity>
 				</View>
 
 				<View style={styles.card}>
 					<View style={styles.hospitalRow}>
-						<View>
+						<View style={styles.hospitalTextGroup}>
 							<Text style={styles.cardLabel}>병원</Text>
 							<TextInput
 								editable={isEditing}
@@ -330,6 +329,7 @@ export function MedicalExpenseRecordScreen() {
 							<AppIcon color={COLORS.gold} name="add" size={16} />
 						</TouchableOpacity>
 					</View>
+					<Text style={styles.itemHint}>각 목록을 꾹 눌러 수정하거나 삭제할 수 있어요.</Text>
 					<View style={styles.itemList}>
 						{items.map((item, index) => (
 							<React.Fragment key={item.id}>
@@ -356,7 +356,7 @@ export function MedicalExpenseRecordScreen() {
 						<AppButton onPress={handleDeleteRecord} style={styles.actionButton} title="삭제" variant="danger" />
 					</View>
 				) : (
-					<AppButton onPress={handleSaveRecord} style={{ backgroundColor: COLORS.gold }} title={existingRecord ? '저장하기' : '의료비 기록 저장'} />
+						<AppButton onPress={() => void handleSaveRecord()} style={{ backgroundColor: COLORS.gold }} title={existingRecord ? '저장하기' : '의료비 기록 저장'} />
 				)}
 			</View>
 			<DatePickerSheet
@@ -451,29 +451,19 @@ export function MedicalExpenseRecordScreen() {
 
 const styles = StyleSheet.create({
 	scrollContent: { gap: SPACING.lg, paddingBottom: SPACING.xxxl, paddingTop: SPACING.xxl },
-	scanBanner: { alignItems: 'center', backgroundColor: COLORS.cream, borderRadius: RADIUS.lg, flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl },
-	scanBannerLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md, flex: 1 },
-	scanIconBg: {
-		alignItems: 'center',
-		backgroundColor: COLORS.background,
-		borderRadius: RADIUS.round,
-		height: 40,
-		justifyContent: 'center',
-		width: 40,
-	},
-	scanIcon: { height: 22, width: 22, tintColor: COLORS.gold },
+	scanBanner: { alignItems: 'center', backgroundColor: COLORS.cream, borderRadius: RADIUS.lg, flexDirection: 'row', gap: SPACING.md, padding: SPACING.xl },
+	scanBannerLeft: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: SPACING.md },
+	scanIconBg: { alignItems: 'center', backgroundColor: COLORS.background, borderRadius: RADIUS.round, height: 40, justifyContent: 'center', width: 40 },
+	scanIcon: { height: 22, tintColor: COLORS.gold, width: 22 },
 	scanTextGroup: { flex: 1, gap: 2 },
 	scanBannerTitle: { ...TYPOGRAPHY.body2, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
 	scanBannerSub: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
-	scanButton: { backgroundColor: COLORS.background, borderRadius: RADIUS.round, paddingHorizontal: 16, paddingVertical: 8 },
+	scanButton: { backgroundColor: COLORS.background, borderRadius: RADIUS.round, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm },
 	scanButtonText: { ...TYPOGRAPHY.smallButton, color: COLORS.gold },
-	receiptPreviewCard: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.md, position: 'relative', width: 120, height: 120 },
-	receiptImage: { width: '100%', height: '100%', borderRadius: RADIUS.md },
-	removeReceiptButton: { position: 'absolute', top: 4, right: 4, backgroundColor: COLORS.gray800, borderRadius: RADIUS.round, width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
 	card: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.xxl },
 	cardLabel: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
 	inputRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xl, paddingBottom: SPACING.xs, borderBottomWidth: 2, borderBottomColor: COLORS.gold },
-	inputValue: { ...TYPOGRAPHY.title1, color: COLORS.black, fontSize: 28, height: 38, lineHeight: 38, margin: 0, padding: 0, textAlignVertical: 'center' },
+	inputValue: { ...TYPOGRAPHY.title1, color: COLORS.black, flex: 1, fontSize: 28, height: 38, lineHeight: 38, margin: 0, paddingHorizontal: 2, paddingVertical: 0, textAlign: 'left', textAlignVertical: 'center' },
 	inputPlaceholder: { color: COLORS.gray500, fontFamily: TYPOGRAPHY.body2.fontFamily, fontSize: 16, lineHeight: 24 },
 	inputUnit: { ...TYPOGRAPHY.body1, color: COLORS.black },
 	rowTwoCards: { flexDirection: 'row', gap: SPACING.md },
@@ -484,10 +474,12 @@ const styles = StyleSheet.create({
 	metaValue: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
 	placeholderText: { color: COLORS.gray500, fontFamily: TYPOGRAPHY.body2.fontFamily, fontSize: 12 },
 	hospitalRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-	hospitalInput: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily, height: 32, lineHeight: 24, marginTop: SPACING.md, paddingBottom: 2, paddingTop: 4, textAlignVertical: 'center' },
+	hospitalTextGroup: { flex: 1, minWidth: 0 },
+	hospitalInput: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily, height: 34, includeFontPadding: false, lineHeight: 34, marginTop: SPACING.md, paddingHorizontal: 0, paddingVertical: 0, textAlignVertical: 'center' },
 	hospitalTag: { backgroundColor: COLORS.cream, borderRadius: RADIUS.round, paddingHorizontal: SPACING.md, paddingVertical: 6 },
 	hospitalTagText: { ...TYPOGRAPHY.small, color: COLORS.gold, fontFamily: TYPOGRAPHY.button.fontFamily },
 	itemHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+	itemHint: { ...TYPOGRAPHY.caption, color: COLORS.gray500, marginTop: SPACING.sm },
 	addItemBtn: { alignItems: 'center', backgroundColor: COLORS.cream, borderRadius: RADIUS.round, height: 32, justifyContent: 'center', width: 32 },
 	itemList: { marginTop: SPACING.lg },
 	itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.sm },

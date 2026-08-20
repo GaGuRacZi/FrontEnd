@@ -274,7 +274,10 @@ export async function getRemoteVisits(petId: string) {
     'VISIT_LIST_200',
   );
   if (!Array.isArray(result)) throw new VisitApiContractError();
-  return result.map(readVisit);
+  return result.map(readVisit).sort((first, second) => {
+    const difference = Date.parse(second.visitedAt) - Date.parse(first.visitedAt);
+    return Number.isFinite(difference) ? difference : 0;
+  });
 }
 
 export async function createRemoteVisit(petId: string, audioUri: string) {
@@ -339,9 +342,22 @@ export async function addRemotePrescription(visitId: string, input: {
   takeTimes?: RemotePrescriptionTakeTime[];
 }) {
   const id = Number(visitId);
-  if (!Number.isSafeInteger(id) || id <= 0) throw new VisitApiContractError();
+  if (
+    !Number.isSafeInteger(id) ||
+    id <= 0 ||
+    !Number.isSafeInteger(input.dosageAmount) ||
+    input.dosageAmount < 0
+  ) {
+    throw new VisitApiContractError();
+  }
   const medicationId = input.medicationId === undefined ? undefined : Number(input.medicationId);
   if (medicationId !== undefined && (!Number.isSafeInteger(medicationId) || medicationId <= 0)) {
+    throw new VisitApiContractError();
+  }
+  if (
+    (input.source === 'CATALOG' && medicationId === undefined) ||
+    (input.source === 'CUSTOM' && !input.nameKo?.trim())
+  ) {
     throw new VisitApiContractError();
   }
   return readPrescription(readSuccess(await apiRequest<unknown>(`/visits/${id}/medications`, {

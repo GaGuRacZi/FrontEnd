@@ -3,7 +3,7 @@ import type { Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { LoadingView } from '@/src/components/common';
+import { EmptyState, LoadingView } from '@/src/components/common';
 import { MedicationDetailModal, MedicationSearchModal } from '@/src/components/modal';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
@@ -79,6 +79,14 @@ export function DiagnosisSummaryScreen() {
     };
   }, [loadDetail]);
 
+  const handleRetryLoad = () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    void loadDetail()
+      .catch(() => setErrorMessage('진료 기록을 불러오지 못했어요. 다시 시도해주세요.'))
+      .finally(() => setIsLoading(false));
+  };
+
   if (!selectedPet) return null;
 
   if (isLoading) {
@@ -92,9 +100,12 @@ export function DiagnosisSummaryScreen() {
   if (!detail) {
     return (
       <ScreenLayout headerVariant="auth" title="진료 요약">
-        <View style={styles.emptyState}>
-          <Text accessibilityLiveRegion="polite" style={styles.emptyText}>{errorMessage ?? '진료 기록을 찾을 수 없어요.'}</Text>
-        </View>
+        <EmptyState
+          actionLabel="다시 시도"
+          description={errorMessage ?? '진료 기록을 찾을 수 없어요.'}
+          onActionPress={handleRetryLoad}
+          title="진료 기록을 불러오지 못했어요"
+        />
       </ScreenLayout>
     );
   }
@@ -287,8 +298,6 @@ export function DiagnosisSummaryScreen() {
 
 const styles = StyleSheet.create({
   content: { gap: SPACING.xxl, paddingBottom: SPACING.xxxl },
-  emptyState: { alignItems: 'center', flex: 1, justifyContent: 'center' },
-  emptyText: { ...TYPOGRAPHY.body2, color: COLORS.gray600, textAlign: 'center' },
   sectionDivider: { backgroundColor: COLORS.gray200, height: 1, marginVertical: SPACING.xs },
   careFooterNote: { ...TYPOGRAPHY.small, color: COLORS.gray500, marginTop: SPACING.xs },
   section: { gap: SPACING.md },

@@ -34,20 +34,79 @@ assert.equal(
 );
 
 let likeRequest;
+let locationRequestCount = 0;
+const regionQueries = [];
+let updateData;
+let updateRequest;
+const marketDetail = {
+  authorNickname: '나',
+  commentCount: 1,
+  content: '개봉만 했습니다.',
+  createdAt: '2026-08-19T10:00:00+09:00',
+  expiryDate: '2026-09-01',
+  hashTags: ['나눔'],
+  likeCount: 3,
+  likedByMe: false,
+  marketStatus: 'IN_PROGRESS',
+  photos: [{ isThumbnail: true, photoId: 1, sortOrder: 0, url: 'https://cdn.example.com/saved.jpg' }],
+  postId: 10,
+  postType: 'MARKET',
+  price: null,
+  priceNegotiable: false,
+  regionName: '서울특별시 종로구',
+  tagCode: 'FOOD_SNACK',
+  tagName: '사료·간식',
+  thumbnailUrl: 'https://cdn.example.com/saved.jpg',
+  title: '사료 나눔',
+  tradeMethod: 'DIRECT',
+  tradeType: 'SHARE',
+  viewCount: 13,
+};
 const communityApi = loadModule('../src/features/community/services/communityApi.ts', {
   '@/src/services/apiClient': {
     apiRequest: async (path, options) => {
-      likeRequest = { options, path };
+      if (path === '/communities/10/likes') {
+        likeRequest = { options, path };
+        return {
+          code: 'LIKE_TOGGLE_200',
+          isSuccess: true,
+          message: 'ok',
+          result: { liked: true, likeCount: 4 },
+        };
+      }
+      if (path === '/communities/10' && !options) {
+        return {
+          code: 'COMMUNITY_DETAIL_200',
+          isSuccess: true,
+          message: 'ok',
+          result: marketDetail,
+        };
+      }
+      updateRequest = { options, path };
       return {
-        code: 'LIKE_TOGGLE_200',
+        code: 'COMMUNITY_UPDATE_200',
         isSuccess: true,
         message: 'ok',
-        result: { liked: true, likeCount: 4 },
+        result: { ...marketDetail, marketStatus: 'RESERVED' },
       };
     },
   },
-  '@/src/services/locationApi': { getRemoteUserLocation: async () => ({ regionCode: '1111000000' }) },
-  '@/src/utils/file': { appendMultipartImage: () => undefined, appendMultipartJson: () => undefined },
+  '@/src/services/locationApi': {
+    getRemoteUserLocation: async () => {
+      locationRequestCount += 1;
+      throw new Error('location-unavailable');
+    },
+    searchRemoteRegions: async (query) => {
+      regionQueries.push(query);
+      return [{ code: '1111000000', dongPreview: [], name: '서울특별시 종로구' }];
+    },
+  },
+  '@/src/utils/file': {
+    appendMultipartImage: () => undefined,
+    appendMultipartJson: (_formData, data) => {
+      updateData = data;
+    },
+  },
   '../utils/marketValidation': {
     getMarketTradeMethods: (tags) => tags.filter((tag) => ['직거래', '택배', '비대면 나눔'].includes(tag)),
     getPositiveMarketPrice: () => null,
@@ -209,6 +268,27 @@ assert.deepEqual(likeRequest, {
   options: { method: 'PATCH' },
   path: '/communities/10/likes',
 });
+
+const updatedMarketPost = await communityApi.updateRemoteMarketStatus(
+  '10',
+  '예약 중',
+  [{ code: 'FOOD_SNACK', name: '사료·간식', postType: 'MARKET', sortOrder: 1 }],
+  {
+    profile: { introduction: '', location: '서울특별시 종로구', nickname: '나', profileImageUri: null },
+    userId: 'user-me',
+  },
+);
+assert.equal(updatedMarketPost.marketStatus, 'RESERVED');
+assert.equal(locationRequestCount, 0);
+assert.deepEqual(regionQueries, ['서울특별시 종로구']);
+assert.equal(updateRequest.path, '/communities/10');
+assert.equal(updateRequest.options.method, 'PUT');
+assert.equal(updateData.marketStatus, 'RESERVED');
+assert.equal(updateData.regionCode, '1111000000');
+assert.equal(updateData.tradeMethod, 'DIRECT');
+assert.equal(updateData.tradeType, 'SHARE');
+assert.deepEqual(updateData.keepPhotoUrls, ['https://cdn.example.com/saved.jpg']);
+assert.equal(updateData.thumbnailUrl, 'https://cdn.example.com/saved.jpg');
 
 assert.deepEqual(
   communityApi.parseRemoteCommentMutation({

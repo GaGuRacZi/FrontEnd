@@ -99,7 +99,6 @@ const storedState = normalizeStoredChatState({
       updatedAt: room.updatedAt,
     },
   ],
-  mockBootstrappedUserIds: [],
   rooms: [room, { ...room, id: 'room-2' }],
   viewerStates: {
     'user-a': {

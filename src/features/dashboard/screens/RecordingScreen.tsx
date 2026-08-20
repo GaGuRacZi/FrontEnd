@@ -134,7 +134,7 @@ export function RecordingScreen() {
     <ScreenLayout headerVariant="auth" title="진료 기록">
       <View style={styles.content}>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>아기 젤리 · 최대 10분 녹음</Text>
+          <Text style={styles.badgeText}>{selectedPet.name} · 최대 10분 녹음</Text>
         </View>
 
         <Text style={styles.timer}>{formatTime(elapsedSeconds)}</Text>

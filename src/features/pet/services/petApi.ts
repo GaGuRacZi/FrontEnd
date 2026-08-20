@@ -192,6 +192,18 @@ export async function updateRemoteMainPet(petId: string) {
   parseRemoteMainPetEnvelope(response);
 }
 
+export async function deleteRemotePet(petId: string) {
+  const numericPetId = Number(petId);
+  if (!Number.isSafeInteger(numericPetId) || numericPetId <= 0) {
+    throw new PetApiContractError();
+  }
+
+  const response = await apiRequest<unknown>(`/pets/${numericPetId}`, {
+    method: 'DELETE',
+  });
+  parseRemoteMainPetEnvelope(response);
+}
+
 export async function searchRemoteBreeds(type: PetType, query = '') {
   const params = new URLSearchParams({ petType: type.toUpperCase() });
   if (query.trim()) params.set('q', query.trim());

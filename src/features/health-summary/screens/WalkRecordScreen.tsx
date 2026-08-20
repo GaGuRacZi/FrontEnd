@@ -13,7 +13,7 @@ import { useHealthSummaryStore } from '../HealthSummaryStore';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { WalkIntensity, WalkRecord } from '../types';
 
-const WEATHER_OPTIONS = ['맑음', '구름', '비', '눈', '바람'] as const;
+const WEATHER_OPTIONS = ['맑음', '흐림', '비', '눈', '바람'] as const;
 
 function parseTemperature(value: string) {
 	const normalized = value.replace(',', '.').replace(/[^0-9.-]/g, '');
@@ -27,15 +27,16 @@ function parseTemperature(value: string) {
 
 function isTemperature(value: string) {
 	const temperature = Number(value);
-	return value.trim() !== '' && Number.isFinite(temperature) && temperature >= -50 && temperature <= 60;
+	return value.trim() !== '' && Number.isInteger(temperature) && temperature >= -50 && temperature <= 60;
 }
 
 export function WalkRecordScreen() {
 	const router = useRouter();
 	const isSaving = useRef(false);
 	const { selectedPet } = usePetStore();
-	const { addWalkRecord, deleteWalkRecord, walkRecords } = useHealthSummaryStore();
-	const params = useLocalSearchParams<{ date?: string; duration?: string; recordId?: string; startTime?: string }>();
+	const { deleteWalkRecord, saveWalkRecord, walkRecords } = useHealthSummaryStore();
+	const params = useLocalSearchParams<{ automatic?: string; date?: string; durationSeconds?: string; recordId?: string; startTime?: string }>();
+	const isAutomatic = params.automatic === 'true';
 	const existingRecord = params.recordId ? walkRecords.find(({ id }) => id === params.recordId) : undefined;
 	const [isEditing, setIsEditing] = useState(!existingRecord);
 
@@ -67,17 +68,14 @@ export function WalkRecordScreen() {
 
 	const parseTimeStr = (timeStr?: string, fallbackH = 18, fallbackM = 20): { hour: number; minute: number } => {
 		if (!timeStr) return { hour: fallbackH, minute: fallbackM };
-		const [h, m] = timeStr.split(':').map(Number);
-		return { hour: isNaN(h) ? fallbackH : h, minute: isNaN(m) ? fallbackM : m };
+		const match = /(?:T|^)(\d{1,2}):(\d{2})/.exec(timeStr);
+		if (!match) return { hour: fallbackH, minute: fallbackM };
+		return { hour: Number(match[1]), minute: Number(match[2]) };
 	};
 
-	const parseDurationMinutes = (durationStr: string) => {
-		if (durationStr.includes('미만')) return 1;
-		const numericOnly = durationStr.replace(/[^0-9]/g, '');
-		return numericOnly ? Number(numericOnly) : 45;
-	};
-
-	const initialDuration = existingRecord?.durationMinutes ?? parseDurationMinutes(params.duration || '45');
+	const automaticDurationSeconds = Number(params.durationSeconds);
+	const hasAutomaticDuration = isAutomatic && Number.isFinite(automaticDurationSeconds) && automaticDurationSeconds >= 0;
+	const initialDuration = existingRecord?.durationMinutes ?? (hasAutomaticDuration ? Math.max(1, Math.ceil(automaticDurationSeconds / 60)) : 0);
 	const initialStart = parseTimeStr(existingRecord?.startTime ?? params.startTime);
 	const initialEndTotal = initialStart.hour * 60 + initialStart.minute + initialDuration;
 
@@ -86,6 +84,8 @@ export function WalkRecordScreen() {
 	const existingEnd = parseTimeStr(existingRecord?.endTime, Math.floor(initialEndTotal / 60) % 24, initialEndTotal % 60);
 	const [endHour, setEndHour] = useState(existingEnd.hour);
 	const [endMinute, setEndMinute] = useState(existingEnd.minute);
+	const [startTimeSelected, setStartTimeSelected] = useState(Boolean(existingRecord || isAutomatic));
+	const [endTimeSelected, setEndTimeSelected] = useState(Boolean(existingRecord || isAutomatic));
 	const [timePickerTarget, setTimePickerTarget] = useState<'start' | 'end'>('start');
 	const [timePickerVisible, setTimePickerVisible] = useState(false);
 
@@ -93,12 +93,10 @@ export function WalkRecordScreen() {
 	const endTimeStr = `${pad2Walk(endHour)}:${pad2Walk(endMinute)}`;
 	const startTotalMin = startHour * 60 + startMinute;
 	const endTotalMin = endHour * 60 + endMinute;
-	const totalMinutes = endTotalMin > startTotalMin
-		? endTotalMin - startTotalMin
-		: endTotalMin < startTotalMin
-		? 24 * 60 - startTotalMin + endTotalMin
-		: 0;
-	const displayTotalTime = totalMinutes === 0
+	const totalMinutes = startTimeSelected && endTimeSelected && endTotalMin > startTotalMin ? endTotalMin - startTotalMin : 0;
+	const displayTotalTime = hasAutomaticDuration
+		? `${Math.floor(automaticDurationSeconds / 60)}분 ${automaticDurationSeconds % 60}초`
+		: totalMinutes === 0
 		? '-'
 		: totalMinutes < 60
 		? `${totalMinutes}분`
@@ -110,14 +108,14 @@ export function WalkRecordScreen() {
 		{ key: 'active', label: '활발' },
 	];
 
-	const handleSaveRecord = () => {
+	const handleSaveRecord = async () => {
 		if (isSaving.current) return;
 		if (!selectedPet) {
 			Alert.alert('반려동물 선택 필요', '산책을 기록할 반려동물을 먼저 선택해주세요.');
 			return;
 		}
-		if (totalMinutes === 0) {
-			Alert.alert('입력 오류', '시작 시간과 종료 시간이 같아요. 올바른 시간을 입력해주세요.');
+		if (!isAutomatic && totalMinutes === 0) {
+			Alert.alert('입력 오류', '종료 시간은 시작 시간보다 늦어야 해요.');
 			return;
 		}
 		if (!weatherText || !isTemperature(temperatureText)) {
@@ -126,27 +124,33 @@ export function WalkRecordScreen() {
 		}
 		isSaving.current = true;
 		const newRecord: WalkRecord = {
-			id: existingRecord?.id ?? String(Date.now()),
+			id: existingRecord?.id ?? '',
 			petId: existingRecord?.petId ?? selectedPet.id,
 			date: displayDate,
 			dayLabel: existingRecord?.dayLabel ?? '오늘 산책',
 			startTime: startTimeStr,
 			endTime: endTimeStr,
-			durationMinutes: totalMinutes,
+			durationMinutes: hasAutomaticDuration ? Math.max(1, Math.ceil(automaticDurationSeconds / 60)) : totalMinutes,
 			distanceKm: existingRecord?.distanceKm ?? 0,
 			intensity,
 			weatherText,
 			temperatureText: `${temperatureText}°C`,
 			routePoints: existingRecord?.routePoints,
+			significant: existingRecord?.significant,
 			excrement: { urination, defecation, specialNote },
 		};
 
-		addWalkRecord(newRecord);
-
-		router.replace({
-			pathname: '/health-summary',
-			params: { tab: 'walk' },
-		} as Href);
+		try {
+			await saveWalkRecord(newRecord, isAutomatic);
+			router.replace({
+				pathname: '/health-summary',
+				params: { tab: 'walk' },
+			} as Href);
+		} catch {
+			Alert.alert('저장할 수 없어요', '산책 기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+		} finally {
+			isSaving.current = false;
+		}
 	};
 
 	const handleDeleteRecord = () => {
@@ -157,8 +161,14 @@ export function WalkRecordScreen() {
 				style: 'destructive',
 				text: '삭제',
 				onPress: () => {
-					deleteWalkRecord(existingRecord.id);
-					router.replace({ pathname: '/health-summary', params: { tab: 'walk' } } as Href);
+					void (async () => {
+						try {
+							await deleteWalkRecord(existingRecord);
+							router.replace({ pathname: '/health-summary', params: { tab: 'walk' } } as Href);
+						} catch {
+							Alert.alert('삭제할 수 없어요', '산책 기록을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.');
+						}
+					})();
 				},
 			},
 		]);
@@ -182,7 +192,7 @@ export function WalkRecordScreen() {
 
 				<ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 					<View style={styles.rowTwoCards}>
-						<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
+						<TouchableOpacity activeOpacity={0.8} disabled={!isEditing || isAutomatic} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
 							<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.calendar} style={styles.metaIcon} />
 							<View style={styles.metaTextGroup}>
 								<Text style={styles.metaLabel}>산책 날짜</Text>
@@ -202,21 +212,21 @@ export function WalkRecordScreen() {
 						<View style={styles.timeGrid}>
 							<TouchableOpacity
 								activeOpacity={0.8}
-								disabled={!isEditing}
+								disabled={!isEditing || isAutomatic}
 								onPress={() => { setTimePickerTarget('start'); setTimePickerVisible(true); }}
 								style={styles.timeCol}
 							>
 								<Text style={styles.timeLabel}>시작</Text>
-								<Text style={styles.timeValue}>{startTimeStr}</Text>
+								<Text style={styles.timeValue}>{startTimeSelected ? startTimeStr : '-'}</Text>
 							</TouchableOpacity>
 							<TouchableOpacity
 								activeOpacity={0.8}
-								disabled={!isEditing}
+								disabled={!isEditing || isAutomatic}
 								onPress={() => { setTimePickerTarget('end'); setTimePickerVisible(true); }}
 								style={styles.timeCol}
 							>
 								<Text style={styles.timeLabel}>종료</Text>
-								<Text style={styles.timeValue}>{endTimeStr}</Text>
+								<Text style={styles.timeValue}>{endTimeSelected ? endTimeStr : '-'}</Text>
 							</TouchableOpacity>
 							<View style={styles.timeCol}>
 								<Text style={styles.timeLabel}>총 시간</Text>
@@ -292,7 +302,7 @@ export function WalkRecordScreen() {
 							<AppButton onPress={handleDeleteRecord} style={styles.actionButton} title="삭제" variant="danger" />
 						</View>
 					) : (
-						<AppButton onPress={handleSaveRecord} style={{ backgroundColor: COLORS.success }} title={existingRecord ? '저장하기' : '산책 기록 저장'} />
+						<AppButton onPress={() => void handleSaveRecord()} style={{ backgroundColor: COLORS.success }} title={existingRecord ? '저장하기' : '산책 기록 저장'} />
 					)}
 				</View>
 			</AppScreen>
@@ -309,9 +319,11 @@ export function WalkRecordScreen() {
 					if (timePickerTarget === 'start') {
 						setStartHour(hour);
 						setStartMinute(minute);
+						setStartTimeSelected(true);
 					} else {
 						setEndHour(hour);
 						setEndMinute(minute);
+						setEndTimeSelected(true);
 					}
 				}}
 				title={timePickerTarget === 'start' ? '시작 시간 선택' : '종료 시간 선택'}

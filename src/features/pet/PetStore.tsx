@@ -22,6 +22,7 @@ import {
 } from './services/petImageStorage';
 import {
   createRemotePet,
+  deleteRemotePet,
   getRemotePets,
   updateRemoteMainPet,
   updateRemotePet,
@@ -149,34 +150,42 @@ export function PetProvider({ children }: PropsWithChildren) {
       };
     }
 
-    petRepository
-      .loadState(currentUserId)
-      .then(async (state) => {
-        if (!active || loadRevisionRef.current !== loadRevision) return;
-        readyUserIdRef.current = currentUserId;
-        let nextState = state;
-        try {
-          nextState = mergeRemoteState(state, currentUserId, await getRemotePets());
-        } catch {
-          nextState = state;
-        }
-        if (!active || loadRevisionRef.current !== loadRevision) return;
+    void (async () => {
+      let state: StoredPetState;
+      let cacheLoadFailed = false;
 
-        const recoveredSelectedPetId = applyState(nextState);
+      try {
+        state = await petRepository.loadState(currentUserId);
+      } catch {
+        state = { pets: [], selectedPetId: null };
+        cacheLoadFailed = true;
+      }
+      if (!active || loadRevisionRef.current !== loadRevision) return;
 
-        if (
-          recoveredSelectedPetId !== nextState.selectedPetId ||
-          JSON.stringify(nextState) !== JSON.stringify(state)
-        ) {
-          await petRepository
-            .saveState(currentUserId, {
-              pets: nextState.pets,
-              selectedPetId: recoveredSelectedPetId,
-            })
-            .catch(() => undefined);
-        }
-        await flushPetImageRemovals(currentUserId, nextState.pets).catch(() => undefined);
-      })
+      let nextState = state;
+      try {
+        nextState = mergeRemoteState(state, currentUserId, await getRemotePets());
+      } catch {
+        if (cacheLoadFailed) throw new Error('pet-state-load-failed');
+      }
+      if (!active || loadRevisionRef.current !== loadRevision) return;
+
+      readyUserIdRef.current = currentUserId;
+      const recoveredSelectedPetId = applyState(nextState);
+
+      if (
+        recoveredSelectedPetId !== nextState.selectedPetId ||
+        JSON.stringify(nextState) !== JSON.stringify(state)
+      ) {
+        await petRepository
+          .saveState(currentUserId, {
+            pets: nextState.pets,
+            selectedPetId: recoveredSelectedPetId,
+          })
+          .catch(() => undefined);
+      }
+      await flushPetImageRemovals(currentUserId, nextState.pets).catch(() => undefined);
+    })()
       .catch(() => {
         if (active && loadRevisionRef.current === loadRevision) {
           readyUserIdRef.current = null;
@@ -285,9 +294,12 @@ export function PetProvider({ children }: PropsWithChildren) {
           const remotePet = await createRemotePet(pet);
           const nextPet = mergeRemotePet(pet, remotePet);
           const nextPets = [...currentPets, nextPet];
-          const result = await persistMutation(userId, nextPets, nextPet.id);
+          const nextSelectedPetId = currentPets.length
+            ? resolveSelection(nextPets, selectedPetIdRef.current)
+            : nextPet.id;
+          const result = await persistMutation(userId, nextPets, nextSelectedPetId);
           if (!result.ok) {
-            applyState({ pets: nextPets, selectedPetId: nextPet.id });
+            applyState({ pets: nextPets, selectedPetId: nextSelectedPetId });
           }
           await queuePetImageRemovals(userId, [pet.profileImageUri]).catch(() => undefined);
           await flushPetImageRemovals(userId, nextPets).catch(() => undefined);
@@ -366,10 +378,25 @@ export function PetProvider({ children }: PropsWithChildren) {
         const target = currentPets.find((pet) => pet.id === petId);
         if (!target) return { ok: false, reason: 'not-found' };
         if (currentPets.length === 1) return { ok: false, reason: 'last-pet' };
-        return { ok: false, reason: 'not-supported' };
+
+        try {
+          await deleteRemotePet(petId);
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
+
+        const nextPets = currentPets.filter((pet) => pet.id !== petId);
+        const nextSelectedPetId = resolveSelection(nextPets, selectedPetIdRef.current);
+        const result = await persistMutation(userId, nextPets, nextSelectedPetId);
+        if (!result.ok) {
+          applyState({ pets: nextPets, selectedPetId: nextSelectedPetId });
+        }
+        await queuePetImageRemovals(userId, [target.profileImageUri]).catch(() => undefined);
+        await flushPetImageRemovals(userId, nextPets).catch(() => undefined);
+        return { ok: true };
       });
     },
-    [currentUserId, enqueueMutation],
+    [applyState, currentUserId, enqueueMutation, persistMutation],
   );
 
   const registerSignupPet = useCallback(

@@ -10,10 +10,6 @@ import {
   uploadRemoteProfileImage,
 } from '@/src/features/auth/services/kakaoAuthService';
 import {
-  LocalAuthError,
-  signUpWithLocalCredentials,
-} from '@/src/features/auth/services/localAuthService';
-import {
   consentStore,
   hasCurrentRequiredSignupConsents,
   termsRepository,
@@ -51,7 +47,6 @@ export function useSignupCompletion() {
   const {
     activatePreparedRemoteSignup,
     pendingRemoteSignupUserId,
-    prepareRemoteSignup,
   } = useAuthSession();
   const { deleteUserPetData, hasStoredUserPetData, registerSignupPet } = usePetStore();
   const {
@@ -74,7 +69,7 @@ export function useSignupCompletion() {
 
     submittingRef.current = true;
     setSubmitting(true);
-    let currentUserId = pendingRemoteSignupUserId ?? '';
+    const currentUserId = pendingRemoteSignupUserId ?? '';
     let transactionOwner: SignupTransactionOwner | null = null;
     let userId = '';
     let consentsFinalized = signupIdentityFinalized;
@@ -84,17 +79,6 @@ export function useSignupCompletion() {
     let signupDraftCleared = false;
 
     try {
-      if (!currentUserId && data.method === 'local') {
-        const outcome = await signUpWithLocalCredentials(data.email, data.password);
-
-        if (outcome.kind === 'link-required' || !outcome.session.isNew) {
-          throw new LocalAuthError('conflict', '이미 가입된 이메일이에요. 로그인해주세요.');
-        }
-
-        await prepareRemoteSignup(outcome.session, 'local', signupSessionId);
-        currentUserId = outcome.session.uid;
-      }
-
       if (!currentUserId) throw new Error('missing-remote-signup-session');
 
       transactionOwner = committedSignupRecovery ?? {
@@ -289,12 +273,6 @@ export function useSignupCompletion() {
         navigateOnce(() => router.dismissTo('/signup/user-info'));
         return;
       }
-      if (error instanceof LocalAuthError && error.kind === 'conflict') {
-        showAlert('이미 가입된 이메일이에요', error.message, [
-          { text: '확인', onPress: () => router.replace('/login') },
-        ]);
-        throw error;
-      }
       if (!(error instanceof Error) || error.message !== 'signup-account-exists') {
         showAlert('회원가입을 완료하지 못했어요', '잠시 후 다시 시도해주세요.');
       }
@@ -317,7 +295,6 @@ export function useSignupCompletion() {
     markSignupCompleted,
     navigateOnce,
     pendingRemoteSignupUserId,
-    prepareRemoteSignup,
     registerSignupPet,
     registerRemoteProfile,
     resumeSignupDraft,

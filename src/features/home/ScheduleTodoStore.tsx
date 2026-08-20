@@ -192,21 +192,23 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
 
     const today = new Date();
     const date = formatTodoApiDate(today);
-    void Promise.all([
+    void Promise.allSettled([
       getRemoteTodoTags(),
       getRemoteTodos(date),
       getRemoteTodoCalendar(today.getFullYear(), today.getMonth() + 1),
     ])
       .then(([tags, todos, calendar]) => {
         if (!active) return;
-        const nextTags = tags.map(mapRemoteTag);
-        customTagsRef.current = nextTags;
-        setCustomTags(nextTags);
-        applyTodos(date, todos.map(mapRemoteTodo));
-        setDayProgress(Object.fromEntries(calendar.map(mapCalendarDay)));
-      })
-      .catch(() => {
-        if (active) setHasLoadError(true);
+        if (tags.status === 'fulfilled') {
+          const nextTags = tags.value.map(mapRemoteTag);
+          customTagsRef.current = nextTags;
+          setCustomTags(nextTags);
+        }
+        if (todos.status === 'fulfilled') applyTodos(date, todos.value.map(mapRemoteTodo));
+        if (calendar.status === 'fulfilled') {
+          setDayProgress(Object.fromEntries(calendar.value.map(mapCalendarDay)));
+        }
+        setHasLoadError([tags, todos, calendar].some(({ status }) => status === 'rejected'));
       })
       .finally(() => {
         if (active) setIsReady(true);

@@ -33,7 +33,14 @@ export function HomeScreen() {
   const { isReady, selectedPet } = usePetStore();
   const { medications, visits } = useMedicationStore();
   const { customTags, getTodosForDate, toggleTodo } = useScheduleTodoStore();
-  const { medicalExpenseRecords, walkRecords, weightRecords } = useHealthSummaryStore();
+  const {
+    expenseSummaries,
+    medicalExpenseRecords,
+    walkRecords,
+    walkWeeklySummaries,
+    weightRecords,
+    weightSummaries,
+  } = useHealthSummaryStore();
 
   const todayDate = new Date();
   const todayKey = formatTodoApiDate(todayDate);
@@ -90,28 +97,31 @@ export function HomeScreen() {
   const weightOverview = getWeightOverview(petWeightRecords);
   const walkOverview = getWalkOverview(petWalkRecords);
   const medicalExpenseOverview = getMedicalExpenseOverview(petMedicalExpenseRecords);
+  const weightSummary = weightSummaries[selectedPet.id];
+  const walkSummary = walkWeeklySummaries[selectedPet.id];
+  const expenseSummary = expenseSummaries[selectedPet.id];
   const monthlyHealthMetrics = [
     {
-      changeLabel: weightOverview.difference === null
+      changeLabel: (weightSummary?.monthChange ?? weightOverview.difference) === null
         ? '-'
-        : `${weightOverview.difference > 0 ? '+' : ''}${weightOverview.difference}kg`,
+        : `${(weightSummary?.monthChange ?? weightOverview.difference)! > 0 ? '+' : ''}${weightSummary?.monthChange ?? weightOverview.difference}kg`,
       id: 'weight',
       label: '체중',
-      valueLabel: weightOverview.currentWeight === null ? '-' : `${weightOverview.currentWeight.toFixed(1)}kg`,
+      valueLabel: (weightSummary?.currentWeight ?? weightOverview.currentWeight) === null ? '-' : `${(weightSummary?.currentWeight ?? weightOverview.currentWeight)!.toFixed(1)}kg`,
     },
     {
-      changeLabel: walkOverview.difference === null
+      changeLabel: (walkSummary?.diffMinutes ?? walkOverview.difference) === null
         ? '-'
-        : `지난주 ${walkOverview.difference > 0 ? '+' : ''}${walkOverview.difference}분`,
+        : `지난주 ${(walkSummary?.diffMinutes ?? walkOverview.difference)! > 0 ? '+' : ''}${walkSummary?.diffMinutes ?? walkOverview.difference}분`,
       id: 'walk',
       label: '산책',
-      valueLabel: walkOverview.average === null ? '-' : `평균 ${walkOverview.average}분`,
+      valueLabel: (walkSummary?.averageMinutes ?? walkOverview.average) === null ? '-' : `평균 ${(walkSummary?.averageMinutes ?? walkOverview.average)!}분`,
     },
     {
       changeLabel: `${medicalExpenseOverview.difference > 0 ? '+' : ''}${medicalExpenseOverview.difference.toLocaleString()}원`,
       id: 'medical',
       label: '의료비',
-      valueLabel: `${medicalExpenseOverview.currentTotal.toLocaleString()}원`,
+      valueLabel: `${(expenseSummary?.monthlyTotalAmount ?? medicalExpenseOverview.currentTotal).toLocaleString()}원`,
     },
   ];
   const latestVisit = visits[0];

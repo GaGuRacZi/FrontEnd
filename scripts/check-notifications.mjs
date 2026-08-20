@@ -15,6 +15,7 @@ function loadModule(path, dependencies) {
 }
 
 const koreanDateTime = loadModule('../src/utils/koreanDateTime.ts', {});
+const todayInKorea = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const requests = [];
 const notificationApi = loadModule('../src/features/home/services/notificationApi.ts', {
   '@/src/services/apiClient': {
@@ -34,9 +35,21 @@ const notificationApi = loadModule('../src/features/home/services/notificationAp
           ? {
               content: [
                 {
+                  body: '나눔 가능할까요?',
+                  category: 'CHAT',
+                  ctaLabel: '채팅 보기',
+                  createdAt: '2026-08-20T09:30:00+09:00',
+                  id: 102,
+                  isRead: false,
+                  targetId: 12,
+                  targetType: 'CHAT_ROOM',
+                  title: '초코님의 메시지',
+                },
+                {
                   body: '오늘 09:00 · 미완료 상태예요',
                   category: 'TODO',
-                  createdAt: '2026-08-20T09:00:00',
+                  ctaLabel: '할 일 보기',
+                  createdAt: `${todayInKorea}T09:00:00`,
                   id: 101,
                   isRead: false,
                   targetId: 15,
@@ -46,6 +59,7 @@ const notificationApi = loadModule('../src/features/home/services/notificationAp
                 {
                   body: '진료 녹음 분석 결과를 확인할 수 있어요',
                   category: 'AI',
+                  ctaLabel: '요약 보기',
                   createdAt: '2026-08-19T18:10:00+09:00',
                   id: 100,
                   isRead: true,
@@ -56,6 +70,7 @@ const notificationApi = loadModule('../src/features/home/services/notificationAp
                 {
                   body: '새 댓글을 확인해보세요',
                   category: 'COMMUNITY',
+                  ctaLabel: '글 보기',
                   createdAt: '2026-08-19T12:00:00+09:00',
                   id: 99,
                   isRead: false,
@@ -66,6 +81,7 @@ const notificationApi = loadModule('../src/features/home/services/notificationAp
                 {
                   body: '건강 상태를 확인해주세요',
                   category: 'EMERGENCY',
+                  ctaLabel: '지도 보기',
                   createdAt: '2026-08-19T10:00:00+09:00',
                   id: 98,
                   isRead: false,
@@ -92,19 +108,23 @@ assert.equal(page.nextCursor, 'next-cursor');
 assert.deepEqual(
   page.notifications.map(({ category, target }) => [category, target?.type]),
   [
+    ['chat', 'chat_room'],
     ['schedule', 'todo'],
     ['ai', 'visit'],
     ['community', 'post'],
     ['emergency', 'map'],
   ],
 );
-assert.equal(page.notifications[0].dateGroupLabel, '오늘');
+assert.equal(page.notifications[1].dateGroupLabel, '오늘');
+assert.equal(page.notifications[1].actionLabel, '할 일 보기');
 assert.equal(requests[0][0], '/notifications?size=50&category=COMMUNITY');
+await notificationApi.getRemoteNotifications({ category: 'chat' });
+assert.equal(requests[1][0], '/notifications?size=50&category=CHAT');
 assert.equal(await notificationApi.getRemoteUnreadNotificationCount(), 3);
 
 await notificationApi.markRemoteNotificationRead('101');
 await notificationApi.markAllRemoteNotificationsRead();
-assert.deepEqual(requests.slice(1), [
+assert.deepEqual(requests.slice(2), [
   ['/notifications/unread-count', undefined],
   ['/notifications/101/read', { method: 'PATCH' }],
   ['/notifications/read-all', { method: 'PATCH' }],

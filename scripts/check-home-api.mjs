@@ -20,10 +20,19 @@ const todoApi = loadModule('../src/features/home/services/todoApi.ts', {
     apiRequest: async (path, options) => {
       todoRequests.push([path, options]);
       if (path === '/api/tags') {
+        if (options?.method === 'POST') {
+          return {
+            isSuccess: true,
+            result: { tagColorEnum: 'PURPLE', tagId: 3, tagName: '병원' },
+          };
+        }
         return {
           isSuccess: true,
           result: [{ tagColorEnum: 'GREEN', tagId: 2, tagName: '산책' }],
         };
+      }
+      if (path === '/api/tags/2?force=true') {
+        return { isSuccess: true, result: null };
       }
       if (path.includes('/calendar?')) {
         return {
@@ -60,6 +69,9 @@ const todoApi = loadModule('../src/features/home/services/todoApi.ts', {
       if (path.startsWith('/api/todos/1?date=')) {
         return { isSuccess: true, result: null };
       }
+      if (path === '/api/todos' && options?.method === 'POST') {
+        return { isSuccess: true, result: todo };
+      }
       return {
         isSuccess: true,
         result: [todo],
@@ -69,6 +81,15 @@ const todoApi = loadModule('../src/features/home/services/todoApi.ts', {
 });
 
 assert.deepEqual(await todoApi.getRemoteTodoTags(), [{ color: 'GREEN', id: '2', name: '산책' }]);
+assert.deepEqual(await todoApi.createRemoteTodoTag('병원', 'PURPLE'), {
+  color: 'PURPLE', id: '3', name: '병원',
+});
+assert.deepEqual(todoRequests.at(-1), [
+  '/api/tags',
+  { json: { tagColorEnum: 'PURPLE', tagName: '병원' }, method: 'POST' },
+]);
+await todoApi.deleteRemoteTodoTag('2');
+assert.deepEqual(todoRequests.at(-1), ['/api/tags/2?force=true', { method: 'DELETE' }]);
 assert.deepEqual(await todoApi.getRemoteTodos('2026-08-20'), [{
   completed: false,
   date: '2026-08-20',
@@ -97,6 +118,29 @@ assert.deepEqual(await todoApi.getRemoteTodoDetail('1'), {
   title: '산책하기',
   week: 'WED',
 });
+await todoApi.createRemoteTodo({
+  date: '2026-08-20',
+  routineEnabled: false,
+  tagId: '2',
+  title: '산책하기',
+});
+assert.deepEqual(todoRequests.at(-1), [
+  '/api/todos',
+  {
+    json: {
+      date: '2026-08-20',
+      endDate: undefined,
+      routineEnabled: false,
+      startDate: undefined,
+      subTodo: undefined,
+      tagId: 2,
+      todo: '산책하기',
+      todoTime: undefined,
+      week: undefined,
+    },
+    method: 'POST',
+  },
+]);
 await todoApi.updateRemoteTodo('1', {
   endDate: '2026-08-31',
   routineEnabled: true,
@@ -159,7 +203,10 @@ const visitApi = loadModule('../src/features/dashboard/services/visitApi.ts', {
         return {
           code: 'VISIT_LIST_200',
           isSuccess: true,
-          result: [{ aiSummaryGenerated: true, oneLineSummary: '요약', status: 'READY', visitId: 4, visitedAt: '2026-08-20T09:00:00', visitName: '정기 진료' }],
+          result: [
+            { aiSummaryGenerated: true, oneLineSummary: '이전 요약', status: 'READY', visitId: 3, visitedAt: '2026-08-19T23:30:00Z', visitName: '이전 진료' },
+            { aiSummaryGenerated: true, oneLineSummary: '요약', status: 'READY', visitId: 4, visitedAt: '2026-08-20T09:00:00+09:00', visitName: '정기 진료' },
+          ],
         };
       }
       if (path === '/visits/4/ai-summary') {
@@ -212,6 +259,25 @@ await visitApi.addRemotePrescription('4', {
   mealTiming: 'AFTER_MEAL',
   source: 'CATALOG',
 });
+await assert.rejects(() => visitApi.addRemotePrescription('4', {
+  dosageAmount: 1.5,
+  frequency: 'ONCE_DAILY',
+  medicationId: '7',
+  mealTiming: 'AFTER_MEAL',
+  source: 'CATALOG',
+}));
+await assert.rejects(() => visitApi.addRemotePrescription('4', {
+  dosageAmount: 1,
+  frequency: 'ONCE_DAILY',
+  mealTiming: 'AFTER_MEAL',
+  source: 'CATALOG',
+}));
+await assert.rejects(() => visitApi.addRemotePrescription('4', {
+  dosageAmount: 1,
+  frequency: 'ONCE_DAILY',
+  mealTiming: 'AFTER_MEAL',
+  source: 'CUSTOM',
+}));
 await visitApi.deleteRemotePrescription('4', '3');
 assert.deepEqual(visitRequests.at(-1), ['/visits/4/medications/3', { method: 'DELETE' }]);
 

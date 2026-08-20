@@ -1,7 +1,46 @@
 import { PermissionsAndroid, Platform } from 'react-native';
 
+export type ForegroundPushData = Readonly<Record<string, string>>;
+
+const foregroundPushListeners = new Set<(data: ForegroundPushData) => void>();
+
 async function getMessagingModule() {
   return import('@react-native-firebase/messaging');
+}
+
+function readForegroundPushData(data: unknown): ForegroundPushData {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  return Object.fromEntries(
+    Object.entries(data).flatMap(([key, value]) =>
+      typeof value === 'string' ? [[key, value]] : [],
+    ),
+  );
+}
+
+export function subscribeForegroundPush(listener: (data: ForegroundPushData) => void) {
+  foregroundPushListeners.add(listener);
+  return () => {
+    foregroundPushListeners.delete(listener);
+  };
+}
+
+export function listenForForegroundPushes() {
+  let active = true;
+  let unsubscribe: (() => void) | undefined;
+  void getMessagingModule()
+    .then(({ getMessaging, onMessage }) => {
+      if (!active) return;
+      unsubscribe = onMessage(getMessaging(), (message) => {
+        const data = readForegroundPushData(message.data);
+        foregroundPushListeners.forEach((listener) => listener(data));
+      });
+    })
+    .catch(() => undefined);
+
+  return () => {
+    active = false;
+    unsubscribe?.();
+  };
 }
 
 export async function hasPushPermission() {

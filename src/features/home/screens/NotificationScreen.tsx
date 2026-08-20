@@ -1,5 +1,5 @@
 import { type Href, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -14,6 +14,7 @@ import { AppChip, EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
 import { useAppAlert } from '@/src/components/modal';
 import { COLORS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { subscribeForegroundPush } from '@/src/services/pushNotifications';
 
 import { NotificationCard } from '../components/NotificationCard';
 import {
@@ -37,6 +38,7 @@ const FILTER_OPTIONS: { label: string; value: NotificationFilterValue }[] = [
   { value: 'schedule', label: '할 일' },
   { value: 'ai', label: 'AI' },
   { value: 'community', label: '커뮤니티' },
+  { value: 'chat', label: '채팅' },
   { value: 'emergency', label: '건강' },
 ];
 
@@ -55,7 +57,10 @@ function getTargetHref(notification: NotificationItem): Href | null {
 
   switch (notification.target.type) {
     case 'todo':
-      return '/schedule';
+      return {
+        pathname: '/schedule',
+        params: { todoId: notification.target.id },
+      };
     case 'visit':
       return {
         pathname: '/dashboard/[diagnosisId]',
@@ -65,6 +70,11 @@ function getTargetHref(notification: NotificationItem): Href | null {
       return {
         pathname: '/community/[postId]',
         params: { postId: notification.target.id },
+      };
+    case 'chat_room':
+      return {
+        pathname: '/chat/[roomId]',
+        params: { roomId: notification.target.id },
       };
     default:
       return null;
@@ -160,6 +170,13 @@ export function NotificationScreen() {
     useCallback(() => {
       void loadFirstPage();
     }, [loadFirstPage]),
+  );
+
+  useEffect(
+    () => subscribeForegroundPush(() => {
+      void loadFirstPage();
+    }),
+    [loadFirstPage],
   );
 
   const sections = useMemo<NotificationSection[]>(
@@ -288,7 +305,11 @@ export function NotificationScreen() {
           />
         )}
         renderItem={({ item }) => (
-          <NotificationCard notification={item} onPress={() => openNotification(item)} />
+          <NotificationCard
+            actionLabel={getTargetHref(item) ? item.actionLabel : null}
+            notification={item}
+            onPress={() => openNotification(item)}
+          />
         )}
         renderSectionHeader={({ section }) => <Text style={styles.groupTitle}>{section.title}</Text>}
         sections={sections}
