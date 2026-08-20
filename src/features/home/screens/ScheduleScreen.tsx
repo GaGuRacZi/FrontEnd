@@ -255,11 +255,19 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
   };
 
   const openAddSheet = () => {
+    const date = new Date(viewYear, viewMonth, selectedDay);
+    const weekday = date.getDay() === 0 ? 6 : date.getDay() - 1;
     setEditingTodoId(null);
     setFormError(null);
     setNewTitle('');
     setNewDesc('');
     setNewTag(customTags[0]?.name ?? '');
+    setRoutineType('특정요일');
+    setRoutineDays([weekday]);
+    setRoutineStart(date);
+    setRoutineEnd(date);
+    setRoutineViewYear(viewYear);
+    setRoutineViewMonth(viewMonth);
     openSheet(addSheetY, setAddVisible);
   };
 
@@ -277,9 +285,11 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
         setNewTag(detail.tag);
         setNewTimeHour(time ? Number(time[1]) : 20);
         setNewTimeMinute(time ? Number(time[2]) : 0);
+        const selectedTodoDate = parseTodoDate(selectedDate, today);
+        const startDate = parseTodoDate(detail.startDate, selectedTodoDate);
+        const weekday = startDate.getDay() === 0 ? 6 : startDate.getDay() - 1;
         setRoutineType('특정요일');
-        setRoutineDays(detail.week === undefined ? [0] : [detail.week]);
-        const startDate = parseTodoDate(detail.startDate, today);
+        setRoutineDays(detail.week === undefined ? [weekday] : [detail.week]);
         setRoutineStart(startDate);
         setRoutineEnd(parseTodoDate(detail.endDate, startDate));
         setRoutineViewYear(startDate.getFullYear());
@@ -340,13 +350,13 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
         };
         const createResult = editingTodoId ? 'ok' : await createScheduleTodos(input);
         if (editingTodoId) await updateScheduleTodo(editingTodoId, input);
-        setNewTitle('');
-        setNewDesc('');
-        closeAddSheet();
-        void Promise.allSettled([
+        await Promise.allSettled([
           loadTodosForDate(selectedDate),
           loadCalendarMonth(viewYear, viewMonth + 1),
         ]);
+        setNewTitle('');
+        setNewDesc('');
+        closeAddSheet();
         if (createResult === 'partial') {
           Alert.alert('일부 할 일만 등록됐어요', '등록된 항목을 확인한 뒤 나머지 요일을 다시 추가해주세요.');
         }

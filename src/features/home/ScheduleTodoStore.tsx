@@ -311,6 +311,17 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
     if (!tag) throw new Error('todo-tag-required');
     const startDate = formatTodoApiDate(input.startDate);
     const endDate = formatTodoApiDate(input.endDate);
+    if (startDate === endDate) {
+      await createRemoteTodo({
+        date: startDate,
+        description: input.description,
+        routineEnabled: false,
+        tagId: tag.id,
+        timeLabel: input.timeLabel,
+        title: input.title,
+      });
+      return 'ok' as const;
+    }
     const weeks = input.routineType === '매일'
       ? WEEK_CODES
       : input.routineDays.map((day) => WEEK_CODES[day]).filter((week): week is typeof WEEK_CODES[number] => Boolean(week));
@@ -368,6 +379,19 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
   const updateScheduleTodo = useCallback(async (todoId: string, input: ScheduleTodoInput) => {
     const tag = customTagsRef.current.find((item) => item.name === input.tag);
     if (!tag) throw new Error('todo-tag-required');
+    const startDate = formatTodoApiDate(input.startDate);
+    const endDate = formatTodoApiDate(input.endDate);
+    if (startDate === endDate) {
+      await updateRemoteTodo(todoId, {
+        date: startDate,
+        description: input.description,
+        routineEnabled: false,
+        tagId: tag.id,
+        timeLabel: input.timeLabel,
+        title: input.title,
+      });
+      return;
+    }
     const week = input.routineType === '매일'
       ? WEEK_CODES[0]
       : input.routineDays.map((day) => WEEK_CODES[day]).find(Boolean);
@@ -375,9 +399,9 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
 
     await updateRemoteTodo(todoId, {
       description: input.description,
-      endDate: formatTodoApiDate(input.endDate),
+      endDate,
       routineEnabled: true,
-      startDate: formatTodoApiDate(input.startDate),
+      startDate,
       tagId: tag.id,
       timeLabel: input.timeLabel,
       title: input.title,

@@ -42,6 +42,10 @@ assert.match(transcript, /player\.play\(\)/);
 const schedule = read('src/features/home/ScheduleTodoStore.tsx');
 assert.match(schedule, /activeUserRef\.current !== userId/);
 assert.match(schedule, /if \(created > 0\) return 'partial'/);
+assert.match(schedule, /if \(startDate === endDate\) \{[\s\S]*?date: startDate,[\s\S]*?routineEnabled: false/);
+const scheduleScreen = read('src/features/home/screens/ScheduleScreen.tsx');
+assert.match(scheduleScreen, /const date = new Date\(viewYear, viewMonth, selectedDay\)/);
+assert.match(scheduleScreen, /setRoutineStart\(date\);[\s\S]*?setRoutineEnd\(date\)/);
 
 const petStore = read('src/features/pet/PetStore.tsx');
 assert.ok(petStore.indexOf('applyState({ pets: nextPets') < petStore.indexOf('petRepository.saveState(userId'));
