@@ -28,12 +28,12 @@ const _m = _now.getMonth();
 const _y = _now.getFullYear();
 
 const INITIAL_TODOS: ScheduleTodo[] = [
-  { id: 'st-1', title: '심장약 복용', description: '카니녹스 1정', timeLabel: '20:00', status: 'pending', category: 'medication', tag: '복약', day: _d, month: _m, year: _y },
+  { id: 'st-1', title: '심장약 복용', description: '카미녹스 1정', timeLabel: '20:00', status: 'pending', category: 'medication', tag: '복약', day: _d, month: _m, year: _y },
   { id: 'st-2', title: '병원 진료', description: '심장 초음파 관련', timeLabel: '14:00', status: 'pending', category: 'hospital', tag: '병원', day: _d, month: _m, year: _y },
-  { id: 'st-3', title: '기분전환 산책', description: '뇨어 30분 걷기', timeLabel: '20:55', status: 'pending', category: 'walk', tag: '산책', day: _d, month: _m, year: _y },
+  { id: 'st-3', title: '기분전환 산책', description: '부담없이 30분 걷기', timeLabel: '20:55', status: 'pending', category: 'walk', tag: '산책', day: _d, month: _m, year: _y },
   { id: 'st-4', title: '영양제 복용', description: '하루 1정씩', timeLabel: '08:00', status: 'done', category: 'medication', tag: '복약', day: _d, month: _m, year: _y },
   { id: 'st-5', title: '정기 검진', description: '동물 병원 예약', timeLabel: '10:00', status: 'pending', category: 'hospital', tag: '병원', day: Math.min(_d + 4, 28), month: _m, year: _y },
-  { id: 'st-6', title: '심장약 복용', description: '카니녹스 1정', timeLabel: '20:00', status: 'pending', category: 'medication', tag: '복약', day: Math.min(_d + 7, 28), month: _m, year: _y },
+  { id: 'st-6', title: '심장약 복용', description: '카미녹스 1정', timeLabel: '20:00', status: 'pending', category: 'medication', tag: '복약', day: Math.min(_d + 7, 28), month: _m, year: _y },
 ];
 
 // ─── Context ─────────────────────────────────────────────────────────────────
