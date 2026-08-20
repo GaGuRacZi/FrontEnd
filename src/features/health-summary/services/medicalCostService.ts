@@ -64,7 +64,7 @@ function extractResult<T>(response: unknown): T {
 
 /** 의료비 요약 (상단 카드) */
 export async function getExpenseSummary(
-  petId: number,
+  petId: string,
   options?: { year?: number; month?: number },
 ): Promise<ExpenseSummary> {
   const params = new URLSearchParams();
@@ -79,7 +79,7 @@ export async function getExpenseSummary(
 
 /** 월별 의료비 내역 목록 */
 export async function getExpenses(
-  petId: number,
+  petId: string,
   options?: { year?: number; month?: number },
 ): Promise<ExpenseList> {
   const params = new URLSearchParams();
@@ -100,7 +100,7 @@ export async function getExpense(expenseId: number): Promise<ApiExpense> {
 
 /** 의료비 기록하기 */
 export async function createExpense(
-  petId: number,
+  petId: string,
   data: {
     expenseAmount: number;
     expenseDate: string;       // "yyyy-MM-dd"
