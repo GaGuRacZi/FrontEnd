@@ -1,3 +1,5 @@
+import type { DiagnosisMedication } from '@/src/features/dashboard/types';
+
 export type MedicationFrequency = 'asNeeded' | 'onceDaily' | 'threeTimesDaily' | 'twiceDaily';
 export type MedicationTiming = 'anytime' | 'beforeMeal' | 'betweenMeals' | 'afterMeal';
 
@@ -39,3 +41,22 @@ export const TIMING_OPTIONS: { label: string; value: MedicationTiming }[] = [
 	{ label: TIMING_LABEL.betweenMeals, value: 'betweenMeals' },
 	{ label: TIMING_LABEL.anytime, value: 'anytime' },
 ];
+
+export function mapMedicationEntries(
+	entries: MedicationEntry[],
+	idPrefix: string,
+): DiagnosisMedication[] {
+	const timestamp = Date.now();
+
+	return entries.map((entry, index) => ({
+		id: `${idPrefix}-${timestamp}-${index}`,
+		name: entry.name,
+		dosageLabel: entry.ingredient ?? '',
+		frequencyLabel: FREQUENCY_LABEL[entry.frequency],
+		doseLabel: `${entry.quantity}정씩`,
+		mealTimingLabel: TIMING_LABEL[entry.timing],
+		timings: [],
+		description: entry.description,
+		warningNote: entry.warningNote,
+	}));
+}

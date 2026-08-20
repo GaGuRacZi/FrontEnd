@@ -6,6 +6,9 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_FCM_TOKEN_DEBUG": "true"
+      },
       "android": {
         "buildType": "apk"
       }

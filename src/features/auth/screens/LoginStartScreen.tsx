@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { getMessaging, getToken } from '@react-native-firebase/messaging';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -49,6 +50,9 @@ export function LoginStartScreen() {
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [linkError, setLinkError] = useState<string>();
+  const [fcmToken, setFcmToken] = useState<string>();
+  const [loadingFcmToken, setLoadingFcmToken] = useState(false);
+  const canShowFcmToken = process.env.EXPO_PUBLIC_FCM_TOKEN_DEBUG === 'true';
 
   useEffect(() => {
     mountedRef.current = true;
@@ -163,6 +167,22 @@ export function LoginStartScreen() {
     setLinkError(undefined);
   };
 
+  const handleLoadFcmToken = async () => {
+    if (loadingFcmToken) return;
+
+    setLoadingFcmToken(true);
+
+    try {
+      const token = await getToken(getMessaging());
+      if (!token) throw new Error('missing-fcm-token');
+      if (mountedRef.current) setFcmToken(token);
+    } catch {
+      showAlert('FCM 토큰을 불러오지 못했어요', '인터넷 연결을 확인한 뒤 다시 시도해주세요.');
+    } finally {
+      if (mountedRef.current) setLoadingFcmToken(false);
+    }
+  };
+
   return (
     <>
       <AppScreen
@@ -196,6 +216,23 @@ export function LoginStartScreen() {
             title="카카오로 시작하기"
             variant="kakao"
           />
+          {canShowFcmToken ? (
+            <View style={styles.fcmTokenSection}>
+              <AppButton
+                loading={loadingFcmToken}
+                onPress={() => void handleLoadFcmToken()}
+                size="medium"
+                title="FCM 토큰 확인"
+                variant="outline"
+              />
+              {fcmToken ? (
+                <>
+                  <Text selectable style={styles.fcmToken}>{fcmToken}</Text>
+                  <Text style={styles.fcmTokenGuide}>토큰을 길게 눌러 복사해주세요.</Text>
+                </>
+              ) : null}
+            </View>
+          ) : null}
         </AuthActionPanel>
       </AppScreen>
 
@@ -277,6 +314,25 @@ const styles = StyleSheet.create({
   linkDescription: {
     ...TYPOGRAPHY.body2,
     color: COLORS.gray600,
+    textAlign: 'center',
+  },
+  fcmTokenSection: {
+    alignItems: 'stretch',
+    gap: SPACING.sm,
+    width: '100%',
+  },
+  fcmToken: {
+    ...TYPOGRAPHY.caption,
+    backgroundColor: COLORS.gray100,
+    borderColor: COLORS.gray300,
+    borderRadius: 8,
+    borderWidth: 1,
+    color: COLORS.gray600,
+    padding: SPACING.md,
+  },
+  fcmTokenGuide: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.gray500,
     textAlign: 'center',
   },
 });

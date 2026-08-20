@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { ScreenLayout } from '@/src/components/layout';
 import { MedicationSaveConfirmModal, MedicationSearchModal } from '@/src/components/modal';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import type { DiagnosisMedication, DiagnosisMedicationTiming } from '@/src/features/dashboard/types';
-import { FREQUENCY_OPTIONS, TIMING_OPTIONS, type MedicationEntry } from '@/src/types/medication';
+import { mapMedicationEntries, type MedicationEntry } from '@/src/types/medication';
 
 import { useMedicationStore } from '../MedicationStore';
 
@@ -25,26 +25,7 @@ export function MedicationListScreen() {
   const [saveConfirmVisible, setSaveConfirmVisible] = useState(false);
 
   const handleAddMedications = (selectedEntries: MedicationEntry[]) => {
-    const newMedications: DiagnosisMedication[] = selectedEntries.map((entry, index) => {
-      const freqLabel =
-        FREQUENCY_OPTIONS.find((opt) => opt.value === entry.frequency)?.label ?? '';
-      const timingLabel =
-        TIMING_OPTIONS.find((opt) => opt.value === entry.timing)?.label ?? '';
-
-      return {
-        id: `med-list-${Date.now()}-${index}`,
-        name: entry.name,
-        dosageLabel: entry.ingredient ?? '',
-        frequencyLabel: freqLabel,
-        doseLabel: `${entry.quantity}정씩`,
-        mealTimingLabel: timingLabel,
-        timings: [],
-        description: entry.description,
-        warningNote: entry.warningNote,
-      };
-    });
-
-    addMedications(newMedications);
+    addMedications(mapMedicationEntries(selectedEntries, 'med-list'));
     setSearchModalVisible(false);
     setSaveConfirmVisible(true);
   };
@@ -60,11 +41,7 @@ export function MedicationListScreen() {
           onPress={() => setSearchModalVisible(true)}
           style={styles.editButton}
         >
-          <Image
-              resizeMode="contain"
-              source={require('@/assets/images/Button.png')}
-              style={{ height: 24, width: 24 }}
-            />
+          <AppIcon color={COLORS.gray600} name="add" size={24} />
         </Pressable>
       }
       title="복용 약물 목록"

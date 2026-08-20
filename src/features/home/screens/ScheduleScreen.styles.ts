@@ -73,8 +73,8 @@ export const styles = StyleSheet.create({
 
   fab: {
     alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: RADIUS.round,
-    bottom: SPACING.xxxl, elevation: 6, height: 56, justifyContent: 'center', position: 'absolute',
-    right: 12, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 },
+    elevation: 6, height: 56, justifyContent: 'center', position: 'absolute',
+    right: SPACING.jumbo, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35, shadowRadius: 8, width: 56,
   },
 
@@ -135,7 +135,7 @@ export const styles = StyleSheet.create({
   labelRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   counterText: { ...TYPOGRAPHY.caption, color: COLORS.gray500 },
   colorRow: { flexDirection: 'row', gap: SPACING.xl, justifyContent: 'center' },
-  colorDot: { alignItems: 'center', borderRadius: RADIUS.round, height: 28, justifyContent: 'center', width: 28 },
+  colorDot: { alignItems: 'center', borderRadius: RADIUS.round, borderWidth: 1, height: 28, justifyContent: 'center', width: 28 },
   tagFooter: { flexDirection: 'row', gap: SPACING.xl, marginTop: SPACING.sm },
   deleteBtn: { alignItems: 'center', borderColor: COLORS.gray300, borderRadius: RADIUS.button, borderWidth: 1.5, flex: 1, paddingVertical: SPACING.xl },
   deleteBtnText: { color: COLORS.gray600, fontFamily: 'NotoSansKR_500Medium', fontSize: 14, lineHeight: 21 },

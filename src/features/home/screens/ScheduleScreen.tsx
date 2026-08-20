@@ -10,11 +10,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { BrandLogoButton } from '@/src/components/common/BrandLogoButton';
 import { ScreenLayout } from '@/src/components/layout';
-import { COLORS } from '@/src/constants';
+import { COLORS, SIZE, SPACING } from '@/src/constants';
 import { useScheduleTodoStore } from '../ScheduleTodoStore';
 import type { ScheduleTodo } from '../ScheduleTodoStore';
 import type { TodoCategory } from '../types';
@@ -26,7 +27,8 @@ import {
   STATIC_MODAL_TAGS,
   STATIC_TAG_CONFIG,
   TAG_COLOR_PAIRS,
-  TAG_COLORS,
+  getTagCategory,
+  getTagColorPair,
   getTagCfg,
 } from '../utils/scheduleConfig';
 import {
@@ -44,6 +46,7 @@ import { styles } from './ScheduleScreen.styles';
 
 export function ScheduleScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const today = new Date();
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -107,6 +110,10 @@ export function ScheduleScreen() {
   // ── 동적 태그 목록
   const allFilterTags: string[] = ['전체', '복약', '병원', '산책', ...customTags.map((ct) => ct.name)];
   const allModalTags: string[] = ['복약', '병원', '산책', ...customTags.map((ct) => ct.name)];
+  const tabBarHeight = SIZE.tabBarHeight + Math.max(0, insets.bottom - SPACING.xl);
+  const fabBottom = tabBarHeight + SIZE.tabBarHeight - SPACING.jumbo;
+  const sheetPaddingBottom = Math.max(SPACING.jumbo, insets.bottom + SPACING.xxl);
+  const tallSheetPaddingBottom = Math.max(SPACING.jumbo + 16, sheetPaddingBottom);
 
   // ── 캘린더 데이터 (연·월 포함 필터링)
   const dayTodos = todos.filter((t) => t.day === selectedDay && t.month === viewMonth && t.year === viewYear);
@@ -114,14 +121,14 @@ export function ScheduleScreen() {
   const doneCount = dayTodos.filter((t) => t.status === 'done').length;
   const totalCount = dayTodos.length;
 
-  const dayDotColors = new Map<number, string[]>();
+  const dayTodoProgress = new Map<number, { done: number; total: number }>();
   todos
     .filter((t) => t.month === viewMonth && t.year === viewYear)
     .forEach((t) => {
-      const existing = dayDotColors.get(t.day) ?? [];
-      const color = getTagCfg(t.tag, customTags).color;
-      if (!existing.includes(color)) existing.push(color);
-      dayDotColors.set(t.day, existing);
+      const progress = dayTodoProgress.get(t.day) ?? { done: 0, total: 0 };
+      progress.total += 1;
+      if (t.status === 'done') progress.done += 1;
+      dayTodoProgress.set(t.day, progress);
     });
 
   const weeks = buildCalendarWeeks(viewYear, viewMonth);
@@ -184,7 +191,7 @@ export function ScheduleScreen() {
   // ── 할일 추가 (루틴 설정 적용 → 해당하는 모든 날짜에 생성)
   const handleAdd = () => {
     if (!newTitle.trim()) return;
-    const cat: TodoCategory = newTag === '복약' ? 'medication' : newTag === '산책' ? 'walk' : 'hospital';
+    const cat: TodoCategory = getTagCategory(newTag);
 
     const base: Omit<ScheduleTodo, 'id' | 'day' | 'month' | 'year'> = {
       title: newTitle.trim(),
@@ -271,7 +278,14 @@ export function ScheduleScreen() {
                     if (d === null) return <View key={`e-${wi}-${di}`} style={styles.calCell} />;
                     const todayCell = isToday(d);
                     const isSelected = d === selectedDay;
-                    const dotColors = dayDotColors.get(d) ?? [];
+                    const progress = dayTodoProgress.get(d);
+                    const dotColor = progress
+                      ? progress.done === 0
+                        ? COLORS.danger
+                        : progress.done === progress.total
+                          ? COLORS.success
+                          : COLORS.starWarm
+                      : null;
                     const isSat = di === 5;
                     const isSun = di === 6;
                     return (
@@ -285,9 +299,7 @@ export function ScheduleScreen() {
                           ]}>{d}</Text>
                         </View>
                         <View style={styles.dotRow}>
-                          {dotColors.length > 0 && !isSelected
-                            ? dotColors.slice(0, 2).map((color, ci) => <View key={ci} style={[styles.calDot, { backgroundColor: color }]} />)
-                            : null}
+                          {dotColor ? <View style={[styles.calDot, { backgroundColor: dotColor }]} /> : null}
                         </View>
                       </Pressable>
                     );
@@ -355,7 +367,7 @@ export function ScheduleScreen() {
         </ScrollView>
 
         {/* FAB */}
-        <Pressable accessibilityLabel="할일 추가" onPress={() => openSheet(addSheetY, setAddVisible)} style={styles.fab}>
+        <Pressable accessibilityLabel="할일 추가" onPress={() => openSheet(addSheetY, setAddVisible)} style={[styles.fab, { bottom: fabBottom }]}>
           <AppIcon color={COLORS.background} name="add" size={30} />
         </Pressable>
       </ScreenLayout>
@@ -363,7 +375,7 @@ export function ScheduleScreen() {
       {/* ── 할일 추가 모달 */}
       <Modal animationType="none" onRequestClose={() => closeSheet(addSheetY, setAddVisible)} statusBarTranslucent transparent visible={addVisible}>
         <Pressable onPress={() => closeSheet(addSheetY, setAddVisible)} style={styles.overlay}>
-          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { transform: [{ translateY: addSheetY }] }]}>
+          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: addSheetY }] }]}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>할일 추가</Text>
@@ -451,7 +463,7 @@ export function ScheduleScreen() {
       {/* ── 시간 선택 모달 */}
       <Modal animationType="none" onRequestClose={() => closeSheet(timeSheetY, setTimePickerVisible)} statusBarTranslucent transparent visible={timePickerVisible}>
         <Pressable onPress={() => closeSheet(timeSheetY, setTimePickerVisible)} style={styles.overlay}>
-          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { transform: [{ translateY: timeSheetY }] }]}>
+          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: timeSheetY }] }]}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>시간 설정</Text>
@@ -496,7 +508,7 @@ export function ScheduleScreen() {
       {/* ── 태그 추가/수정 모달 */}
       <Modal animationType="none" onRequestClose={() => closeSheet(tagSheetY, setTagModalVisible)} statusBarTranslucent transparent visible={tagModalVisible}>
         <Pressable onPress={() => closeSheet(tagSheetY, setTagModalVisible)} style={styles.overlay}>
-          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { transform: [{ translateY: tagSheetY }] }]}>
+          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: tagSheetY }] }]}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>태그 추가/수정</Text>
@@ -517,7 +529,7 @@ export function ScheduleScreen() {
                   );
                 })}
                 {customTags.map((ct) => {
-                  const cfg = TAG_COLOR_PAIRS[ct.colorIdx];
+                  const cfg = getTagColorPair(ct.colorIdx);
                   return (
                     <Pressable key={ct.id} onPress={() => handleDeleteCustomTag(ct.id)} style={[styles.tagChipWithX, { backgroundColor: cfg.bg }]}>
                       <Text style={[styles.tagChipText, { color: cfg.color }]}>{ct.name}</Text>
@@ -546,14 +558,14 @@ export function ScheduleScreen() {
             <View style={styles.inputGroup}>
               <Text style={styles.tagSectionLabel}>태그 색상</Text>
               <View style={styles.colorRow}>
-                {TAG_COLOR_PAIRS.map((_, idx) => (
+                {TAG_COLOR_PAIRS.map((pair, idx) => (
                   <Pressable
                     key={idx}
                     onPress={() => setSelectedColorIdx(idx)}
-                    style={[styles.colorDot, { backgroundColor: TAG_COLORS[idx] }]}
+                    style={[styles.colorDot, { backgroundColor: pair.bg, borderColor: pair.color }]}
                   >
                     {selectedColorIdx === idx && (
-                      <AppIcon color={COLORS.background} name="checkmark" size={14} />
+                      <AppIcon color={pair.color} name="checkmark" size={14} />
                     )}
                   </Pressable>
                 ))}
@@ -586,7 +598,7 @@ export function ScheduleScreen() {
       {/* ── 루틴 날짜 설정 모달 */}
       <Modal animationType="none" onRequestClose={() => closeSheet(routineSheetY, setRoutineModalVisible)} statusBarTranslucent transparent visible={routineModalVisible}>
         <Pressable onPress={() => closeSheet(routineSheetY, setRoutineModalVisible)} style={styles.overlay}>
-          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, styles.sheetTall, { transform: [{ translateY: routineSheetY }] }]}>
+          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, styles.sheetTall, { paddingBottom: tallSheetPaddingBottom, transform: [{ translateY: routineSheetY }] }]}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
               <View>
@@ -711,7 +723,7 @@ export function ScheduleScreen() {
       {/* ── 날짜 피커 모달 */}
       <Modal animationType="none" onRequestClose={() => closeSheet(routinePickerSheetY, setRoutinePickerVisible)} statusBarTranslucent transparent visible={routinePickerVisible}>
         <Pressable onPress={() => closeSheet(routinePickerSheetY, setRoutinePickerVisible)} style={styles.overlay}>
-          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { transform: [{ translateY: routinePickerSheetY }] }]}>
+          <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: routinePickerSheetY }] }]}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{routinePickerFor === 'start' ? '시작일 선택' : '종료일 선택'}</Text>

@@ -11,24 +11,15 @@ type MedicationStoreContextValue = {
 
 const MedicationStoreContext = createContext<MedicationStoreContextValue | null>(null);
 
-const MOCK_INITIAL_MEDICATIONS: DiagnosisMedication[] = [
-  {
-    id: 'mock-med-1',
-    name: '메타캄',
-    dosageLabel: 'Meloxicam 1.5mg/ml',
-    frequencyLabel: '1일 2회',
-    doseLabel: '1정씩',
-    mealTimingLabel: '식사 후',
-    timings: ['morning', 'dinner'],
-    warningNote: '위장 자극 주의, 공복 투여 금지',
-  },
-];
-
 export function MedicationProvider({ children }: PropsWithChildren) {
-  const [medications, setMedications] = useState<DiagnosisMedication[]>(MOCK_INITIAL_MEDICATIONS);
+  const [medications, setMedications] = useState<DiagnosisMedication[]>([]);
 
   const addMedications = useCallback((entries: DiagnosisMedication[]) => {
-    setMedications((prev) => [...prev, ...entries]);
+    setMedications((current) => {
+      const existingIds = new Set(current.map((medication) => medication.id));
+      const additions = entries.filter((medication) => !existingIds.has(medication.id));
+      return additions.length > 0 ? [...current, ...additions] : current;
+    });
   }, []);
 
   const removeMedication = useCallback((id: string) => {
