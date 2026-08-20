@@ -1,96 +1,53 @@
-﻿import { Href, useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { MOCK_WEIGHT_RECORDS } from '../mock';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
-import { WeightRecord } from '../types';
+import { usePetStore } from '@/src/features/pet/PetStore';
+
+import { useHealthSummaryStore } from '../HealthSummaryStore';
+import { getHealthRecordTime, getRecordsForMonth, getWeightOverview } from '../healthSummarySelectors';
 import { MonthNavigator } from './MonthNavigator';
 
 const CHART_HEIGHT = 120;
-const CHART_BASELINE = 3.8;
 const GRID_BOTTOM_OFFSET = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-const parseRecordDate = (value: string) => {
-	const [y, m, d] = value.split('.').map(Number);
-	return new Date(y, (m || 1) - 1, d || 1);
+const toChartLabel = (value: string) => {
+	const [, month, day] = value.split('.');
+	return `${Number(month)}/${Number(day)}`;
 };
-
-const toChartLabel = (date: Date) => `${date.getMonth() + 1}/${date.getDate()}`;
-
-type WeightEntry = { record: WeightRecord; parsedDate: Date };
-
-const parseRecordDateTime = (record: WeightRecord): number => {
-	const [y, m, d] = record.date.split('.').map(Number);
-	const match = record.time ? record.time.match(/([오전오후]+)\s+(\d+):(\d+)/) : null;
-	let h = 0, min = 0;
-	if (match) {
-		h = Number(match[2]);
-		min = Number(match[3]);
-		if (match[1] === '오후' && h !== 12) h += 12;
-		if (match[1] === '오전' && h === 12) h = 0;
-	}
-	return new Date(y, (m || 1) - 1, d || 1, h, min).getTime();
-};
-
-const getSortedWeightEntries = (records: WeightRecord[]): WeightEntry[] =>
-	records
-		.map((record) => ({ record, parsedDate: parseRecordDate(record.date) }))
-		.sort((a, b) => parseRecordDateTime(a.record) - parseRecordDateTime(b.record));
 
 export function WeightTab() {
 	const router = useRouter();
+	const { selectedPet } = usePetStore();
+	const { weightRecords } = useHealthSummaryStore();
 	const [rangeTab, setRangeTab] = useState<'1m' | '6m'>('1m');
 	const [year, setYear] = useState(() => new Date().getFullYear());
 	const [month, setMonth] = useState(() => new Date().getMonth() + 1);
 	const [chartWidth, setChartWidth] = useState(0);
 
-	const formattedTargetMonth = `${year}.${String(month).padStart(2, '0')}`;
-	const filteredRecords = MOCK_WEIGHT_RECORDS.filter((record) =>
-		record.date.startsWith(formattedTargetMonth)
-	);
-
-	// 가장 최근 기록을 "현재 시점"으로 삼아서, 실제 기기 날짜와 상관없이
-	// 목데이터/실기록 모두 항상 최신 구간이 그래프·요약에 잡히게 함
-	const sortedEntries = getSortedWeightEntries(MOCK_WEIGHT_RECORDS);
-	const latestEntry = sortedEntries[sortedEntries.length - 1] ?? null;
-	const currentWeight = latestEntry?.record.weight ?? null;
-
-	const targetBaselineTime = latestEntry ? latestEntry.parsedDate.getTime() - 30 * MS_PER_DAY : 0;
-	const baselineEntry = latestEntry
-		? sortedEntries
-			.filter((entry) => entry !== latestEntry)
-			.reduce<WeightEntry | null>((closest, entry) => {
-				if (!closest) return entry;
-				const closestDiff = Math.abs(closest.parsedDate.getTime() - targetBaselineTime);
-				const entryDiff = Math.abs(entry.parsedDate.getTime() - targetBaselineTime);
-				return entryDiff < closestDiff ? entry : closest;
-			}, null)
-		: null;
-
-	const weightDiff = latestEntry && baselineEntry
-		? Math.round((latestEntry.record.weight - baselineEntry.record.weight) * 10) / 10
-		: null;
+	const records = selectedPet
+		? weightRecords.filter((record) => record.petId === selectedPet.id)
+		: [];
+	const filteredRecords = getRecordsForMonth(records, year, month);
+	const { currentWeight, difference: weightDiff } = getWeightOverview(records);
 
 	const rangeDays = rangeTab === '1m' ? 30 : 180;
-	const anchorTime = latestEntry ? latestEntry.parsedDate.getTime() : Date.now();
-	const cutoffTime = anchorTime - rangeDays * MS_PER_DAY;
+	const cutoffTime = Date.now() - rangeDays * MS_PER_DAY;
 
-	const chartPointsByDate = new Map<string, { date: Date; weight: number }>();
-	MOCK_WEIGHT_RECORDS.forEach((record) => {
-		const parsedDate = parseRecordDate(record.date);
-		if (parsedDate.getTime() < cutoffTime) return;
-		if (!chartPointsByDate.has(record.date)) {
-			chartPointsByDate.set(record.date, { date: parsedDate, weight: record.weight });
-		}
+	const chartPointsByDate = new Map<string, { label: string; weight: number }>();
+	records
+		.filter((record) => getHealthRecordTime(record.date, record.time) >= cutoffTime)
+		.sort((first, second) => getHealthRecordTime(first.date, first.time) - getHealthRecordTime(second.date, second.time))
+		.forEach((record) => {
+			chartPointsByDate.set(record.date, { label: toChartLabel(record.date), weight: record.weight });
 	});
 
 	const chartPoints = Array.from(chartPointsByDate.values())
-		.sort((a, b) => a.date.getTime() - b.date.getTime())
-		.map((entry) => ({ label: toChartLabel(entry.date), weight: entry.weight }));
+		.map((entry) => ({ label: entry.label, weight: entry.weight }));
 
 	const weightValues = chartPoints.map((p) => p.weight);
 	const minWeight = weightValues.length ? Math.min(...weightValues) : 0;
@@ -117,7 +74,7 @@ export function WeightTab() {
 						<Text style={styles.weightUnit}>kg</Text>
 					</Text>
 					{weightDiff !== null ? (
-						<Text style={styles.diffValue}>이번 달 {weightDiff > 0 ? '+' : ''}{weightDiff}kg</Text>
+						<Text style={styles.diffValue}>이전 기록 대비 {weightDiff > 0 ? '+' : ''}{weightDiff}kg</Text>
 					) : null}
 				</View>
 				<TouchableOpacity
@@ -216,7 +173,7 @@ export function WeightTab() {
 					<TouchableOpacity
 						activeOpacity={0.8}
 						key={record.id}
-						onPress={() => router.push('/health-summary/weight-record' as Href)}
+						onPress={() => router.push({ pathname: '/health-summary/weight-record', params: { recordId: record.id } } as Href)}
 						style={styles.recordItem}
 					>
 						<View style={styles.recordItemLeft}>
@@ -255,14 +212,14 @@ const styles = StyleSheet.create({
 		height: 140,
 		justifyContent: 'space-between',
 		paddingLeft: 38,
-		paddingRight: 60,
+		paddingRight: 45,
 	},
 	cardLabel: { ...TYPOGRAPHY.body1, color: COLORS.gray600, fontFamily: TYPOGRAPHY.button.fontFamily },
 	weightValue: { ...TYPOGRAPHY.title1, color: COLORS.black, fontSize: 36, lineHeight: 46, marginVertical: 4 },
 	weightUnit: { fontSize: 24, fontWeight: 'normal', lineHeight: 46 },
 	diffText: { ...TYPOGRAPHY.small, color: COLORS.gray500 },
 	diffValue: { color: COLORS.alert, fontWeight: '700' },
-	recordButton: { backgroundColor: COLORS.primary, borderRadius: RADIUS.segment, paddingHorizontal: 20, paddingVertical: 12 },
+	recordButton: { alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: RADIUS.segment, justifyContent: 'center', paddingVertical: 12, width: 108 },
 	recordButtonText: { ...TYPOGRAPHY.smallButton, color: COLORS.background },
 	chartCard: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.xxl },
 	chartHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xxl },

@@ -1,5 +1,4 @@
 import { useRouter } from 'expo-router';
-import { getMessaging, getToken } from '@react-native-firebase/messaging';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -31,6 +30,7 @@ import {
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
+import { requestPushPermission, requestPushToken } from '@/src/services/pushNotifications';
 
 export function LoginStartScreen() {
   const router = useRouter();
@@ -44,6 +44,7 @@ export function LoginStartScreen() {
   const { deleteUserProfileData, registerRemoteProfile } = useMyPageStore();
   const { deleteUserPetData } = usePetStore();
   const mountedRef = useRef(true);
+  const startingRef = useRef(false);
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [challenge, setChallenge] = useState<KakaoLinkChallenge | null>(null);
@@ -167,13 +168,25 @@ export function LoginStartScreen() {
     setLinkError(undefined);
   };
 
+  const startWithPushPermission = async (action: () => void | Promise<void>) => {
+    if (startingRef.current) return;
+
+    startingRef.current = true;
+    try {
+      await requestPushPermission();
+      await action();
+    } finally {
+      startingRef.current = false;
+    }
+  };
+
   const handleLoadFcmToken = async () => {
     if (loadingFcmToken) return;
 
     setLoadingFcmToken(true);
 
     try {
-      const token = await getToken(getMessaging());
+      const token = await requestPushToken();
       if (!token) throw new Error('missing-fcm-token');
       if (mountedRef.current) setFcmToken(token);
     } catch {
@@ -200,7 +213,9 @@ export function LoginStartScreen() {
           <AppButton
             accessibilityHint="이메일 로그인 또는 회원가입 화면으로 이동합니다"
             disabled={submitting}
-            onPress={() => navigateOnce(() => router.replace('/login'))}
+            onPress={() => void startWithPushPermission(
+              () => navigateOnce(() => router.replace('/login')),
+            )}
             size="medium"
             title="이메일로 시작하기"
             variant="secondary"
@@ -212,7 +227,7 @@ export function LoginStartScreen() {
               <AppIcon accessible={false} color={COLORS.black} name="chatbubble" size={24} />
             }
             loading={submitting && !challenge}
-            onPress={() => void handleKakaoLogin()}
+            onPress={() => void startWithPushPermission(handleKakaoLogin)}
             title="카카오로 시작하기"
             variant="kakao"
           />

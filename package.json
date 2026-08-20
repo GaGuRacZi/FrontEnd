@@ -16,7 +16,10 @@
     "check:signup-draft": "node scripts/check-signup-draft.mjs",
     "check:mypage-support": "node scripts/check-mypage-support.mjs",
     "check:mypage-terms": "node scripts/check-mypage-terms.mjs",
-    "check:pet-image-removal": "node scripts/check-pet-image-removal.mjs"
+    "check:notifications": "node scripts/check-notifications.mjs",
+    "check:pet-image-removal": "node scripts/check-pet-image-removal.mjs",
+    "check:health-summary": "node scripts/check-health-summary.mjs",
+    "check:home-api": "node scripts/check-home-api.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/noto-sans-kr": "^0.4.3",
@@ -30,6 +33,7 @@
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/native": "^7.1.8",
     "expo": "~54.0.37",
+    "expo-audio": "~1.1.1",
     "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.14",
@@ -40,7 +44,6 @@
     "expo-linking": "~8.0.12",
     "expo-location": "~19.0.8",
     "expo-navigation-bar": "~5.0.10",
-    "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
     "expo-splash-screen": "~31.0.13",

@@ -15,7 +15,6 @@ import { AppIcon } from '@/src/components/common/AppIcon';
 import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
-import { resolveRemoteLocation } from '@/src/services/locationApi';
 
 import { TERM_IDS, useTerms } from '../../terms';
 import { AddressSearchScreen } from '../components/AddressSearchScreen';
@@ -23,6 +22,7 @@ import { SignupScaffold } from '../components/SignupScaffold';
 import {
   geocodeAddress,
   getBestCurrentPosition,
+  getRegionFromCoordinates,
   getRegionFromPosition,
   LocationPermissionError,
   MAX_LOCATION_ACCURACY_METERS,
@@ -229,18 +229,18 @@ export function SignupLocationScreen() {
         return;
       }
 
-      const resolved = await resolveRemoteLocation(location.latitude, location.longitude);
+      const region = await getRegionFromCoordinates(location.latitude, location.longitude);
 
       if (!isCurrentRequest()) return;
-      if (!resolved.regionName) {
+      if (!region) {
         setLocationError('선택한 지역의 정보를 확인하지 못했어요. 다시 검색해주세요.');
         return;
       }
 
       updateFields({
-        latitude: resolved.latitude,
-        longitude: resolved.longitude,
-        region: resolved.regionName,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        region,
       });
     } catch (error) {
       if (isCurrentRequest()) {
@@ -270,7 +270,7 @@ export function SignupLocationScreen() {
           cancelLocationRequest();
           setSearching(false);
         }}
-        onSelect={(address) => void handleAddressSelect(address)}
+        onSelect={(region) => void handleAddressSelect(region.name)}
       />
     );
   }

@@ -14,7 +14,7 @@ function buildCalendarWeeks(year: number, month: number): (number | null)[][] {
 		...Array<null>(firstIdx).fill(null),
 		...Array.from({ length: daysInMonth }, (_, i) => i + 1),
 	];
-	while (cells.length % 7 !== 0) cells.push(null);
+	while (cells.length < 42) cells.push(null);
 	const weeks: (number | null)[][] = [];
 	for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 	return weeks;
@@ -30,17 +30,19 @@ interface DatePickerSheetProps {
 
 export function DatePickerSheet({ visible, value, title = '날짜 선택', onClose, onSelect }: DatePickerSheetProps) {
 	const sheetY = useRef(new Animated.Value(500)).current;
-	const [pickerYear, setPickerYear] = useState(value.getFullYear());
-	const [pickerMonth, setPickerMonth] = useState(value.getMonth());
+	const valueYear = value.getFullYear();
+	const valueMonth = value.getMonth();
+	const [pickerYear, setPickerYear] = useState(valueYear);
+	const [pickerMonth, setPickerMonth] = useState(valueMonth);
 
 	useEffect(() => {
 		if (visible) {
-			setPickerYear(value.getFullYear());
-			setPickerMonth(value.getMonth());
+			setPickerYear(valueYear);
+			setPickerMonth(valueMonth);
 			sheetY.setValue(500);
 			Animated.timing(sheetY, { toValue: 0, duration: 300, useNativeDriver: true }).start();
 		}
-	}, [visible]);
+	}, [sheetY, valueMonth, valueYear, visible]);
 
 	const close = () => {
 		Animated.timing(sheetY, { toValue: 500, duration: 220, useNativeDriver: true }).start(() => onClose());
@@ -75,11 +77,11 @@ export function DatePickerSheet({ visible, value, title = '날짜 선택', onClo
 						<View style={styles.calMonthRow}>
 							<Text style={styles.calMonthText}>{pickerYear}년 {pickerMonth + 1}월</Text>
 							<View style={styles.calArrowGroup}>
-								<Pressable accessibilityLabel="이전 달" accessibilityRole="button" hitSlop={12} onPress={prevMonth}>
-									<AppIcon color={COLORS.gray500} name="chevron-back" size={16} />
+								<Pressable accessibilityLabel="이전 달" accessibilityRole="button" hitSlop={8} onPress={prevMonth} style={styles.calArrowButton}>
+									<AppIcon color={COLORS.gray500} name="chevron-back" size={24} />
 								</Pressable>
-								<Pressable accessibilityLabel="다음 달" accessibilityRole="button" hitSlop={12} onPress={nextMonth}>
-									<AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
+								<Pressable accessibilityLabel="다음 달" accessibilityRole="button" hitSlop={8} onPress={nextMonth} style={styles.calArrowButton}>
+									<AppIcon color={COLORS.gray500} name="chevron-forward" size={24} />
 								</Pressable>
 							</View>
 						</View>
@@ -152,17 +154,18 @@ const styles = StyleSheet.create({
 	sheetHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
 	sheetTitle: { color: COLORS.black, fontFamily: 'NotoSansKR_700Bold', fontSize: 17, lineHeight: 26 },
 	closeCircleBtn: { alignItems: 'center', backgroundColor: COLORS.gray200, borderRadius: RADIUS.round, height: 32, justifyContent: 'center', width: 32 },
-	calCard: { borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm },
-	calMonthRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.lg, paddingHorizontal: SPACING.xs },
-	calArrowGroup: { alignItems: 'center', flexDirection: 'row', gap: SPACING.xs },
-	calMonthText: { color: COLORS.black, fontFamily: 'NotoSansKR_700Bold', fontSize: 15, lineHeight: 22 },
-	calWeekRow: { flexDirection: 'row', marginBottom: SPACING.xxs },
+	calCard: { borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, paddingBottom: SPACING.xl, paddingHorizontal: SPACING.sm, paddingTop: SPACING.xxl },
+	calMonthRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xxxl, minHeight: 44, paddingHorizontal: SPACING.md },
+	calArrowGroup: { alignItems: 'center', flexDirection: 'row', gap: SPACING.sm },
+	calArrowButton: { alignItems: 'center', height: 44, justifyContent: 'center', width: 44 },
+	calMonthText: { color: COLORS.black, fontFamily: 'NotoSansKR_700Bold', fontSize: 19, lineHeight: 28 },
+	calWeekRow: { flexDirection: 'row', marginBottom: SPACING.sm },
 	calWeekDay: { color: COLORS.gray500, flex: 1, fontFamily: 'NotoSansKR_400Regular', fontSize: 11, lineHeight: 18, textAlign: 'center' },
 	calWeekDaySat: { color: COLORS.primary },
 	calWeekDaySun: { color: COLORS.danger },
 	calGrid: { gap: 0 },
 	calRow: { flexDirection: 'row' },
-	calCell: { alignItems: 'center', flex: 1, paddingVertical: SPACING.xxs + 1 },
+	calCell: { alignItems: 'center', flex: 1, height: 48, paddingVertical: SPACING.xxs + 1 },
 	calBubble: { alignItems: 'center', backgroundColor: 'transparent', borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
 	calBubbleSelected: { backgroundColor: COLORS.primary },
 	calDateText: { color: COLORS.black, fontFamily: 'NotoSansKR_400Regular', fontSize: 13, lineHeight: 20 },

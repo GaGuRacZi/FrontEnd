@@ -1,4 +1,4 @@
-import type { ScheduleTodo } from '../ScheduleTodoStore';
+export type RoutineType = '매일' | '특정요일';
 
 export function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -26,7 +26,7 @@ export function formatDate(d: Date) {
 export function getRoutineDatesInMonth(
   year: number,
   month: number,
-  routineType: '매일' | '특정요일' | '매월',
+  routineType: RoutineType,
   routineDays: number[],
   startDate: Date,
   endDate: Date,
@@ -45,8 +45,6 @@ export function getRoutineDatesInMonth(
       const jsDay = date.getDay();
       const ourDay = jsDay === 0 ? 6 : jsDay - 1;
       if (routineDays.includes(ourDay)) result.add(day);
-    } else if (routineType === '매월') {
-      if (day === startDate.getDate()) result.add(day);
     }
   }
   return result;
@@ -63,31 +61,4 @@ export function buildCalendarWeeks(year: number, month: number): (number | null)
   const weeks: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return weeks;
-}
-
-// 루틴 범위 내 전체 날짜 생성
-export function generateRoutineTodos(
-  base: Omit<ScheduleTodo, 'id' | 'day' | 'month' | 'year'>,
-  routineType: '매일' | '특정요일' | '매월',
-  routineDays: number[],
-  startDate: Date,
-  endDate: Date,
-): ScheduleTodo[] {
-  const todos: ScheduleTodo[] = [];
-  const ts = Date.now();
-  let idx = 0;
-
-  let curY = startDate.getFullYear();
-  let curM = startDate.getMonth();
-  const endY = endDate.getFullYear();
-  const endM = endDate.getMonth();
-
-  while (curY < endY || (curY === endY && curM <= endM)) {
-    const datesSet = getRoutineDatesInMonth(curY, curM, routineType, routineDays, startDate, endDate);
-    datesSet.forEach((day) => {
-      todos.push({ ...base, id: `st-${ts}-${idx++}`, day, month: curM, year: curY });
-    });
-    if (curM === 11) { curY++; curM = 0; } else curM++;
-  }
-  return todos;
 }

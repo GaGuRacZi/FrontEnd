@@ -35,6 +35,13 @@ const CATEGORY_META: Record < NotificationCategory,
     chipTint: COLORS.communityback,
     chipColor: COLORS.community,
   },
+  emergency: {
+    icon: require('../../../../assets/images/home/notification/blood.png'),
+    iconSize: 20,
+    iconTint: COLORS.bloodbackground,
+    chipTint: COLORS.bloodbackground,
+    chipColor: COLORS.error,
+  },
 };
 
 export function NotificationCard({ notification, onPress }: NotificationCardProps) {

@@ -1,75 +1,46 @@
-﻿import { Href, useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { MOCK_WALK_RECORDS } from '../mock';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
-import { WalkRecord } from '../types';
+import { usePetStore } from '@/src/features/pet/PetStore';
+
+import { useHealthSummaryStore } from '../HealthSummaryStore';
+import { getHealthRecordTime, getRecordsForMonth, getWalkOverview } from '../healthSummarySelectors';
 import { MonthNavigator } from './MonthNavigator';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-const parseRecordDate = (value: string) => {
-	const [y, m, d] = value.split('.').map(Number);
-	return new Date(y, (m || 1) - 1, d || 1);
+const toChartLabel = (value: string) => {
+	const [, month, day] = value.split('.');
+	return `${Number(month)}/${Number(day)}`;
 };
-
-const toChartLabel = (date: Date) => `${date.getMonth() + 1}/${date.getDate()}`;
-
-type WalkEntry = { record: WalkRecord; parsedDate: Date };
-
-const getSortedWalkEntries = (records: WalkRecord[]): WalkEntry[] =>
-	records
-		.map((record) => ({ record, parsedDate: parseRecordDate(record.date) }))
-		.sort((a, b) => a.parsedDate.getTime() - b.parsedDate.getTime());
-
-const average = (entries: WalkEntry[]) =>
-	entries.length > 0
-		? Math.round(entries.reduce((sum, entry) => sum + entry.record.durationMinutes, 0) / entries.length)
-		: null;
 
 export function WalkTab() {
 	const router = useRouter();
+	const { selectedPet } = usePetStore();
+	const { walkRecords } = useHealthSummaryStore();
 	const [year, setYear] = useState(() => new Date().getFullYear());
 	const [month, setMonth] = useState(() => new Date().getMonth() + 1);
 
-	const formattedTargetMonth = `${year}.${String(month).padStart(2, '0')}`;
-	const filteredRecords = MOCK_WALK_RECORDS.filter((record) =>
-		record.date.startsWith(formattedTargetMonth)
-	);
+	const records = selectedPet
+		? walkRecords.filter((record) => record.petId === selectedPet.id)
+		: [];
+	const filteredRecords = getRecordsForMonth(records, year, month);
+	const { average: thisWeekAvg, difference: weeklyDiff, records: thisWeekRecords } = getWalkOverview(records);
 
-	// 가장 최근 기록을 "이번 주"의 기준으로 삼음 (실제 기기 날짜와 무관하게 동작)
-	const sortedEntries = getSortedWalkEntries(MOCK_WALK_RECORDS);
-	const latestEntry = sortedEntries[sortedEntries.length - 1] ?? null;
-	const anchorTime = latestEntry ? latestEntry.parsedDate.getTime() : Date.now();
-
-	const thisWeekEntries = sortedEntries.filter(
-		(entry) => anchorTime - entry.parsedDate.getTime() < 7 * MS_PER_DAY
-	);
-	const lastWeekEntries = sortedEntries.filter((entry) => {
-		const gap = anchorTime - entry.parsedDate.getTime();
-		return gap >= 7 * MS_PER_DAY && gap < 14 * MS_PER_DAY;
-	});
-
-	const thisWeekAvg = average(thisWeekEntries);
-	const lastWeekAvg = average(lastWeekEntries);
-	const weeklyDiff = thisWeekAvg !== null && lastWeekAvg !== null ? thisWeekAvg - lastWeekAvg : null;
-
-	const barPointsByDate = new Map<string, { date: Date; minutes: number }>();
-	MOCK_WALK_RECORDS.forEach((record) => {
-		const parsedDate = parseRecordDate(record.date);
+	const barPointsByDate = new Map<string, { date: string; minutes: number }>();
+	thisWeekRecords.forEach((record) => {
 		const existing = barPointsByDate.get(record.date);
 		if (existing) {
 			existing.minutes += record.durationMinutes;
 		} else {
-			barPointsByDate.set(record.date, { date: parsedDate, minutes: record.durationMinutes });
+			barPointsByDate.set(record.date, { date: record.date, minutes: record.durationMinutes });
 		}
 	});
 
 	const barPoints = Array.from(barPointsByDate.values())
-		.sort((a, b) => a.date.getTime() - b.date.getTime())
+		.sort((a, b) => getHealthRecordTime(a.date) - getHealthRecordTime(b.date))
 		.slice(-7)
 		.map((entry) => ({ label: toChartLabel(entry.date), minutes: entry.minutes }));
 
@@ -126,7 +97,7 @@ export function WalkTab() {
 					<TouchableOpacity
 						activeOpacity={0.8}
 						key={record.id}
-						onPress={() => router.push('/health-summary/walk-record' as Href)}
+						onPress={() => router.push({ pathname: '/health-summary/walk-record', params: { recordId: record.id } } as Href)}
 						style={styles.recordItem}
 					>
 						<View style={styles.recordItemLeft}>
@@ -135,7 +106,7 @@ export function WalkTab() {
 							</View>
 							<View>
 								<Text style={styles.recordItemTitle}>{record.dayLabel}</Text>
-								<Text style={styles.recordItemSub}>{record.distanceKm}km</Text>
+								<Text style={styles.recordItemSub}>{record.distanceKm > 0 ? `${record.distanceKm}km` : '거리 미기록'}</Text>
 							</View>
 						</View>
 						<View style={styles.recordItemRight}>
@@ -173,7 +144,7 @@ const styles = StyleSheet.create({
 	walkValue: { ...TYPOGRAPHY.title1, color: COLORS.black, fontSize: 32, lineHeight: 42, marginVertical: 4 },
 	diffText: { ...TYPOGRAPHY.small, color: COLORS.gray600 },
 	diffValue: { color: COLORS.success, fontWeight: '700' },
-	recordButton: { backgroundColor: COLORS.success, borderRadius: RADIUS.segment, paddingHorizontal: 10, paddingVertical: 12 },
+	recordButton: { alignItems: 'center', backgroundColor: COLORS.success, borderRadius: RADIUS.segment, justifyContent: 'center', paddingVertical: 12, width: 108 },
 	recordButtonText: { ...TYPOGRAPHY.smallButton, color: COLORS.background },
 	chartCard: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.xxl },
 	chartTitle: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily, marginBottom: SPACING.xxl },

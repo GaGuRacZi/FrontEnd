@@ -7,7 +7,13 @@ import { logoutRemoteSession } from '@/src/features/auth/services/kakaoAuthServi
 import { useTerms } from '@/src/features/auth/terms';
 import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useCommunityStore } from '@/src/features/community/CommunityStore';
+import { useMedicationStore } from '@/src/features/home/MedicationStore';
+import { useHealthSummaryStore } from '@/src/features/health-summary/HealthSummaryStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
+import {
+  deleteRemoteAccount,
+  registerRemotePushToken,
+} from '@/src/features/mypage/services/mypageApi';
 import { useSupportStore } from '@/src/features/mypage/support';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
@@ -54,10 +60,18 @@ export function useAccountLifecycle() {
     deleteUserSupportData,
   } = useSupportStore();
   const { clearDrafts, deleteUserPetData } = usePetStore();
+  const {
+    clearScreenSession: clearMedicationSession,
+  } = useMedicationStore();
+  const {
+    clearScreenSession: clearHealthSummarySession,
+    deleteUserHealthSummaryData,
+  } = useHealthSummaryStore();
 
   const logOut = useCallback(async () => {
     const userId = currentUserId;
     if (userId && isUuid(userId)) {
+      await runWithRetry(() => registerRemotePushToken(null)).catch(() => undefined);
       await runWithRetry(logoutRemoteSession).catch(() => undefined);
     }
     await runAll([
@@ -65,6 +79,8 @@ export function useAccountLifecycle() {
       runWithRetry(clearCommunitySession),
       runWithRetry(clearSupportSession),
       runWithRetry(async () => clearScreenSession()),
+      runWithRetry(clearMedicationSession),
+      runWithRetry(clearHealthSummarySession),
       userId ? runWithRetry(() => clearDrafts(userId)) : Promise.resolve(),
     ]);
     if (userId) await runWithRetry(() => clearSession(userId));
@@ -72,6 +88,8 @@ export function useAccountLifecycle() {
     clearChatSession,
     clearCommunitySession,
     clearDrafts,
+    clearMedicationSession,
+    clearHealthSummarySession,
     clearScreenSession,
     clearSession,
     clearSupportSession,
@@ -85,6 +103,7 @@ export function useAccountLifecycle() {
       runWithRetry(() => deleteUserPetData(userId)),
       runWithRetry(() => deleteUserProfileData(userId)),
       runWithRetry(() => deleteUserSupportData(userId)),
+      runWithRetry(() => deleteUserHealthSummaryData(userId)),
       runWithRetry(deleteConsentHistory),
     ]);
 
@@ -95,6 +114,7 @@ export function useAccountLifecycle() {
     deleteConsentHistory,
     deleteUserChatData,
     deleteUserCommunityData,
+    deleteUserHealthSummaryData,
     deleteUserPetData,
     deleteUserProfileData,
     deleteUserSupportData,
@@ -115,6 +135,7 @@ export function useAccountLifecycle() {
   const withdrawAccount = useCallback(async () => {
     if (!currentUserId) throw new Error('auth-session-required');
 
+    await deleteRemoteAccount();
     await runWithRetry(() =>
       AsyncStorage.setItem(PENDING_WITHDRAWAL_KEY, currentUserId),
     );

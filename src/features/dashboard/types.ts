@@ -1,4 +1,4 @@
-export type DiagnosisStatus = 'completed' | 'summarizing';
+export type DiagnosisStatus = 'completed' | 'failed' | 'summarizing';
 
 type BaseDiagnosisListItem = {
 	date: string; // '2026.07.04' 형태의 표시용 라벨
@@ -7,15 +7,10 @@ type BaseDiagnosisListItem = {
 	petId?: string;
 };
 
-export type DiagnosisListItem =
-	| (BaseDiagnosisListItem & {
-			status: 'completed';
-			summaryNote: string;
-	  })
-	| (BaseDiagnosisListItem & {
-			status: 'summarizing';
-			summaryNote?: never;
-	  });
+export type DiagnosisListItem = BaseDiagnosisListItem & {
+	status: DiagnosisStatus;
+	summaryNote?: string;
+};
 
 export type DiagnosisMedicationTiming = 'bedtime' | 'dinner' | 'lunch' | 'morning';
 
@@ -29,23 +24,6 @@ export type DiagnosisMedication = {
 	name: string;
 	timings: DiagnosisMedicationTiming[];
 	warningNote?: string;
-};
-
-export type DiagnosisDetail = {
-	aiSummary?: string;
-	careFooterNote?: string;
-	careNotes: string[];
-	date: string;
-	diagnosisTitle: string;
-	findingConclusion?: string;
-	findings: string[];
-	hospitalName?: string;
-	id: string;
-	medications: DiagnosisMedication[];
-	status: DiagnosisStatus;
-	transcript?: DiagnosisTranscriptMessage[];
-	transcriptDuration?: string;
-	transcriptRecordedAt?: string;
 };
 
 export type DiagnosisTranscriptSpeaker = 'owner' | 'vet';

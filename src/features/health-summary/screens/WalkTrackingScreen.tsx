@@ -1,4 +1,4 @@
-﻿import { Href, useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import React, { useRef, useState, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 

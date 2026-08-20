@@ -1,12 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { isValidClockTime, normalizePaymentMethods } from '../mypageData';
+import { isValidClockTime } from '../mypageData';
 import { createDefaultMyPageState } from '../mypageMappers';
 import type {
   LoginConnection,
   NotificationSettings,
   PaymentHistoryItem,
-  PaymentMethod,
   PlanId,
   StoredMyPageState,
   SubscriptionState,
@@ -57,6 +56,7 @@ function isUserProfile(value: unknown, userId: string): value is UserProfile {
     isString(value.createdAt) &&
     isString(value.introduction) &&
     isString(value.location) &&
+    isNullableString(value.regionCode) &&
     Array.isArray(value.loginConnections) &&
     value.loginConnections.every(isLoginConnection) &&
     isString(value.name) &&
@@ -94,6 +94,7 @@ function createNotificationSettings(
 
   return {
     aiAnalysis: isBoolean(value.aiAnalysis) ? value.aiAnalysis : defaults.aiAnalysis,
+    benefit: isBoolean(value.benefit) ? value.benefit : defaults.benefit,
     chat: isBoolean(value.chat) ? value.chat : defaults.chat,
     community: isBoolean(value.community) ? value.community : defaults.community,
     doNotDisturbEnabled: isBoolean(value.doNotDisturbEnabled)
@@ -106,24 +107,12 @@ function createNotificationSettings(
   };
 }
 
-function isPaymentMethod(value: unknown): value is PaymentMethod {
-  if (!isRecord(value)) return false;
-  return (
-    isString(value.brand) &&
-    isString(value.id) &&
-    isBoolean(value.isDefault) &&
-    isString(value.label) &&
-    isString(value.last4)
-  );
-}
-
 function isPaymentHistoryItem(value: unknown): value is PaymentHistoryItem {
   if (!isRecord(value)) return false;
   return (
     isNumber(value.amount) &&
     isString(value.date) &&
     isString(value.id) &&
-    isString(value.methodLabel) &&
     PAYMENT_STATUSES.includes(String(value.status)) &&
     isString(value.title)
   );
@@ -143,10 +132,6 @@ function createStateFromStoredValue(userId: string, value: unknown): StoredMyPag
       Array.isArray(value.paymentHistory) && value.paymentHistory.every(isPaymentHistoryItem)
         ? value.paymentHistory
         : defaults.paymentHistory,
-    paymentMethods:
-      Array.isArray(value.paymentMethods) && value.paymentMethods.every(isPaymentMethod)
-        ? normalizePaymentMethods(value.paymentMethods)
-        : defaults.paymentMethods,
     profile: isUserProfile(value.profile, userId) ? value.profile : defaults.profile,
     subscription: isSubscriptionState(value.subscription)
       ? value.subscription

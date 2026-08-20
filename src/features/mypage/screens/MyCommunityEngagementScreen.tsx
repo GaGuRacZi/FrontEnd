@@ -20,6 +20,7 @@ import {
   CommunityActivityList,
 } from '../components/CommunityActivityList';
 import { MyPageHeader } from '../components';
+import { getRemoteMyPageActivityPostIds } from '../services/mypageActivityApi';
 
 export type CommunityEngagementTab = 'commented' | 'saved';
 
@@ -53,7 +54,8 @@ export function MyCommunityEngagementScreen({
     isBookmarked,
     isReacted,
     isReady,
-    loadCommentActivity,
+    loadComments,
+    loadPostDetail,
     posts,
     reloadCommunity,
     viewerId,
@@ -63,20 +65,30 @@ export function MyCommunityEngagementScreen({
     getSavedFilter(initialFilter),
   );
   const [loadingCommentActivity, setLoadingCommentActivity] = useState(false);
+  const [activityPostIds, setActivityPostIds] = useState<ReadonlySet<string> | null>(null);
+  const [hasActivityLoadError, setHasActivityLoadError] = useState(false);
+  const [loadRequest, setLoadRequest] = useState(0);
   const savedItems = useMemo(
     () =>
       selectSavedActivityItems({
         isBookmarked,
         isReacted,
+        postIds: activityPostIds ?? undefined,
         posts,
         userId: currentUserId,
         viewerId,
       }),
-    [currentUserId, isBookmarked, isReacted, posts, viewerId],
+    [activityPostIds, currentUserId, isBookmarked, isReacted, posts, viewerId],
   );
   const commentedItems = useMemo(
-    () => selectCommentedActivityItems({ comments, posts, userId: currentUserId }),
-    [comments, currentUserId, posts],
+    () =>
+      selectCommentedActivityItems({
+        comments,
+        postIds: activityPostIds ?? undefined,
+        posts,
+        userId: currentUserId,
+      }),
+    [activityPostIds, comments, currentUserId, posts],
   );
   const savedCounts = useMemo(() => getActivityFilterCounts(savedItems), [savedItems]);
   const filteredSavedItems = useMemo(
@@ -91,18 +103,37 @@ export function MyCommunityEngagementScreen({
   }, [currentUserId, initialFilter, initialTab]);
 
   useEffect(() => {
-    if (activeTab !== 'commented' || !isReady || hasLoadError) return undefined;
+    if (!isReady || hasLoadError) return;
 
     let active = true;
-    setLoadingCommentActivity(true);
-    void loadCommentActivity().finally(() => {
-      if (active) setLoadingCommentActivity(false);
-    });
+    setActivityPostIds(null);
+    setHasActivityLoadError(false);
+    setLoadingCommentActivity(activeTab === 'commented');
+    void getRemoteMyPageActivityPostIds(activeTab)
+      .then(async (postIds) => {
+        const detailResults = await Promise.all(postIds.map((postId) => loadPostDetail(postId)));
+        if (detailResults.some((result) => !result.ok)) {
+          throw new Error('activity-post-load-failed');
+        }
+        if (activeTab === 'commented') {
+          const commentResults = await Promise.all(postIds.map((postId) => loadComments(postId)));
+          if (commentResults.some((result) => !result.ok)) {
+            throw new Error('activity-comment-load-failed');
+          }
+        }
+        if (active) setActivityPostIds(new Set(postIds));
+      })
+      .catch(() => {
+        if (active) setHasActivityLoadError(true);
+      })
+      .finally(() => {
+        if (active) setLoadingCommentActivity(false);
+      });
 
     return () => {
       active = false;
     };
-  }, [activeTab, hasLoadError, isReady, loadCommentActivity]);
+  }, [activeTab, hasLoadError, isReady, loadComments, loadPostDetail, loadRequest]);
 
   const openPost = (item: CommentedActivityItem | CommunityActivityItem) => {
     navigateOnce(() =>
@@ -120,7 +151,7 @@ export function MyCommunityEngagementScreen({
     );
   };
 
-  if (!isReady || (activeTab === 'commented' && loadingCommentActivity)) {
+  if (!isReady || activityPostIds === null || (activeTab === 'commented' && loadingCommentActivity)) {
     return (
       <MyPageHeader title={screenTitle}>
         <LoadingView label={`${screenTitle} 내역을 불러오고 있어요.`} />
@@ -128,7 +159,7 @@ export function MyCommunityEngagementScreen({
     );
   }
 
-  if (hasLoadError) {
+  if (hasLoadError || hasActivityLoadError) {
     return (
       <MyPageHeader title={screenTitle}>
         <EmptyState
@@ -140,7 +171,10 @@ export function MyCommunityEngagementScreen({
               size={32}
             />
           }
-          onActionPress={() => void reloadCommunity()}
+          onActionPress={() => {
+            void reloadCommunity();
+            setLoadRequest((current) => current + 1);
+          }}
           title="활동 내역을 불러오지 못했어요."
         />
       </MyPageHeader>

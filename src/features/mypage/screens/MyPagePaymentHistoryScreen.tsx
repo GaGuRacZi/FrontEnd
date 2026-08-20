@@ -44,9 +44,7 @@ export function MyPagePaymentHistoryScreen() {
             <View key={item.id} style={styles.historyCard}>
               <View style={styles.historyText}>
                 <Text style={styles.historyTitle}>{item.title}</Text>
-                <Text style={styles.historyMeta}>
-                  {item.date} · {item.methodLabel}
-                </Text>
+                <Text style={styles.historyMeta}>{item.date}</Text>
               </View>
               <View style={styles.amountBox}>
                 <View

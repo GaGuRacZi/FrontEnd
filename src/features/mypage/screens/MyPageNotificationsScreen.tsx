@@ -1,23 +1,24 @@
-import Constants from 'expo-constants';
 import { useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, AppSwitch, EmptyState, LoadingView } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { useTerms } from '@/src/features/auth/terms';
+import { requestPushToken } from '@/src/services/pushNotifications';
 
 import { MyPageHeader } from '../components';
 import { isValidClockTime } from '../mypageData';
+import { disablePushNotifications } from '../mypageMappers';
 import { useMyPageStore } from '../MyPageStore';
+import { registerRemotePushToken } from '../services/mypageApi';
 import type { NotificationSettings } from '../types';
 
 type NotificationKey = Exclude<
   keyof NotificationSettings,
   'doNotDisturbEnd' | 'doNotDisturbStart'
 >;
-type PermissionCheckKey = NotificationKey | 'marketing';
+type PermissionCheckKey = NotificationKey;
 
 const NOTIFICATION_ROWS: {
   description: string;
@@ -37,9 +38,8 @@ const NOTIFICATION_ROWS: {
   { description: '진료 요약과 OCR 분석 알림을 설정해요', key: 'aiAnalysis', title: 'AI 분석 완료 알림' },
   { description: '댓글·답글·거래 문의 알림을 설정해요', key: 'community', title: '커뮤니티 알림' },
   { description: '새 메시지와 거래 대화 알림을 설정해요', key: 'chat', title: '채팅 알림' },
+  { description: 'PAW 혜택과 이벤트 알림을 설정해요', key: 'benefit', title: '혜택·이벤트 알림' },
 ];
-
-const isExpoGo = Constants.appOwnership === 'expo';
 
 function formatClockInput(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 4);
@@ -59,7 +59,6 @@ function getClockTimeError(value: string) {
 export function MyPageNotificationsScreen() {
   const showAlert = useAppAlert();
   const { isReady, notificationSettings, updateNotificationSettings } = useMyPageStore();
-  const { marketingConsent, updateMarketingConsent } = useTerms();
   const permissionRequestRef = useRef(false);
   const [checkingPermissionKey, setCheckingPermissionKey] = useState<PermissionCheckKey | null>(null);
   const [doNotDisturbModalVisible, setDoNotDisturbModalVisible] = useState(false);
@@ -87,29 +86,6 @@ export function MyPageNotificationsScreen() {
     showAlert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
   };
 
-  const ensureNotificationPermission = async () => {
-    if (isExpoGo) return true;
-
-    try {
-      const Notifications = await import('expo-notifications');
-      const permission = await Notifications.getPermissionsAsync();
-      if (permission.granted) return true;
-
-      if (permission.canAskAgain) {
-        const requested = await Notifications.requestPermissionsAsync();
-        if (requested.granted) return true;
-        if (!requested.canAskAgain) await Linking.openSettings();
-        return false;
-      }
-
-      await Linking.openSettings();
-      return false;
-    } catch {
-      await Linking.openSettings().catch(() => undefined);
-      return false;
-    }
-  };
-
   const requestNotificationPermission = async (key: PermissionCheckKey) => {
     if (permissionRequestRef.current) return false;
 
@@ -117,7 +93,21 @@ export function MyPageNotificationsScreen() {
     setCheckingPermissionKey(key);
 
     try {
-      return await ensureNotificationPermission();
+      const pushToken = await requestPushToken();
+      if (pushToken) {
+        await registerRemotePushToken(pushToken);
+        return true;
+      }
+
+      const result = await updateNotificationSettings(
+        disablePushNotifications(notificationSettings),
+      );
+      await registerRemotePushToken(null);
+      if (!result.ok) showSaveError();
+      return false;
+    } catch {
+      showSaveError();
+      return false;
     } finally {
       permissionRequestRef.current = false;
       setCheckingPermissionKey(null);
@@ -133,19 +123,6 @@ export function MyPageNotificationsScreen() {
     const result = await updateNotificationSettings({ [key]: value });
 
     if (!result.ok) showSaveError();
-  };
-
-  const updateMarketingSetting = async (value: boolean) => {
-    try {
-      if (value) {
-        const hasPermission = await requestNotificationPermission('marketing');
-        if (!hasPermission) return;
-      }
-
-      await updateMarketingConsent(value);
-    } catch {
-      showSaveError();
-    }
   };
 
   const openDoNotDisturbTimeModal = () => {
@@ -221,20 +198,11 @@ export function MyPageNotificationsScreen() {
             ),
           )}
 
-          {renderNotificationCard(
-            '혜택·이벤트 알림',
-            'PAW 혜택과 이벤트 알림을 설정해요',
-            marketingConsent,
-            (value) => void updateMarketingSetting(value),
-            'marketing',
-            Boolean(checkingPermissionKey),
-          )}
-
           <View style={styles.doNotDisturbCard}>
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>방해 금지 시간</Text>
               <Text style={styles.cardDescription}>
-                설정한 시간에는 선택한 알림을 잠시 쉬어요.
+                설정한 시간에도 건강 이상 알림은 받을 수 있어요.
               </Text>
               <Pressable
                 accessibilityHint="방해 금지 시작 시간과 종료 시간을 변경합니다."

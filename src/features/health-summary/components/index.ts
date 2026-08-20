@@ -1,4 +1,4 @@
-﻿export * from './MonthNavigator';
+export * from './MonthNavigator';
 export * from './SegmentControl';
 export * from './WeightTab';
 export * from './WalkTab';

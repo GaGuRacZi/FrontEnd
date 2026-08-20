@@ -11,8 +11,12 @@ import {
 
 import type { ConsentStore } from './ConsentStore';
 import { consentStore as defaultConsentStore } from './ConsentStore';
-import type { TermsRepository } from './TermsRepository';
-import { termsRepository as defaultTermsRepository } from './TermsRepository';
+import {
+  getRemoteMyPageTerms,
+  termsRepository as defaultTermsRepository,
+  type RemoteMyPageTerm,
+  type TermsRepository,
+} from './TermsRepository';
 import {
   changeMarketingConsent,
   getLatestConsent,
@@ -34,6 +38,7 @@ type TermsContextValue = {
   error: string | null;
   getLatestConsentRecord: (termId: TermId) => ConsentRecord | undefined;
   getTerm: (termId: TermId) => TermDefinition | undefined;
+  loadTerm: (termId: TermId) => Promise<TermDefinition | null>;
   hasCurrentConsent: (termId: TermId) => boolean;
   hasRequiredSignupConsents: boolean;
   hasRequiredSignupSelections: boolean;
@@ -80,6 +85,7 @@ export function TermsProvider({
   const targetUserIdRef = useRef(targetUserId);
   const [terms, setTerms] = useState<TermDefinition[]>([]);
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[]>([]);
+  const [remoteTerms, setRemoteTerms] = useState<RemoteMyPageTerm[]>([]);
   const [signupSelections, setSignupSelections] = useState<
     Partial<Record<TermId, boolean>>
   >({});
@@ -104,6 +110,7 @@ export function TermsProvider({
     setLoadedUserId(null);
     setTerms([]);
     setConsentHistory([]);
+    setRemoteTerms([]);
     setSignupSelections({});
     setStatus('loading');
     setError(null);
@@ -111,15 +118,17 @@ export function TermsProvider({
     if (!requestedUserId) return;
 
     try {
-      const [loadedTerms, loadedHistory] = await Promise.all([
+      const [loadedTerms, loadedHistory, loadedRemoteTerms] = await Promise.all([
         repository.getTerms(),
         consentStore.getHistory(requestedUserId),
+        scope === 'session' ? getRemoteMyPageTerms() : Promise.resolve([]),
       ]);
 
       if (requestId.current !== currentRequestId) return;
 
       setTerms(loadedTerms);
       setConsentHistory(loadedHistory);
+      setRemoteTerms(loadedRemoteTerms);
       setSignupSelections(
         Object.fromEntries(
           loadedTerms
@@ -137,6 +146,7 @@ export function TermsProvider({
       if (requestId.current !== currentRequestId) return;
 
       setConsentHistory([]);
+      setRemoteTerms([]);
       setSignupSelections({});
       setLoadedUserId(requestedUserId);
       setError('약관을 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
@@ -189,6 +199,17 @@ export function TermsProvider({
     [terms],
   );
 
+  const loadTerm = useCallback(
+    async (termId: TermId) => {
+      const term = await repository.getTerm(termId);
+      if (!term) return null;
+
+      setTerms((current) => current.map((item) => (item.id === term.id ? term : item)));
+      return term;
+    },
+    [repository],
+  );
+
   const getLatestConsentRecord = useCallback(
     (termId: TermId) => getLatestConsent(currentConsentHistory, termId),
     [currentConsentHistory],
@@ -197,9 +218,14 @@ export function TermsProvider({
   const hasCurrentConsent = useCallback(
     (termId: TermId) => {
       const term = terms.find(({ id }) => id === termId);
-      return term ? hasCurrentTermConsent(currentConsentHistory, term) : false;
+      if (!term) return false;
+
+      const remoteTerm = remoteTerms.find(({ id }) => id === termId);
+      return remoteTerm
+        ? remoteTerm.agreed && remoteTerm.version === term.version
+        : hasCurrentTermConsent(currentConsentHistory, term);
     },
-    [currentConsentHistory, terms],
+    [currentConsentHistory, remoteTerms, terms],
   );
 
   const setSignupSelection = useCallback((termId: TermId, selected: boolean) => {
@@ -234,9 +260,9 @@ export function TermsProvider({
         (term) =>
           term.required &&
           term.scope === 'signup' &&
-          !hasCurrentTermConsent(currentConsentHistory, term),
+          !hasCurrentConsent(term.id),
       ),
-    [currentConsentHistory, terms],
+    [hasCurrentConsent, terms],
   );
   const marketingConsent = hasCurrentConsent(TERM_IDS.marketing);
   const deleteConsentHistory = useCallback(async () => {
@@ -434,6 +460,7 @@ export function TermsProvider({
       finalizeSignupConsents,
       getLatestConsentRecord,
       getTerm,
+      loadTerm,
       hasCurrentConsent,
       hasRequiredSignupConsents,
       hasRequiredSignupSelections,
@@ -461,6 +488,7 @@ export function TermsProvider({
       finalizeSignupConsents,
       getLatestConsentRecord,
       getTerm,
+      loadTerm,
       hasCurrentConsent,
       hasRequiredSignupConsents,
       hasRequiredSignupSelections,

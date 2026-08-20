@@ -451,6 +451,7 @@ export function CommunityWriteScreen() {
     getPostById,
     hasLoadError,
     isReady,
+    loadPostDetail,
     posts,
     reloadCommunity,
     updateMarketPost,
@@ -503,6 +504,8 @@ export function CommunityWriteScreen() {
     return new Set<string>();
   }, [marketPostToEdit?.images, talkPostToEdit?.images]);
   const [isDraftReady, setIsDraftReady] = useState(false);
+  const [editLoadError, setEditLoadError] = useState(false);
+  const [editLoadRequest, setEditLoadRequest] = useState(0);
   const [pendingExitAction, setPendingExitAction] = useState<NavigationAction | null>(null);
   const [manualExitPending, setManualExitPending] = useState(false);
   const [pendingSubmittedPostId, setPendingSubmittedPostId] = useState<string | null>(null);
@@ -696,43 +699,48 @@ export function CommunityWriteScreen() {
     draftCompleted.current = false;
     allowNavigation.current = false;
 
-    const requestedPost = postId ? getPostById(postId) : null;
-    let ownsRequestedPost = false;
-    if (isTalkEditRequested) {
-      if (requestedPost?.kind === 'talk' && requestedPost.author.userId === viewerId) {
-        applyTalkPost(requestedPost);
-        ownsRequestedPost = true;
-      }
-    } else if (isMarketEditRequested) {
-      if (requestedPost?.kind === 'market' && requestedPost.author.userId === viewerId) {
-        applyMarketPost(requestedPost);
-        ownsRequestedPost = true;
-      }
-    }
-
     if (isEditRequested) {
-      if (!ownsRequestedPost || !postId) {
-        if (postId) {
-          void communityRepository
-            .discardWriteDraft(viewerId, initialTab, postId)
-            .catch(() => undefined);
-        }
+      if (!postId) {
         setIsDraftReady(true);
         return () => {
           active = false;
         };
       }
 
-      appliedEditRequestKey.current = editRequestKey;
-      communityRepository
-        .loadWriteDraft(viewerId, initialTab, postId)
-        .then((draft) => {
-          if (!active || !draft) return;
-          applyDraft(draft);
-        })
-        .finally(() => {
+      setEditLoadError(false);
+      void (async () => {
+        const detailResult = await loadPostDetail(postId);
+        if (!active) return;
+        if (!detailResult.ok) {
+          setEditLoadError(true);
+          setIsDraftReady(true);
+          return;
+        }
+
+        const requestedPost = getPostById(postId);
+        const ownsRequestedPost =
+          (isTalkEditRequested &&
+            requestedPost?.kind === 'talk' &&
+            requestedPost.author.userId === viewerId) ||
+          (isMarketEditRequested &&
+            requestedPost?.kind === 'market' &&
+            requestedPost.author.userId === viewerId);
+
+        if (!requestedPost || !ownsRequestedPost) {
+          await communityRepository
+            .discardWriteDraft(viewerId, initialTab, postId)
+            .catch(() => undefined);
           if (active) setIsDraftReady(true);
-        });
+          return;
+        }
+
+        if (requestedPost.kind === 'talk') applyTalkPost(requestedPost);
+        else applyMarketPost(requestedPost);
+        appliedEditRequestKey.current = editRequestKey;
+        const draft = await communityRepository.loadWriteDraft(viewerId, initialTab, postId);
+        if (active && draft) applyDraft(draft);
+        if (active) setIsDraftReady(true);
+      })();
 
       return () => {
         active = false;
@@ -757,6 +765,7 @@ export function CommunityWriteScreen() {
     applyMarketPost,
     applyTalkPost,
     editRequestKey,
+    editLoadRequest,
     getPostById,
     hasLoadError,
     initialTab,
@@ -764,6 +773,7 @@ export function CommunityWriteScreen() {
     isReady,
     isMarketEditRequested,
     isTalkEditRequested,
+    loadPostDetail,
     postId,
     viewerId,
   ]);
@@ -1256,7 +1266,7 @@ export function CommunityWriteScreen() {
     );
   }
 
-  if (hasLoadError) {
+  if (hasLoadError || editLoadError) {
     return (
       <ScreenLayout
         headerFullWidth
@@ -1269,9 +1279,31 @@ export function CommunityWriteScreen() {
           actionLabel="다시 시도"
           description="잠시 후 다시 글쓰기를 열어주세요."
           icon={<AppIcon color={COLORS.primary} name="chatbubbles-outline" size={32} />}
-          onActionPress={() => void reloadCommunity()}
+          onActionPress={() => {
+            if (isEditRequested) {
+              appliedEditRequestKey.current = null;
+              setEditLoadError(false);
+              setEditLoadRequest((current) => current + 1);
+              return;
+            }
+            void reloadCommunity();
+          }}
           title="게시글을 불러오지 못했어요."
         />
+      </ScreenLayout>
+    );
+  }
+
+  if (isEditRequested && !isDraftReady) {
+    return (
+      <ScreenLayout
+        headerFullWidth
+        headerVariant="auth"
+        leftAccessibilityLabel="커뮤니티로 돌아가기"
+        onLeftPress={goBack}
+        title="커뮤니티"
+      >
+        <LoadingView label="게시글을 불러오고 있어요" />
       </ScreenLayout>
     );
   }

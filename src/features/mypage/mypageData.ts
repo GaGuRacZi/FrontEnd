@@ -1,4 +1,4 @@
-import type { PaymentMethod, PlanId } from './types';
+import type { PlanId } from './types';
 
 export type PlanDefinition = {
   aiSummary: string;
@@ -89,39 +89,4 @@ export function getNextBillingDate(date = new Date()) {
 
 export function isValidClockTime(value: string) {
   return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
-}
-
-function isConnectedPaymentMethod(
-  method: PaymentMethod | null | undefined,
-) {
-  return Boolean(
-    method?.last4.trim() && method.last4.trim() !== '등록 대기',
-  );
-}
-
-export function normalizePaymentMethods(methods: PaymentMethod[]) {
-  const connectedMethods = methods
-    .filter(isConnectedPaymentMethod)
-    .filter(
-      (method, index, values) =>
-        values.findIndex((candidate) => candidate.id === method.id) === index,
-    )
-    .slice(0, 3);
-  const defaultMethod =
-    connectedMethods.find((method) => method.isDefault) ?? connectedMethods[0];
-
-  return connectedMethods.map((method) => ({
-    ...method,
-    isDefault: method.id === defaultMethod?.id,
-  }));
-}
-
-export function getCheckoutPaymentMethod(methods: PaymentMethod[]) {
-  const connectedMethods = normalizePaymentMethods(methods);
-
-  return (
-    connectedMethods.find((method) => method.isDefault) ??
-    connectedMethods[0] ??
-    null
-  );
 }

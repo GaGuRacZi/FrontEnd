@@ -19,17 +19,19 @@ interface TimePickerSheetProps {
 
 export function TimePickerSheet({ visible, value, title = '시간 설정', onClose, onSelect }: TimePickerSheetProps) {
 	const sheetY = useRef(new Animated.Value(500)).current;
-	const [hour, setHour] = useState(value.hour);
-	const [minute, setMinute] = useState(value.minute);
+	const valueHour = value.hour;
+	const valueMinute = value.minute;
+	const [hour, setHour] = useState(valueHour);
+	const [minute, setMinute] = useState(valueMinute);
 
 	useEffect(() => {
 		if (visible) {
-			setHour(value.hour);
-			setMinute(value.minute);
+			setHour(valueHour);
+			setMinute(valueMinute);
 			sheetY.setValue(500);
 			Animated.timing(sheetY, { toValue: 0, duration: 300, useNativeDriver: true }).start();
 		}
-	}, [visible]);
+	}, [sheetY, valueHour, valueMinute, visible]);
 
 	const close = () => {
 		Animated.timing(sheetY, { toValue: 500, duration: 220, useNativeDriver: true }).start(() => onClose());

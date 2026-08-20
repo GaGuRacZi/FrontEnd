@@ -1,12 +1,14 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Href, useRouter } from 'expo-router';
+import { Href, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppButton, AppIcon, DatePickerSheet, TimePickerSheet } from '@/src/components/common';
 import { AppScreen, TopHeader } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { MOCK_WEIGHT_RECORDS } from '../mock';
+import { usePetStore } from '@/src/features/pet/PetStore';
+
+import { useHealthSummaryStore } from '../HealthSummaryStore';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { AppetiteCondition, BodyCondition, WeightRecord } from '../types';
 
@@ -22,17 +24,37 @@ const formatRecordTime = (date: Date) => {
 	return `${period} ${hours12}:${pad2(date.getMinutes())}`;
 };
 
+function parseRecordedAt(date: string, time: string) {
+	const [year, month, day] = date.split('.').map(Number);
+	const result = new Date(year, (month || 1) - 1, day || 1);
+	const match = time.match(/(오전|오후)\s+(\d+):(\d+)/);
+	if (!match) return Number.isNaN(result.valueOf()) ? new Date() : result;
+
+	let hour = Number(match[2]);
+	if (match[1] === '오후' && hour !== 12) hour += 12;
+	if (match[1] === '오전' && hour === 12) hour = 0;
+	result.setHours(hour, Number(match[3]), 0, 0);
+	return Number.isNaN(result.valueOf()) ? new Date() : result;
+}
+
 export function WeightRecordScreen() {
 	const router = useRouter();
 	const isSaving = useRef(false);
-	const [recordedAt, setRecordedAt] = useState(() => new Date());
+	const { selectedPet } = usePetStore();
+	const { addWeightRecord, deleteWeightRecord, weightRecords } = useHealthSummaryStore();
+	const { recordId } = useLocalSearchParams<{ recordId?: string }>();
+	const existingRecord = recordId ? weightRecords.find(({ id }) => id === recordId) : undefined;
+	const [isEditing, setIsEditing] = useState(!existingRecord);
+	const [recordedAt, setRecordedAt] = useState(() =>
+		existingRecord ? parseRecordedAt(existingRecord.date, existingRecord.time) : new Date(),
+	);
 	const [datePickerVisible, setDatePickerVisible] = useState(false);
 	const [timePickerVisible, setTimePickerVisible] = useState(false);
-	const [weight, setWeight] = useState('4.2');
-	const [bodyCondition, setBodyCondition] = useState<BodyCondition>('ideal');
-	const [appetite, setAppetite] = useState<AppetiteCondition>('low');
-	const [memo, setMemo] = useState('');
-	const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+	const [weight, setWeight] = useState(existingRecord ? String(existingRecord.weight) : '');
+	const [bodyCondition, setBodyCondition] = useState<BodyCondition>(existingRecord?.bodyCondition ?? 'ideal');
+	const [appetite, setAppetite] = useState<AppetiteCondition>(existingRecord?.appetite ?? 'low');
+	const [memo, setMemo] = useState(existingRecord?.memo ?? '');
+	const [selectedImageUri, setSelectedImageUri] = useState<string | null>(existingRecord?.photoUri ?? null);
 
 	const recordDate = formatRecordDate(recordedAt);
 	const recordTime = formatRecordTime(recordedAt);
@@ -50,6 +72,7 @@ export function WeightRecordScreen() {
 	];
 
 	const handlePickImage = async () => {
+		if (!isEditing) return;
 		try {
 			const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 			if (!permission.granted) {
@@ -75,6 +98,10 @@ export function WeightRecordScreen() {
 
 	const handleSaveRecord = () => {
 		if (isSaving.current) return;
+		if (!selectedPet) {
+			Alert.alert('반려동물 선택 필요', '체중을 기록할 반려동물을 먼저 선택해주세요.');
+			return;
+		}
 		const parsedWeight = parseFloat(weight);
 		if (!parsedWeight || parsedWeight <= 0) {
 			Alert.alert('입력 오류', '올바른 체중을 입력해주세요.');
@@ -82,7 +109,8 @@ export function WeightRecordScreen() {
 		}
 		isSaving.current = true;
 		const newRecord: WeightRecord = {
-			id: String(Date.now()),
+			id: existingRecord?.id ?? String(Date.now()),
+			petId: existingRecord?.petId ?? selectedPet.id,
 			date: recordDate,
 			time: recordTime,
 			weight: parsedWeight,
@@ -93,12 +121,27 @@ export function WeightRecordScreen() {
 			isDirectInput: true,
 		};
 
-		MOCK_WEIGHT_RECORDS.unshift(newRecord);
+		addWeightRecord(newRecord);
 
 		router.replace({
 			pathname: '/health-summary',
 			params: { tab: 'weight' },
 		} as Href);
+	};
+
+	const handleDeleteRecord = () => {
+		if (!existingRecord) return;
+		Alert.alert('체중 기록을 삭제할까요?', '삭제한 기록은 되돌릴 수 없어요.', [
+			{ style: 'cancel', text: '취소' },
+			{
+				style: 'destructive',
+				text: '삭제',
+				onPress: () => {
+					deleteWeightRecord(existingRecord.id);
+					router.replace({ pathname: '/health-summary', params: { tab: 'weight' } } as Href);
+				},
+			},
+		]);
 	};
 
 	return (
@@ -108,14 +151,14 @@ export function WeightRecordScreen() {
 
 				<ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 					<View style={styles.rowTwoCards}>
-						<TouchableOpacity activeOpacity={0.8} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
+						<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
 							<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.calendar} style={styles.metaIcon} />
 							<View style={styles.metaTextGroup}>
 								<Text style={styles.metaLabel}>기록 날짜</Text>
 								<Text style={styles.metaValue}>{recordDate}</Text>
 							</View>
 						</TouchableOpacity>
-						<TouchableOpacity activeOpacity={0.8} onPress={() => setTimePickerVisible(true)} style={styles.metaCard}>
+						<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={() => setTimePickerVisible(true)} style={styles.metaCard}>
 							<View style={styles.metaTextGroup}>
 								<Text style={styles.metaLabel}>측정 시간</Text>
 								<Text style={styles.metaValue}>{recordTime}</Text>
@@ -126,7 +169,15 @@ export function WeightRecordScreen() {
 					<View style={styles.card}>
 						<Text style={styles.cardLabel}>몸무게</Text>
 						<View style={styles.inputRow}>
-							<TextInput keyboardType="decimal-pad" onChangeText={setWeight} style={styles.inputValue} value={weight} />
+							<TextInput
+								editable={isEditing}
+								keyboardType="decimal-pad"
+								onChangeText={setWeight}
+								placeholder="몸무게를 입력해주세요"
+								placeholderTextColor={COLORS.gray500}
+								style={[styles.inputValue, !weight && styles.inputPlaceholder]}
+								value={weight}
+							/>
 							<Text style={styles.inputUnit}>kg</Text>
 						</View>
 					</View>
@@ -138,6 +189,7 @@ export function WeightRecordScreen() {
 							{bodyOptions.map((opt) => (
 								<TouchableOpacity
 									activeOpacity={0.8}
+									disabled={!isEditing}
 									key={opt.key}
 									onPress={() => setBodyCondition(opt.key)}
 									style={[styles.chip, bodyCondition === opt.key && styles.chipActive]}
@@ -154,7 +206,7 @@ export function WeightRecordScreen() {
 							{appetiteOptions.map((opt) => {
 								const active = appetite === opt.key;
 								return (
-									<TouchableOpacity activeOpacity={0.8} key={opt.key} onPress={() => setAppetite(opt.key)} style={styles.radioOption}>
+									<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} key={opt.key} onPress={() => setAppetite(opt.key)} style={styles.radioOption}>
 										<View style={[styles.radioCircle, active && styles.radioCircleActive]}>
 											{active && <AppIcon color={COLORS.background} name="checkmark" size={14} />}
 										</View>
@@ -172,6 +224,7 @@ export function WeightRecordScreen() {
 								accessibilityLabel="사진 추가"
 								accessibilityRole="button"
 								activeOpacity={0.7}
+								disabled={!isEditing}
 								onPress={handlePickImage}
 								style={styles.photoButton}
 							>
@@ -185,6 +238,7 @@ export function WeightRecordScreen() {
 								<Image source={{ uri: selectedImageUri }} style={styles.previewImage} />
 								<TouchableOpacity
 									activeOpacity={0.8}
+									disabled={!isEditing}
 									onPress={() => setSelectedImageUri(null)}
 									style={styles.removeImageButton}
 								>
@@ -194,6 +248,7 @@ export function WeightRecordScreen() {
 						) : null}
 
 						<TextInput
+							editable={isEditing}
 							multiline
 							scrollEnabled={false}
 							onChangeText={setMemo}
@@ -206,7 +261,14 @@ export function WeightRecordScreen() {
 				</ScrollView>
 
 				<View style={styles.bottomBar}>
-					<AppButton onPress={handleSaveRecord} title="체중 기록 저장" />
+					{existingRecord && !isEditing ? (
+						<View style={styles.actionRow}>
+							<AppButton onPress={() => setIsEditing(true)} style={styles.actionButton} title="수정" />
+							<AppButton onPress={handleDeleteRecord} style={styles.actionButton} title="삭제" variant="danger" />
+						</View>
+					) : (
+						<AppButton onPress={handleSaveRecord} title={existingRecord ? '저장하기' : '체중 기록 저장'} />
+					)}
 				</View>
 			</AppScreen>
 			<DatePickerSheet
@@ -232,7 +294,7 @@ export function WeightRecordScreen() {
 }
 
 const styles = StyleSheet.create({
-	scrollContent: { gap: SPACING.lg, paddingBottom: SPACING.xxxl, paddingTop: SPACING.md },
+	scrollContent: { gap: SPACING.lg, paddingBottom: SPACING.xxxl, paddingTop: SPACING.xxl },
 	rowTwoCards: { flexDirection: 'row', gap: SPACING.md },
 	metaCard: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, flex: 1, paddingVertical: SPACING.lg, paddingHorizontal: SPACING.xl, flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
 	metaIcon: { height: 22, width: 22 },
@@ -242,8 +304,9 @@ const styles = StyleSheet.create({
 	card: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.xxl },
 	cardLabel: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
 	cardHint: { ...TYPOGRAPHY.small, color: COLORS.gray500, marginVertical: 4 },
-	inputRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: SPACING.xl, paddingBottom: SPACING.xs, borderBottomWidth: 2, borderBottomColor: COLORS.primary },
-	inputValue: { ...TYPOGRAPHY.title1, color: COLORS.black, fontSize: 36, lineHeight: 46, padding: 0, margin: 0 },
+	inputRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xl, paddingBottom: SPACING.xs, borderBottomWidth: 2, borderBottomColor: COLORS.primary },
+	inputValue: { ...TYPOGRAPHY.title1, color: COLORS.black, fontSize: 28, height: 38, lineHeight: 38, margin: 0, padding: 0, textAlignVertical: 'center' },
+	inputPlaceholder: { color: COLORS.gray500, fontFamily: TYPOGRAPHY.body2.fontFamily, fontSize: 16, lineHeight: 24 },
 	inputUnit: { ...TYPOGRAPHY.body1, color: COLORS.gray600 },
 	chipRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
 	chip: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: RADIUS.round, backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderWidth: 1 },
@@ -267,7 +330,9 @@ const styles = StyleSheet.create({
 		marginTop: SPACING.lg,
 		padding: 0,
 		minHeight: 60,
-		textAlignVertical: 'top'
+		textAlignVertical: 'top',
 	},
 	bottomBar: { paddingTop: SPACING.md, paddingBottom: SPACING.md },
+	actionRow: { flexDirection: 'row', gap: SPACING.md },
+	actionButton: { flex: 1 },
 });

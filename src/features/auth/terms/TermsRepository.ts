@@ -21,6 +21,12 @@ const TERM_METADATA = {
 
 type RemoteTermsType = keyof typeof TERM_METADATA;
 
+export type RemoteMyPageTerm = {
+  agreed: boolean;
+  id: TermId;
+  version: string;
+};
+
 export class TermsApiContractError extends Error {
   constructor() {
     super('Invalid terms API response.');
@@ -82,6 +88,33 @@ function readRemoteTerm(value: unknown): TermDefinition {
   };
 }
 
+export function getTermIdFromRemoteType(value: string): TermId | null {
+  return TERM_METADATA[value as RemoteTermsType]?.id ?? null;
+}
+
+function readRemoteTermSummary(value: unknown): TermDefinition {
+  const term = readRecord(value);
+  const type = readString(term.type);
+  const metadata = TERM_METADATA[type as RemoteTermsType];
+  const effectiveDate = readString(term.effectiveAt);
+
+  if (!metadata || typeof term.required !== 'boolean' || !isDateOnly(effectiveDate)) {
+    throw new TermsApiContractError();
+  }
+
+  return {
+    body: '',
+    effectiveDate,
+    id: metadata.id,
+    kind: metadata.kind,
+    required: term.required,
+    scope: metadata.scope,
+    status: 'active',
+    title: readString(term.title),
+    version: readString(term.version),
+  };
+}
+
 async function getRemoteTerm(type: RemoteTermsType) {
   const response = await apiRequest<unknown>(`/terms/${type}`, { authenticated: false });
   return readRemoteTerm(readEnvelope(response, 'TERMS_DETAIL_200'));
@@ -98,8 +131,31 @@ export function parseTermsListEnvelope(value: unknown) {
   });
 }
 
+export function parseTermsListDefinitionsEnvelope(value: unknown) {
+  const result = readEnvelope(value, 'TERMS_LIST_200');
+  if (!Array.isArray(result)) throw new TermsApiContractError();
+
+  return result.map(readRemoteTermSummary);
+}
+
 export function parseTermDetailEnvelope(value: unknown) {
   return readRemoteTerm(readEnvelope(value, 'TERMS_DETAIL_200'));
+}
+
+export function parseMyPageTermsEnvelope(value: unknown): RemoteMyPageTerm[] {
+  const result = readEnvelope(value, 'MYPAGE_TERMS_200');
+  if (!Array.isArray(result)) throw new TermsApiContractError();
+
+  return result.map((item) => {
+    const term = readRecord(item);
+    const id = getTermIdFromRemoteType(readString(term.type));
+    if (!id || typeof term.agreed !== 'boolean') throw new TermsApiContractError();
+    return { agreed: term.agreed, id, version: readString(term.version) };
+  });
+}
+
+export async function getRemoteMyPageTerms() {
+  return parseMyPageTermsEnvelope(await apiRequest<unknown>('/mypage/terms'));
 }
 
 export class RemoteTermsRepository implements TermsRepository {
@@ -110,7 +166,7 @@ export class RemoteTermsRepository implements TermsRepository {
 
   async getTerms() {
     const response = await apiRequest<unknown>('/terms', { authenticated: false });
-    return Promise.all(parseTermsListEnvelope(response).map(getRemoteTerm));
+    return parseTermsListDefinitionsEnvelope(response);
   }
 }
 

@@ -13,6 +13,7 @@ export type UserProfile = {
   id: string;
   introduction: string;
   location: string;
+  regionCode: string | null;
   loginConnections: LoginConnection[];
   name: string;
   nickname: string;
@@ -22,6 +23,7 @@ export type UserProfile = {
 
 export type NotificationSettings = {
   aiAnalysis: boolean;
+  benefit: boolean;
   chat: boolean;
   community: boolean;
   doNotDisturbEnd: string;
@@ -38,19 +40,10 @@ export type SubscriptionState = {
   pendingType: 'cancel' | 'downgrade' | null;
 };
 
-export type PaymentMethod = {
-  brand: string;
-  id: string;
-  isDefault: boolean;
-  label: string;
-  last4: string;
-};
-
 export type PaymentHistoryItem = {
   amount: number;
   date: string;
   id: string;
-  methodLabel: string;
   status: PaymentStatus;
   title: string;
 };
@@ -58,7 +51,6 @@ export type PaymentHistoryItem = {
 export type StoredMyPageState = {
   notificationSettings: NotificationSettings;
   paymentHistory: PaymentHistoryItem[];
-  paymentMethods: PaymentMethod[];
   profile: UserProfile;
   subscription: SubscriptionState;
 };

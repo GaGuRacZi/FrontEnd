@@ -12,18 +12,20 @@ type DiagnosisListCardProps = {
 
 const STATUS_LABEL: Record<DiagnosisListItem['status'], string> = {
 	completed: '완료',
+	failed: '처리 실패',
 	summarizing: '요약 생성 중',
 };
 
 export function DiagnosisListCard({ diagnosis, onPress, petName }: DiagnosisListCardProps) {
 	const isCompleted = diagnosis.status === 'completed';
+	const isFailed = diagnosis.status === 'failed';
 
 	return (
 		<Pressable
 			accessibilityLabel={
 				isCompleted
 					? `${petName} ${diagnosis.diagnosisTitle} 진료 요약 보기`
-					: `${petName} ${diagnosis.diagnosisTitle} 진료 요약 생성 중 안내 확인`
+					: `${petName} ${diagnosis.diagnosisTitle} 진료 요약 상태 확인`
 			}
 			accessibilityRole="button"
 			onPress={onPress}
@@ -35,12 +37,14 @@ export function DiagnosisListCard({ diagnosis, onPress, petName }: DiagnosisList
 					style={[
 						styles.badge,
 						isCompleted ? styles.badgeCompleted : styles.badgeSummarizing,
+						isFailed && styles.badgeFailed,
 					]}
 				>
 					<Text
 						style={[
 							styles.badgeText,
-							isCompleted ? styles.badgeTextCompleted : styles.badgeTextSummarizing,
+						isCompleted ? styles.badgeTextCompleted : styles.badgeTextSummarizing,
+						isFailed && styles.badgeTextFailed,
 						]}
 					>
 						{STATUS_LABEL[diagnosis.status]}
@@ -78,9 +82,11 @@ const styles = StyleSheet.create({
 	},
 	badgeCompleted: { backgroundColor: COLORS.yellow },
 	badgeSummarizing: { backgroundColor: COLORS.primary },
+	badgeFailed: { backgroundColor: COLORS.alertBackground },
 	badgeText: { ...TYPOGRAPHY.badge },
 	badgeTextCompleted: { color: COLORS.black },
 	badgeTextSummarizing: { color: COLORS.black },
+	badgeTextFailed: { color: COLORS.alert },
 	title: {
 		...TYPOGRAPHY.segment,
 		color: COLORS.black,

@@ -8,7 +8,14 @@ import { ScreenLayout } from '@/src/components/layout';
 import { SPACING } from '@/src/constants';
 import { useMedicationStore } from '../MedicationStore';
 import { useScheduleTodoStore } from '../ScheduleTodoStore';
+import { formatTodoApiDate } from '../services/todoApi';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import { useHealthSummaryStore } from '@/src/features/health-summary/HealthSummaryStore';
+import {
+  getMedicalExpenseOverview,
+  getWalkOverview,
+  getWeightOverview,
+} from '@/src/features/health-summary/healthSummarySelectors';
 
 import { EmergencyBanner } from '../components/EmergencyBanner';
 import { HealthTipCard } from '../components/HealthTipCard';
@@ -17,28 +24,20 @@ import { MonthlyHealthSummaryCard } from '../components/MonthlyHealthSummaryCard
 import { PetProfileCard } from '../components/PetProfileCard';
 import { RecentDiagnosisCard } from '../components/RecentDiagnosisCard';
 import { TodaySummaryCard } from '../components/TodaySummaryCard';
-import {
-  MOCK_HEALTH_TIP,
-  MOCK_MONTHLY_HEALTH,
-  MOCK_RECENT_DIAGNOSIS,
-} from '../mock';
+import { HOME_HEALTH_TIP } from '../homeContent';
 import { mapPetEntityToSummary } from '../utils/mapPetToSummary';
+import { getTagCfg } from '../utils/scheduleConfig';
 
 export function HomeScreen() {
   const router = useRouter();
   const { isReady, selectedPet } = usePetStore();
-  const { medications } = useMedicationStore();
-  const { todos: allTodos, toggleTodo } = useScheduleTodoStore();
+  const { medications, visits } = useMedicationStore();
+  const { customTags, getTodosForDate, toggleTodo } = useScheduleTodoStore();
+  const { medicalExpenseRecords, walkRecords, weightRecords } = useHealthSummaryStore();
 
-  // 오늘 날짜 기준 투두만 추출
   const todayDate = new Date();
-  const todayTodos = allTodos
-    .filter(
-      (t) =>
-        t.day === todayDate.getDate() &&
-        t.month === todayDate.getMonth() &&
-        t.year === todayDate.getFullYear(),
-    )
+  const todayKey = formatTodoApiDate(todayDate);
+  const todayTodos = getTodosForDate(todayKey)
     .map((t) => ({
       id: t.id,
       title: t.title,
@@ -46,9 +45,9 @@ export function HomeScreen() {
       timeLabel: t.timeLabel,
       status: t.status,
       category: t.category,
+      tagColor: getTagCfg(t.tag, customTags).bg,
     }));
 
-  // 홈 카드에는 추가된 순서 기준 상위 3개만 표시
   const homeMedications = medications.slice(0, 3).map((med) => ({
     id: med.id,
     name: med.name,
@@ -56,7 +55,7 @@ export function HomeScreen() {
   }));
 
   const handleToggleTodo = (todoId: string) => {
-    toggleTodo(todoId);
+    void toggleTodo(todoId, todayKey).catch(() => undefined);
   };
 
   if (!isReady) {
@@ -85,6 +84,55 @@ export function HomeScreen() {
   }
 
   const activePet = mapPetEntityToSummary(selectedPet);
+  const petWeightRecords = weightRecords.filter((record) => record.petId === selectedPet.id);
+  const petWalkRecords = walkRecords.filter((record) => record.petId === selectedPet.id);
+  const petMedicalExpenseRecords = medicalExpenseRecords.filter((record) => record.petId === selectedPet.id);
+  const weightOverview = getWeightOverview(petWeightRecords);
+  const walkOverview = getWalkOverview(petWalkRecords);
+  const medicalExpenseOverview = getMedicalExpenseOverview(petMedicalExpenseRecords);
+  const monthlyHealthMetrics = [
+    {
+      changeLabel: weightOverview.difference === null
+        ? '-'
+        : `${weightOverview.difference > 0 ? '+' : ''}${weightOverview.difference}kg`,
+      id: 'weight',
+      label: '체중',
+      valueLabel: weightOverview.currentWeight === null ? '-' : `${weightOverview.currentWeight.toFixed(1)}kg`,
+    },
+    {
+      changeLabel: walkOverview.difference === null
+        ? '-'
+        : `지난주 ${walkOverview.difference > 0 ? '+' : ''}${walkOverview.difference}분`,
+      id: 'walk',
+      label: '산책',
+      valueLabel: walkOverview.average === null ? '-' : `평균 ${walkOverview.average}분`,
+    },
+    {
+      changeLabel: `${medicalExpenseOverview.difference > 0 ? '+' : ''}${medicalExpenseOverview.difference.toLocaleString()}원`,
+      id: 'medical',
+      label: '의료비',
+      valueLabel: `${medicalExpenseOverview.currentTotal.toLocaleString()}원`,
+    },
+  ];
+  const latestVisit = visits[0];
+  const recentDiagnosis = latestVisit
+    ? {
+        id: latestVisit.id,
+        statusLabel:
+          latestVisit.status === 'PROCESSING'
+            ? 'AI 요약 진행 중'
+            : latestVisit.status === 'FAILED'
+              ? 'AI 요약을 완료하지 못했어요'
+              : latestVisit.aiSummaryGenerated
+              ? 'AI 요약 완료'
+              : 'AI 요약 미진행',
+        title: latestVisit.visitName ?? '진료 요약을 생성하고 있어요',
+      }
+    : {
+        id: 'empty-diagnosis',
+        statusLabel: '진료 기록을 추가해보세요',
+        title: '진료 기록이 없어요',
+      };
 
   return (
     <ScreenLayout
@@ -115,8 +163,12 @@ export function HomeScreen() {
 
         <View style={styles.row}>
           <RecentDiagnosisCard
-            diagnosis={MOCK_RECENT_DIAGNOSIS}
-            onPress={() => router.push('/dashboard' as Href)}
+            diagnosis={recentDiagnosis}
+            onPress={() => router.push(
+              latestVisit?.status === 'READY'
+                ? `/dashboard/${latestVisit.id}` as Href
+                : '/dashboard' as Href,
+            )}
           />
           <MedicationSummaryCard
             medications={homeMedications}
@@ -125,11 +177,11 @@ export function HomeScreen() {
         </View>
 
         <MonthlyHealthSummaryCard
-          metrics={MOCK_MONTHLY_HEALTH}
+          metrics={monthlyHealthMetrics}
           onPressMore={() => router.push('/health-summary' as Href)}
         />
 
-        <HealthTipCard tip={MOCK_HEALTH_TIP} />
+        <HealthTipCard tip={HOME_HEALTH_TIP} />
       </ScrollView>
     </ScreenLayout>
   );

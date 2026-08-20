@@ -6,6 +6,7 @@ import { AppButton, AppIcon } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { AppModal } from './AppModal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { searchRemoteMedications, type RemoteMedicationSearchResult } from '@/src/features/dashboard/services/visitApi';
 import {
 	FREQUENCY_OPTIONS,
 	TIMING_OPTIONS,
@@ -27,6 +28,8 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 	const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
 	const [query, setQuery] = useState('');
 	const [selected, setSelected] = useState<MedicationEntry[]>([]);
+	const [searchResults, setSearchResults] = useState<RemoteMedicationSearchResult[]>([]);
+	const [isSearching, setIsSearching] = useState(false);
 	const [manualForm, setManualForm] = useState({ name: '', ingredient: '', description: '', warningNote: '' });
 	const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
@@ -52,6 +55,7 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 			setMode('idle');
 			setFeedbackMessage(null);
 			setSourcePickerVisible(false);
+			setSearchResults([]);
 		}
 		return () => clearTimers();
 	}, [visible]);
@@ -124,7 +128,35 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 			showFeedback('검색어를 입력해주세요.');
 			return;
 		}
-		showFeedback('일치하는 약물을 찾지 못했어요. 직접 입력해주세요.');
+		void (async () => {
+			setIsSearching(true);
+			try {
+				const results = await searchRemoteMedications(query);
+				setSearchResults(results);
+				if (results.length === 0) showFeedback('일치하는 약물을 찾지 못했어요. 직접 입력해주세요.');
+			} catch {
+				showFeedback('약물을 검색하지 못했어요. 잠시 후 다시 시도해주세요.');
+			} finally {
+				setIsSearching(false);
+			}
+		})();
+	};
+
+	const addCatalogMedication = (medication: RemoteMedicationSearchResult) => {
+		setSelected((current) => (
+			current.some((item) => item.medicationId === medication.id)
+				? current
+				: [...current, {
+					id: `catalog-${medication.id}`,
+					ingredient: medication.ingredient ?? undefined,
+					medicationId: medication.id,
+					name: medication.nameKo,
+					nameEn: medication.nameEn ?? undefined,
+					quantity: 1,
+					frequency: 'twiceDaily',
+					timing: 'afterMeal',
+					}]
+		));
 	};
 
 	const handleManualSubmit = () => {
@@ -270,28 +302,51 @@ export function MedicationSearchModal({ onClose, onSubmit, visible }: Medication
 						/>
 						<AppButton disabled={!manualForm.name.trim()} onPress={handleManualSubmit} title="담기" />
 					</View>
-				) : selected.length === 0 ? (
-					<View style={styles.emptyState}>
-						<View style={styles.emptyIconCircle}>
-							<Image
-								resizeMode="contain"
-								source={require('@/assets/images/modal/MedicationBadge.png')}
-								style={styles.emptyIcon}
-							/>
-						</View>
-						<Text style={styles.emptyText}>위에서 약물을 검색해서 추가해보세요</Text>
-					</View>
 				) : (
-					<View style={styles.selectedList}>
-						{selected.map((item) => (
-							<SelectedMedicationCard
-								key={item.id}
-								medication={item}
-								onChange={(patch) => updateSelected(item.id, patch)}
-								onRemove={() => removeSelected(item.id)}
-							/>
-						))}
-					</View>
+					<>
+						{searchResults.length > 0 ? (
+							<View style={styles.searchResultList}>
+								{searchResults.map((medication) => (
+									<Pressable
+										accessibilityLabel={`${medication.nameKo} 추가`}
+										accessibilityRole="button"
+										key={medication.id}
+										onPress={() => addCatalogMedication(medication)}
+										style={styles.searchResult}
+									>
+										<View style={styles.searchResultText}>
+											<Text style={styles.searchResultName}>{medication.nameKo}</Text>
+											{medication.ingredient ? <Text style={styles.searchResultIngredient}>{medication.ingredient}</Text> : null}
+										</View>
+										<AppIcon color={COLORS.primary} name="add" size={18} />
+									</Pressable>
+								))}
+							</View>
+						) : null}
+						{selected.length === 0 ? (
+							<View style={styles.emptyState}>
+								<View style={styles.emptyIconCircle}>
+									<Image
+										resizeMode="contain"
+										source={require('@/assets/images/modal/MedicationBadge.png')}
+										style={styles.emptyIcon}
+									/>
+								</View>
+								<Text style={styles.emptyText}>{isSearching ? '약물을 검색하고 있어요.' : '위에서 약물을 검색해서 추가해보세요'}</Text>
+							</View>
+						) : (
+							<View style={styles.selectedList}>
+								{selected.map((item) => (
+									<SelectedMedicationCard
+										key={item.id}
+										medication={item}
+										onChange={(patch) => updateSelected(item.id, patch)}
+										onRemove={() => removeSelected(item.id)}
+									/>
+								))}
+							</View>
+						)}
+					</>
 				)}
 
 				{mode === 'ocrLoading' ? manualToggleButton : null}
@@ -517,6 +572,11 @@ const styles = StyleSheet.create({
 	},
 	emptyIcon: { height: 22, tintColor: COLORS.gray500, width: 22 },
 	emptyText: { ...TYPOGRAPHY.small, color: COLORS.gray500, fontSize: 13 },
+	searchResultList: { gap: SPACING.sm },
+	searchResult: { alignItems: 'center', backgroundColor: COLORS.gray100, borderRadius: RADIUS.md, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: SPACING.xl, paddingVertical: SPACING.lg },
+	searchResultText: { flex: 1, gap: 2 },
+	searchResultName: { ...TYPOGRAPHY.segmentActive, color: COLORS.black },
+	searchResultIngredient: { ...TYPOGRAPHY.small, color: COLORS.gray500 },
 	selectedList: { gap: SPACING.md },
 	selectedCard: {
 		backgroundColor: COLORS.primarySoft,
