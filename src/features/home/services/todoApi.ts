@@ -223,6 +223,31 @@ export async function createRemoteTodoTag(name: string, color: TodoTagColor) {
   );
 }
 
+export async function getRemoteTodoTag(tagId: string) {
+  const id = Number(tagId);
+  if (!Number.isSafeInteger(id) || id < 0) throw new TodoApiContractError();
+  return readTag(readSuccessResult(await apiRequest<unknown>(`/api/tags/${id}`)));
+}
+
+export async function updateRemoteTodoTag(
+  tagId: string,
+  name: string,
+  color: TodoTagColor,
+) {
+  const id = Number(tagId);
+  if (!Number.isSafeInteger(id) || id < 0 || !name.trim()) {
+    throw new TodoApiContractError();
+  }
+  return readTag(
+    readSuccessResult(
+      await apiRequest<unknown>(`/api/tags/${id}`, {
+        json: { tagColorEnum: color, tagName: name.trim() },
+        method: 'PATCH',
+      }),
+    ),
+  );
+}
+
 export async function deleteRemoteTodoTag(tagId: string) {
   const id = Number(tagId);
   if (!Number.isSafeInteger(id) || id < 0) throw new TodoApiContractError();

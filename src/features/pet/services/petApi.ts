@@ -80,7 +80,7 @@ function readRemotePet(value: unknown, requireMain = false): RemotePet {
 
   return {
     birthDate,
-    breed: readString(pet.breedName),
+    breed: pet.breedName == null ? '' : readString(pet.breedName),
     gender: gender === 'MALE' ? 'male' : 'female',
     id: String(id),
     main: typeof main === 'boolean' ? main : null,
@@ -116,6 +116,10 @@ function createPetFormData(pet: PetEntity, imageUri?: string | null) {
 
 export function parseRemotePetEnvelope(value: unknown, expectedCode: 'PET_CREATE_200' | 'PET_UPDATE_200') {
   return readRemotePet(readEnvelope(value, expectedCode));
+}
+
+export function parseRemotePetDetailEnvelope(value: unknown) {
+  return readRemotePet(readEnvelope(value, 'PET_GET_200'), true);
 }
 
 export function parseRemotePetListEnvelope(value: unknown) {
@@ -178,6 +182,16 @@ export async function updateRemotePet(previous: PetEntity, next: PetEntity) {
 export async function getRemotePets() {
   const response = await apiRequest<unknown>('/pets');
   return parseRemotePetListEnvelope(response);
+}
+
+export async function getRemotePet(petId: string) {
+  const numericPetId = Number(petId);
+  if (!Number.isSafeInteger(numericPetId) || numericPetId <= 0) {
+    throw new PetApiContractError();
+  }
+
+  const response = await apiRequest<unknown>(`/pets/${numericPetId}`);
+  return parseRemotePetDetailEnvelope(response);
 }
 
 export async function updateRemoteMainPet(petId: string) {

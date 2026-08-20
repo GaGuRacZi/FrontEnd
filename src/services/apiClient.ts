@@ -223,6 +223,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   const url = buildApiUrl(path);
   const body = json === undefined ? requestOptions.body : JSON.stringify(json);
   const tokens = authenticated ? await getTokens() : null;
+  const logVisitRequest = typeof __DEV__ !== 'undefined' && __DEV__ && /^\/?visits(?:[/?]|$)/.test(path);
 
   async function send(currentAccessToken: string | null) {
     const requestHeaders = new Headers(headers);
@@ -231,13 +232,62 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       requestHeaders.set('Authorization', `Bearer ${currentAccessToken}`);
     }
 
+    if (logVisitRequest) {
+      const loggedHeaders: Record<string, string> = {};
+      requestHeaders.forEach((value, key) => {
+        loggedHeaders[key] = key.toLowerCase() === 'authorization' ? 'Bearer ***' : value;
+      });
+      const boundary = '<generated-by-react-native>';
+      const loggedBody = body instanceof FormData
+        ? `${((body as FormData & { _parts?: [string, unknown][] })._parts ?? [])
+            .map(([field, value]) => {
+              const part = value && typeof value === 'object'
+                ? value as { name?: string; string?: string; type?: string; uri?: string }
+                : null;
+              const contentDisposition = part?.name
+                ? `Content-Disposition: form-data; name="${field}"; filename="${part.name}"`
+                : `Content-Disposition: form-data; name="${field}"`;
+              const contentType = part?.type ? `\nContent-Type: ${part.type}` : '';
+              const content = part?.uri
+                ? `<binary file: ${part.name ?? 'unnamed'}>`
+                : part?.string ?? String(value);
+              return `--${boundary}\n${contentDisposition}${contentType}\n\n${content}`;
+            })
+            .join('\n')}\n--${boundary}--`
+        : body;
+      if (body instanceof FormData) {
+        loggedHeaders['content-type'] = `multipart/form-data; boundary=${boundary}`;
+      }
+      console.info('[API request]', {
+        headers: loggedHeaders,
+        method: requestOptions.method ?? 'GET',
+        url,
+      });
+      console.info(`[API request body]\n${loggedBody ?? ''}`);
+    }
+
     try {
-      return await fetch(url, {
+      const response = await fetch(url, {
         ...requestOptions,
         body,
         headers: requestHeaders,
       });
-    } catch {
+      if (logVisitRequest) {
+        console.info('[API response]', {
+          method: requestOptions.method ?? 'GET',
+          status: response.status,
+          url,
+        });
+      }
+      return response;
+    } catch (error) {
+      if (logVisitRequest) {
+        console.info('[API network error]', {
+          error,
+          method: requestOptions.method ?? 'GET',
+          url,
+        });
+      }
       throw new ApiError('네트워크 연결을 확인해 주세요.');
     }
   }
@@ -255,6 +305,14 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   const data = await readResponse(response);
+
+  if (logVisitRequest) {
+    console.info('[API response body]', {
+      body: data,
+      status: response.status,
+      url,
+    });
+  }
 
   if (
     authenticated &&

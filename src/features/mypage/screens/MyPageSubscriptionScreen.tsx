@@ -1,26 +1,40 @@
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppButton } from '@/src/components/common';
+import { AppButton, EmptyState } from '@/src/components/common';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageHeader } from '../components';
-import { PLAN_DEFINITIONS, getPlanRank } from '../mypageData';
+import { PLAN_DEFINITIONS, getPlan, getPlanRank } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
 
 export function MyPageSubscriptionScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { subscription } = useMyPageStore();
+  const { reloadMyPage, subscription, subscriptionLoadError } = useMyPageStore();
   const currentPlanId = subscription?.currentPlanId ?? 'baby-jelly';
   const currentRank = getPlanRank(currentPlanId);
+
+  if (subscriptionLoadError) {
+    return (
+      <MyPageHeader title="구독 살펴보기">
+        <EmptyState
+          actionLabel="다시 시도"
+          description="요금제와 가격을 다시 불러와주세요."
+          onActionPress={reloadMyPage}
+          title="요금제 정보를 불러오지 못했어요"
+        />
+      </MyPageHeader>
+    );
+  }
 
   return (
     <MyPageHeader title="구독 살펴보기">
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.lead}>요금제별 혜택과 가격을 비교해보세요</Text>
-        {PLAN_DEFINITIONS.map((plan) => {
+        {PLAN_DEFINITIONS.map(({ id }) => {
+          const plan = getPlan(id, subscription?.plans);
           const isCurrent = plan.id === currentPlanId;
           const planRank = getPlanRank(plan.id);
           const actionLabel =

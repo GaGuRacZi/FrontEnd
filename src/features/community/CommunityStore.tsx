@@ -208,6 +208,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     location: profileLocation = '',
     nickname: profileNickname = '',
     profileImageUri = null,
+    regionCode: profileRegionCode = null,
   } = profile ?? {};
 
   useEffect(() => {
@@ -253,8 +254,8 @@ export function CommunityProvider({ children }: PropsWithChildren) {
       getRemoteCommunityPage('MARKET'),
     ]);
     const [talkTags, marketTags] = await Promise.all([
-      getRemoteCommunityTags('COMMUNICATION').catch(() => []),
-      getRemoteCommunityTags('MARKET').catch(() => []),
+      getRemoteCommunityTags('COMMUNICATION'),
+      getRemoteCommunityTags('MARKET'),
     ]);
     remoteCursorsRef.current = {
       market: marketPage.nextCursor,
@@ -283,6 +284,16 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     syncedProfileRef.current = '';
     profileSyncAttemptsRef.current.clear();
 
+    if (!currentUserId) {
+      remoteCursorsRef.current = { market: null, talk: null };
+      communityTagsRef.current = [];
+      updateHasMorePosts({ market: false, talk: false });
+      applyState(EMPTY_STATE);
+      readyRef.current = true;
+      setIsReady(true);
+      return;
+    }
+
     try {
       const loadedState = await loadRemoteState();
       readyRef.current = true;
@@ -293,7 +304,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     } finally {
       setIsReady(true);
     }
-  }, [applyState, loadRemoteState, sessionReady]);
+  }, [applyState, currentUserId, loadRemoteState, sessionReady, updateHasMorePosts]);
 
   useEffect(() => {
     if (!sessionReady) {
@@ -306,6 +317,16 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     setHasLoadError(false);
     syncedProfileRef.current = '';
     profileSyncAttemptsRef.current.clear();
+
+    if (!currentUserId) {
+      remoteCursorsRef.current = { market: null, talk: null };
+      communityTagsRef.current = [];
+      updateHasMorePosts({ market: false, talk: false });
+      applyState(EMPTY_STATE);
+      readyRef.current = true;
+      setIsReady(true);
+      return undefined;
+    }
 
     loadRemoteState()
       .then((loadedState) => {
@@ -325,7 +346,7 @@ export function CommunityProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applyState, loadRemoteState, sessionReady]);
+  }, [applyState, currentUserId, loadRemoteState, sessionReady, updateHasMorePosts]);
 
   const enqueueMutation = useCallback(<T,>(mutation: () => Promise<T>) => {
     const result = mutationQueueRef.current.then(mutation, mutation);
@@ -338,10 +359,11 @@ export function CommunityProvider({ children }: PropsWithChildren) {
 
   const persist = useCallback(
     async (nextState: StoredCommunityState) => {
-      await communityRepository.saveState(nextState);
+      if (activeViewerIdRef.current !== viewerId) return;
       applyState(nextState);
+      await communityRepository.saveState(nextState).catch(() => undefined);
     },
-    [applyState],
+    [applyState, viewerId],
   );
 
   const persistMutation = useCallback(
@@ -357,24 +379,20 @@ export function CommunityProvider({ children }: PropsWithChildren) {
   );
 
   const persistMutationWithImageRemovals = useCallback(
-    async (
+    (
       nextState: StoredCommunityState,
       userId: string,
       images?: CommunityPost['images'],
     ): Promise<MutationResult> => {
-      try {
-        await queueCommunityImageRemovals(userId, images);
-      } catch {
-        return { ok: false, reason: 'error' };
-      }
-
-      const result = await persistMutation(nextState);
-      await communityRepository
-        .flushImageRemovals(result.ok ? nextState : stateRef.current, userId)
+      if (activeViewerIdRef.current !== viewerId) return Promise.resolve({ ok: true });
+      applyState(nextState);
+      void communityRepository.saveState(nextState).catch(() => undefined);
+      void queueCommunityImageRemovals(userId, images)
+        .then(() => communityRepository.flushImageRemovals(nextState, userId))
         .catch(() => undefined);
-      return result;
+      return Promise.resolve({ ok: true });
     },
-    [persistMutation],
+    [applyState, viewerId],
   );
 
   const mutateState = useCallback(
@@ -834,7 +852,11 @@ export function CommunityProvider({ children }: PropsWithChildren) {
           title: trimmedTitle,
           updatedAt: new Date().toISOString(),
         };
-        const remotePost = await createRemoteCommunityPost(localPost, communityTagsRef.current);
+        const remotePost = await createRemoteCommunityPost(
+          localPost,
+          communityTagsRef.current,
+          localPost.location === profileLocation ? profileRegionCode ?? undefined : undefined,
+        );
         const createdPost = mapRemotePost(remotePost, identity);
         const saveResult = await persistMutationWithImageRemovals({
           ...stateRef.current,
@@ -846,7 +868,15 @@ export function CommunityProvider({ children }: PropsWithChildren) {
         if (!saveResult.ok) return saveResult;
         return { ok: true, postId: createdPost.id };
       }).catch(mutationError),
-    [enqueueMutation, identity, persistMutationWithImageRemovals, sessionReady, viewerId],
+    [
+      enqueueMutation,
+      identity,
+      persistMutationWithImageRemovals,
+      profileLocation,
+      profileRegionCode,
+      sessionReady,
+      viewerId,
+    ],
   );
 
   const updateComment = useCallback(

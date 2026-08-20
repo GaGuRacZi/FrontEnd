@@ -11,26 +11,27 @@ import {
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import type { RemoteUserProfile } from '@/src/features/auth/services/kakaoAuthContract';
-import { getPushToken, hasPushPermission } from '@/src/services/pushNotifications';
-
 import {
-  getLocalCalendarDate,
-  getNextBillingDate,
-  getPlan,
-  getPlanRank,
-  getUpgradePaymentAmount,
-  PLAN_DEFINITIONS,
-} from './mypageData';
+  getPushToken,
+  hasPushPermission,
+  listenForPushTokenRefresh,
+} from '@/src/services/pushNotifications';
+import { retryOperation } from '@/src/utils/retry';
+
 import {
   disablePushNotifications,
   mergeRemoteMyPageProfile,
   mergeRemoteUserProfile,
 } from './mypageMappers';
 import {
+  changeRemoteSubscription,
   deleteRemoteProfileImage,
   getRemoteMyPageHome,
+  getRemotePayment,
+  getRemotePaymentHistory,
   getRemoteMyPageProfile,
   getRemoteNotificationSettings,
+  getRemoteSubscription,
   registerRemotePushToken,
   updateRemoteMyPageRegion,
   updateRemoteNotificationSettings,
@@ -45,7 +46,6 @@ import {
 import type {
   NotificationSettings,
   PaymentHistoryItem,
-  PaymentStatus,
   PlanId,
   StoredMyPageState,
   SubscriptionState,
@@ -64,11 +64,14 @@ export type StoredProfileStatus = 'missing' | 'recoverable' | 'valid';
 type MyPageStoreContextValue = {
   clearScreenSession: () => void;
   deleteUserProfileData: (userId?: string) => Promise<void>;
+  getPaymentHistoryItem: (paymentId: string) => Promise<PaymentHistoryItem>;
   hasLoadError: boolean;
   hasStoredUserProfileData: (userId: string) => Promise<StoredProfileStatus>;
   isReady: boolean;
   notificationSettings: NotificationSettings | null;
+  notificationSettingsLoadError: boolean;
   paymentHistory: PaymentHistoryItem[];
+  paymentHistoryLoadError: boolean;
   profile: UserProfile | null;
   registerRemoteProfile: (
     profile: RemoteUserProfile,
@@ -77,7 +80,8 @@ type MyPageStoreContextValue = {
   reloadMyPage: () => void;
   scheduleCancelSubscription: () => Promise<MutationResult>;
   subscription: SubscriptionState | null;
-  switchPlan: (planId: PlanId, paymentStatus?: PaymentStatus) => Promise<MutationResult>;
+  subscriptionLoadError: boolean;
+  switchPlan: (planId: PlanId) => Promise<MutationResult>;
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<MutationResult>;
   updateProfile: (profile: UserProfile) => Promise<MutationResult>;
 };
@@ -86,35 +90,14 @@ const MyPageStoreContext = createContext<MyPageStoreContextValue | null>(null);
 
 const EMPTY_PAYMENT_HISTORY: PaymentHistoryItem[] = [];
 
-function createPaymentHistoryItem(
-  currentPlanId: PlanId,
-  nextPlanId: PlanId,
-  status: PaymentStatus,
-): PaymentHistoryItem {
-  const paidPlan = getPlan(nextPlanId);
-  const amount = getUpgradePaymentAmount(currentPlanId, nextPlanId);
-  const date = getLocalCalendarDate();
-  const isDifferencePayment = currentPlanId !== 'baby-jelly';
-
-  return {
-    amount,
-    date,
-    id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    status,
-    title: isDifferencePayment ? `${paidPlan.name} 차액 결제` : `${paidPlan.name} 결제`,
-  };
-}
-
-function getRemotePlanId(plan: string, displayName: string): PlanId | null {
-  if (plan === 'BASIC') return 'little-jelly';
-  return PLAN_DEFINITIONS.find(({ name }) => name === displayName)?.id ?? null;
-}
-
 export function MyPageProvider({ children }: PropsWithChildren) {
   const { currentUserId, isReady: sessionReady } = useAuthSession();
   const [state, setState] = useState<StoredMyPageState | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [notificationSettingsLoadError, setNotificationSettingsLoadError] = useState(false);
+  const [paymentHistoryLoadError, setPaymentHistoryLoadError] = useState(false);
+  const [subscriptionLoadError, setSubscriptionLoadError] = useState(false);
   const [loadRequest, setLoadRequest] = useState(0);
   const activeUserRef = useRef<string | null>(null);
   const readyUserRef = useRef<string | null>(null);
@@ -131,14 +114,12 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     nextState: StoredMyPageState,
     afterSave?: () => Promise<void>,
   ) => {
-    await mypageRepository.saveState(userId, nextState);
-    if (afterSave) await afterSave();
-
     if (activeUserRef.current === userId && readyUserRef.current === userId) {
-      stateRef.current = nextState;
-      setState(nextState);
+      applyState(nextState);
     }
-  }, []);
+    await mypageRepository.saveState(userId, nextState).catch(() => undefined);
+    if (afterSave) await afterSave().catch(() => undefined);
+  }, [applyState]);
 
   const enqueueMutation = useCallback(<T,>(mutation: () => Promise<T>) => {
     const result = mutationQueueRef.current.then(mutation, mutation);
@@ -159,6 +140,9 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     setState(null);
     setIsReady(false);
     setHasLoadError(false);
+    setNotificationSettingsLoadError(false);
+    setPaymentHistoryLoadError(false);
+    setSubscriptionLoadError(false);
 
     if (!currentUserId) {
       setIsReady(true);
@@ -170,25 +154,52 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     const pushPermission = hasPushPermission();
     void pushPermission
       .then(async (hasPermission) => {
+        if (!active || activeUserRef.current !== currentUserId) return;
         if (!hasPermission) {
-          await registerRemotePushToken(null);
+          await retryOperation(async () => {
+            if (!active || activeUserRef.current !== currentUserId) return;
+            await registerRemotePushToken(null);
+          });
           return;
         }
 
         const pushToken = await getPushToken();
-        if (pushToken) await registerRemotePushToken(pushToken);
+        if (active && activeUserRef.current === currentUserId && pushToken) {
+          await retryOperation(async () => {
+            if (!active || activeUserRef.current !== currentUserId) return;
+            await registerRemotePushToken(pushToken);
+          });
+        }
       })
       .catch(() => undefined);
 
     Promise.all([
       mypageRepository.loadState(currentUserId),
-      getRemoteMyPageHome().catch(() => null),
       getRemoteMyPageProfile(),
-      getRemoteNotificationSettings().catch(() => null),
       pushPermission,
+      Promise.allSettled([
+        getRemoteMyPageHome(),
+        getRemoteNotificationSettings(),
+        getRemoteSubscription(),
+        getRemotePaymentHistory(),
+      ]),
     ])
-      .then(async ([loadedState, remoteHome, remoteProfile, remoteNotificationSettings, hasNotificationPermission]) => {
+      .then(async ([loadedState, remoteProfile, hasNotificationPermission, optionalResults]) => {
         if (!active || activeUserRef.current !== currentUserId) return;
+        const [remoteHomeResult, notificationResult, subscriptionResult, paymentHistoryResult] = optionalResults;
+        const remoteHome = remoteHomeResult.status === 'fulfilled' ? remoteHomeResult.value : null;
+        const remoteNotificationSettings = notificationResult.status === 'fulfilled'
+          ? notificationResult.value
+          : null;
+        const remoteSubscription = subscriptionResult.status === 'fulfilled'
+          ? subscriptionResult.value
+          : null;
+        const remotePaymentHistory = paymentHistoryResult.status === 'fulfilled'
+          ? paymentHistoryResult.value
+          : null;
+        setNotificationSettingsLoadError(notificationResult.status === 'rejected');
+        setPaymentHistoryLoadError(paymentHistoryResult.status === 'rejected');
+        setSubscriptionLoadError(subscriptionResult.status === 'rejected');
         const resolvedNotificationSettings =
           remoteNotificationSettings ?? loadedState.notificationSettings;
         const notificationSettings = hasNotificationPermission
@@ -202,22 +213,21 @@ export function MyPageProvider({ children }: PropsWithChildren) {
         const initialState = {
           ...loadedState,
           notificationSettings,
+          paymentHistory: remotePaymentHistory ?? loadedState.paymentHistory,
           profile: mergeRemoteMyPageProfile(loadedState.profile, remoteProfile),
-          subscription: {
-            ...loadedState.subscription,
-            currentPlanId:
-              remoteHome === null
-                ? loadedState.subscription.currentPlanId
-                : remoteHome.subscription.active
-                  ? getRemotePlanId(
-                      remoteHome.subscription.plan,
-                      remoteHome.subscription.displayName,
-                    ) ?? loadedState.subscription.currentPlanId
-                  : 'baby-jelly',
-          },
+          subscription: remoteSubscription ?? (
+            remoteHome?.subscription.active === false
+              ? {
+                  currentPlanId: 'baby-jelly' as const,
+                  nextBillingDate: null,
+                  pendingPlanId: null,
+                  pendingType: null,
+                }
+              : loadedState.subscription
+          ),
         };
         readyUserRef.current = currentUserId;
-        await mypageRepository.saveState(currentUserId, initialState);
+        await mypageRepository.saveState(currentUserId, initialState).catch(() => undefined);
         if (!active || activeUserRef.current !== currentUserId) return;
         applyState(initialState);
       })
@@ -234,38 +244,31 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     };
   }, [applyState, currentUserId, loadRequest, sessionReady]);
 
+  useEffect(() => {
+    if (!sessionReady || !currentUserId) return;
+    const userId = currentUserId;
+    return listenForPushTokenRefresh((pushToken) => {
+      if (activeUserRef.current !== userId) return;
+      void retryOperation(async () => {
+        if (activeUserRef.current !== userId) return;
+        await registerRemotePushToken(pushToken);
+      }).catch(() => undefined);
+    });
+  }, [currentUserId, sessionReady]);
+
   const reloadMyPage = useCallback(() => {
     setLoadRequest((current) => current + 1);
   }, []);
-
-  const mutateState = useCallback(
-    (updater: (current: StoredMyPageState) => Promise<StoredMyPageState> | StoredMyPageState) => {
-      const userId = currentUserId;
-
-      return enqueueMutation(async (): Promise<MutationResult> => {
-        if (!userId || readyUserRef.current !== userId || !stateRef.current) {
-          return { ok: false, reason: 'not-ready' };
-        }
-
-        try {
-          const nextState = await updater(stateRef.current);
-          await persist(userId, nextState);
-          return { ok: true };
-        } catch {
-          return {
-            ok: false,
-            reason: 'error',
-          };
-        }
-      });
-    },
-    [currentUserId, enqueueMutation, persist],
-  );
 
   const hasStoredUserProfileData = useCallback(
     (userId: string) =>
       enqueueMutation(() => mypageRepository.getStoredStateStatus(userId)),
     [enqueueMutation],
+  );
+
+  const getPaymentHistoryItem = useCallback(
+    (paymentId: string) => getRemotePayment(paymentId),
+    [],
   );
 
   const registerRemoteProfile = useCallback(
@@ -374,65 +377,31 @@ export function MyPageProvider({ children }: PropsWithChildren) {
   );
 
   const switchPlan = useCallback(
-    (planId: PlanId, paymentStatus: PaymentStatus = 'paid') =>
-      mutateState((current) => {
-        const currentRank = getPlanRank(current.subscription.currentPlanId);
-        const nextRank = getPlanRank(planId);
-        if (nextRank === currentRank) return current;
-
-        const isUpgrade = nextRank > currentRank;
-        const paymentHistoryItem = isUpgrade
-          ? createPaymentHistoryItem(
-              current.subscription.currentPlanId,
-              planId,
-              paymentStatus,
-            )
-          : null;
-        if (paymentHistoryItem && paymentStatus !== 'paid') {
-          return {
-            ...current,
-            paymentHistory: [paymentHistoryItem, ...current.paymentHistory],
-          };
+    (planId: PlanId) =>
+      enqueueMutation(async (): Promise<MutationResult> => {
+        const userId = currentUserId;
+        const current = stateRef.current;
+        if (!userId || readyUserRef.current !== userId || !current) {
+          return { ok: false, reason: 'not-ready' };
         }
-        const nextBillingDate = current.subscription.nextBillingDate ?? getNextBillingDate();
-        const nextSubscription: SubscriptionState = isUpgrade
-          ? {
-              currentPlanId: planId,
-              nextBillingDate,
-              pendingPlanId: null,
-              pendingType: null,
-            }
-          : {
-              ...current.subscription,
-              nextBillingDate,
-              pendingPlanId: planId,
-              pendingType: planId === 'baby-jelly' ? 'cancel' : 'downgrade',
-            };
 
-        return {
-          ...current,
-          paymentHistory:
-            paymentHistoryItem
-              ? [paymentHistoryItem, ...current.paymentHistory]
-              : current.paymentHistory,
-          subscription: nextSubscription,
-        };
+        try {
+          const subscription = await changeRemoteSubscription(planId);
+          const paymentHistory = await getRemotePaymentHistory().catch(
+            () => current.paymentHistory,
+          );
+          await persist(userId, { ...current, paymentHistory, subscription });
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
       }),
-    [mutateState],
+    [currentUserId, enqueueMutation, persist],
   );
 
   const scheduleCancelSubscription = useCallback(
-    () =>
-      mutateState((current) => ({
-        ...current,
-        subscription: {
-          ...current.subscription,
-          nextBillingDate: current.subscription.nextBillingDate ?? getNextBillingDate(),
-          pendingPlanId: 'baby-jelly',
-          pendingType: 'cancel',
-        },
-      })),
-    [mutateState],
+    () => switchPlan('baby-jelly'),
+    [switchPlan],
   );
 
   const deleteUserProfileData = useCallback(
@@ -458,16 +427,20 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     () => ({
       clearScreenSession,
       deleteUserProfileData,
+      getPaymentHistoryItem,
       hasLoadError,
       hasStoredUserProfileData,
       isReady: storeReady,
       notificationSettings: visibleState?.notificationSettings ?? null,
+      notificationSettingsLoadError,
       paymentHistory: visibleState?.paymentHistory ?? EMPTY_PAYMENT_HISTORY,
+      paymentHistoryLoadError,
       profile: visibleState?.profile ?? null,
       registerRemoteProfile,
       reloadMyPage,
       scheduleCancelSubscription,
       subscription: visibleState?.subscription ?? null,
+      subscriptionLoadError,
       switchPlan,
       updateNotificationSettings,
       updateProfile,
@@ -475,12 +448,16 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     [
       clearScreenSession,
       deleteUserProfileData,
+      getPaymentHistoryItem,
       hasLoadError,
       hasStoredUserProfileData,
+      notificationSettingsLoadError,
+      paymentHistoryLoadError,
       registerRemoteProfile,
       reloadMyPage,
       scheduleCancelSubscription,
       storeReady,
+      subscriptionLoadError,
       switchPlan,
       updateNotificationSettings,
       updateProfile,

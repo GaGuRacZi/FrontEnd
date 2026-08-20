@@ -14,7 +14,6 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
 
 const AUDIO_MIME_BY_EXTENSION: Record<string, string> = {
   aac: 'audio/aac',
-  m4a: 'audio/mp4',
   mp3: 'audio/mpeg',
 };
 

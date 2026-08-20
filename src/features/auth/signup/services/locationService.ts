@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 
+import { resolveRemoteLocation } from '@/src/services/locationApi';
+
 export const MAX_LOCATION_ACCURACY_METERS = 500;
 const LOCATION_TIMEOUT_MS = 15000;
 
@@ -64,17 +66,7 @@ export async function getBestCurrentPosition() {
 }
 
 export async function getRegionFromCoordinates(latitude: number, longitude: number) {
-  const [address] = await withLocationTimeout(
-    Location.reverseGeocodeAsync({ latitude, longitude }),
-  );
-  const region = [address?.region, address?.city, address?.district]
-    .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-    .map((value) => value.trim())
-    .filter((value, index, values) => values.indexOf(value) === index)
-    .join(' ');
-
-  if (!region) throw new Error('LOCATION_REGION_NOT_FOUND');
-  return region;
+  return (await resolveRemoteLocation(latitude, longitude)).regionName;
 }
 
 export async function getRegionFromPosition(position: Location.LocationObject) {

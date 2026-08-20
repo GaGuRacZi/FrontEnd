@@ -21,7 +21,6 @@ export function ChatDataBridge() {
   const { isReady: isPetReady, selectedPet } = usePetStore();
   const {
     isReady: isChatReady,
-    markPostDeleted,
     rooms,
     syncParticipant,
     syncPostReference,
@@ -68,17 +67,16 @@ export function ChatDataBridge() {
 
     referenceIds.forEach((postId) => {
       const post = livePosts.get(postId);
+      if (!post) return;
       operations.push(() =>
-        post
-          ? syncPostReference(
-              toChatPostReference(
-                post,
-                'kind' in post && post.kind === 'talk'
-                  ? getCommentCount(post.id)
-                  : undefined,
-              ),
-            )
-          : markPostDeleted(postId),
+        syncPostReference(
+          toChatPostReference(
+            post,
+            'kind' in post && post.kind === 'talk'
+              ? getCommentCount(post.id)
+              : undefined,
+          ),
+        ),
       );
     });
 
@@ -111,7 +109,6 @@ export function ChatDataBridge() {
     isPetReady,
     isProfileReady,
     livePosts,
-    markPostDeleted,
     participantIdsKey,
     postIdsKey,
     posts,

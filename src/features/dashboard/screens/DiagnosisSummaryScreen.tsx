@@ -11,7 +11,9 @@ import {
   addRemotePrescription,
   deleteRemotePrescription,
   generateRemoteAiSummary,
+  getRemoteMedicationDetail,
   getRemoteVisitDetail,
+  type RemotePrescription,
   type RemoteVisitDetail,
 } from '@/src/features/dashboard/services/visitApi';
 import { mapRemotePrescriptionToMedication, useMedicationStore } from '@/src/features/home/MedicationStore';
@@ -47,7 +49,7 @@ function formatVisitDate(value: string) {
 export function DiagnosisSummaryScreen() {
   const { diagnosisId } = useLocalSearchParams<{ diagnosisId: string }>();
   const router = useRouter();
-  const { selectedPet } = usePetStore();
+  const { hasLoadError: petLoadError, isReady: petsReady, pets, reloadPets } = usePetStore();
   const { reloadMedications } = useMedicationStore();
   const [detail, setDetail] = useState<RemoteVisitDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,8 +89,6 @@ export function DiagnosisSummaryScreen() {
       .finally(() => setIsLoading(false));
   };
 
-  if (!selectedPet) return null;
-
   if (isLoading) {
     return (
       <ScreenLayout headerVariant="auth" title="진료 요약">
@@ -110,6 +110,25 @@ export function DiagnosisSummaryScreen() {
     );
   }
 
+  const visitPet = pets.find((pet) => pet.id === detail.petId) ?? null;
+
+  if (!petsReady) {
+    return <ScreenLayout headerVariant="auth" title="진료 요약"><LoadingView label="반려동물 정보를 불러오고 있어요." /></ScreenLayout>;
+  }
+
+  if (!visitPet) {
+    return (
+      <ScreenLayout headerVariant="auth" title="진료 요약">
+        <EmptyState
+          actionLabel={petLoadError ? '다시 시도' : undefined}
+          description={petLoadError ? '네트워크 상태를 확인한 뒤 다시 불러와주세요.' : '삭제되었거나 현재 계정에서 확인할 수 없는 반려동물의 진료 기록이에요.'}
+          onActionPress={petLoadError ? reloadPets : undefined}
+          title="반려동물 정보를 확인할 수 없어요"
+        />
+      </ScreenLayout>
+    );
+  }
+
   const medications = detail.prescriptions.map((prescription) => mapRemotePrescriptionToMedication(prescription));
 
   const handleAddMedications = (entries: MedicationEntry[]) => {
@@ -117,9 +136,10 @@ export function DiagnosisSummaryScreen() {
     void (async () => {
       setIsSaving(true);
       setErrorMessage(null);
+      const added: RemotePrescription[] = [];
       try {
         for (const entry of entries) {
-          await addRemotePrescription(detail.id, {
+          added.push(await addRemotePrescription(detail.id, {
             caution: entry.warningNote,
             dosageAmount: entry.quantity,
             dosageUnit: '정',
@@ -130,14 +150,25 @@ export function DiagnosisSummaryScreen() {
             nameEn: entry.nameEn,
             nameKo: entry.medicationId ? undefined : entry.name,
             source: entry.medicationId ? 'CATALOG' : 'CUSTOM',
-          });
+          }));
         }
-        await loadDetail();
+        setDetail((current) => current
+          ? { ...current, prescriptions: [...current.prescriptions, ...added] }
+          : current);
         reloadMedications();
         setSearchModalVisible(false);
+        void loadDetail().catch(() => undefined);
       } catch {
-        setErrorMessage('약물을 저장하지 못했어요. 다시 시도해주세요.');
-        await loadDetail().catch(() => undefined);
+        setErrorMessage(added.length
+          ? '일부 약물만 저장됐어요. 목록을 확인한 뒤 다시 추가해주세요.'
+          : '약물을 저장하지 못했어요. 다시 시도해주세요.');
+        if (added.length) {
+          setDetail((current) => current
+            ? { ...current, prescriptions: [...current.prescriptions, ...added] }
+            : current);
+          setSearchModalVisible(false);
+        }
+        void loadDetail().catch(() => undefined);
         reloadMedications();
       } finally {
         setIsSaving(false);
@@ -152,15 +183,36 @@ export function DiagnosisSummaryScreen() {
       setErrorMessage(null);
       try {
         await deleteRemotePrescription(detail.id, detailMedication.id);
+        const deletedId = detailMedication.id;
         setDetailMedication(null);
-        await loadDetail();
+        setDetail((current) => current
+          ? { ...current, prescriptions: current.prescriptions.filter(({ id }) => id !== deletedId) }
+          : current);
         reloadMedications();
+        void loadDetail().catch(() => undefined);
       } catch {
         setErrorMessage('약물을 삭제하지 못했어요. 다시 시도해주세요.');
       } finally {
         setIsSaving(false);
       }
     })();
+  };
+
+  const handleOpenMedication = (medication: DiagnosisMedication) => {
+    setDetailMedication(medication);
+    if (!medication.medicationId) return;
+    void getRemoteMedicationDetail(medication.medicationId)
+      .then((remote) => {
+        setDetailMedication((current) => current?.id === medication.id
+          ? {
+              ...current,
+              description: remote.description,
+              dosageLabel: remote.ingredient ?? current.dosageLabel,
+              warningNote: remote.precaution,
+            }
+          : current);
+      })
+      .catch(() => undefined);
   };
 
   const handleGenerateSummary = () => {
@@ -188,8 +240,8 @@ export function DiagnosisSummaryScreen() {
           actionIcon="volume-high-outline"
           actionLabel="음성&전사문 확인"
           onPressAction={() => router.push(`/dashboard/${detail.id}/transcript` as Href)}
-          pet={selectedPet}
-          subtitle={`${selectedPet.name} (${selectedPet.breed} · ${calculatePetAgeLabel(selectedPet.birthDate)})`}
+          pet={visitPet}
+          subtitle={`${visitPet.name} (${visitPet.breed} · ${calculatePetAgeLabel(visitPet.birthDate)})`}
           title={detail.visitName ?? '진료 요약'}
           topLabel={formatVisitDate(detail.visitedAt)}
         />
@@ -232,7 +284,7 @@ export function DiagnosisSummaryScreen() {
                     index={index}
                     key={medication.id}
                     medication={medication}
-                    onPress={() => setDetailMedication(medication)}
+                    onPress={() => handleOpenMedication(medication)}
                   />
                 ))}
               </View>

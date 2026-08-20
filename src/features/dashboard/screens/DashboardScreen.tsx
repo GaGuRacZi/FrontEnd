@@ -23,7 +23,12 @@ function formatVisitDate(value: string) {
 
 export function DashboardScreen() {
 	const router = useRouter();
-	const { selectedPet } = usePetStore();
+	const {
+		hasLoadError: petLoadError,
+		isReady: petsReady,
+		reloadPets,
+		selectedPet,
+	} = usePetStore();
 	const { hasLoadError, isReady, reloadMedications, visits } = useMedicationStore();
 	const [showSummarizingToast, setShowSummarizingToast] = useState(false);
 	const [toastMessage, setToastMessage] = useState('아직 요약 중이에요!\n완료되면 알려 드릴게요.');
@@ -63,7 +68,22 @@ export function DashboardScreen() {
 		};
 	}, []);
 
-	if (!selectedPet) return null;
+	if (!petsReady) {
+		return <ScreenLayout headerFullWidth leftContent={<BrandLogoButton />}><LoadingView label="반려동물 정보를 불러오고 있어요." /></ScreenLayout>;
+	}
+
+	if (!selectedPet) {
+		return (
+			<ScreenLayout headerFullWidth leftContent={<BrandLogoButton />}>
+				<EmptyState
+					actionLabel={petLoadError ? '다시 시도' : '반려동물 등록'}
+					description={petLoadError ? '네트워크 상태를 확인한 뒤 다시 불러와주세요.' : '진료 기록을 시작하려면 반려동물을 먼저 등록해주세요.'}
+					onActionPress={petLoadError ? reloadPets : () => router.push('/pet/add' as Href)}
+					title={petLoadError ? '반려동물 정보를 불러오지 못했어요' : '등록된 반려동물이 없어요'}
+				/>
+			</ScreenLayout>
+		);
+	}
 
 	const filteredList: DiagnosisListItem[] = visits.map((visit) => ({
 		date: formatVisitDate(visit.visitedAt),

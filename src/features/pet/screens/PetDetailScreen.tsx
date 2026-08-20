@@ -87,14 +87,30 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
-  const { deletePet, hasLoadError, isReady, pets, reloadPets } = usePetStore();
+  const { deletePet, hasLoadError, isReady, pets, refreshPet, reloadPets } = usePetStore();
   const petId = petIdProp ?? readParam(params.petId);
   const pet = useMemo(() => pets.find((item) => item.id === petId), [petId, pets]);
   const missingAlertShown = useRef(false);
   const deleteLock = useRef(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [detailStatus, setDetailStatus] = useState<'error' | 'loading' | 'ready'>('loading');
   const [isDeleting, setIsDeleting] = useState(false);
   const isLastPet = pets.length <= 1;
+
+  const loadPet = useCallback(async () => {
+    if (!petId) {
+      setDetailStatus('ready');
+      return;
+    }
+
+    setDetailStatus('loading');
+    const result = await refreshPet(petId);
+    setDetailStatus(result.ok ? 'ready' : 'error');
+  }, [petId, refreshPet]);
+
+  useEffect(() => {
+    if (isReady && !hasLoadError) void loadPet();
+  }, [hasLoadError, isReady, loadPet]);
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -109,6 +125,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
     if (
       !isReady ||
       hasLoadError ||
+      detailStatus !== 'ready' ||
       pet ||
       deleteLock.current ||
       missingAlertShown.current
@@ -122,7 +139,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
       '삭제되었거나 존재하지 않는 반려동물이에요.',
       [{ text: '확인', onPress: goBack }],
     );
-  }, [goBack, hasLoadError, isReady, pet, showAlert]);
+  }, [detailStatus, goBack, hasLoadError, isReady, pet, showAlert]);
 
   const handleDelete = async () => {
     if (!pet || deleteLock.current) return;
@@ -160,7 +177,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
     }
   };
 
-  if (!isReady) {
+  if (!isReady || detailStatus === 'loading') {
     return (
       <AppScreen padded={false}>
         <LoadingView label="반려동물 정보를 불러오는 중이에요" />
@@ -168,7 +185,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
     );
   }
 
-  if (hasLoadError) {
+  if (hasLoadError || detailStatus === 'error') {
     return (
       <AppScreen padded={false}>
         <TopHeader
@@ -183,7 +200,7 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
           <EmptyState
             actionLabel="다시 시도"
             description="저장된 정보를 다시 불러온 뒤 확인할 수 있어요."
-            onActionPress={reloadPets}
+            onActionPress={hasLoadError ? reloadPets : () => void loadPet()}
             title="반려동물 정보를 불러오지 못했어요"
           />
         </View>

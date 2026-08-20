@@ -1,5 +1,6 @@
-import { apiRequest } from '@/src/services/apiClient';
+import { ApiError, apiRequest } from '@/src/services/apiClient';
 import { appendMultipartImage, appendMultipartJson } from '@/src/utils/file';
+import { formatKoreanChatDate, formatKoreanChatTime } from '@/src/utils/koreanDateTime';
 
 import type { MedicalExpenseRecord, WalkRecord, WeightRecord } from '../types';
 
@@ -36,6 +37,10 @@ export type ActiveWalk = {
   startTime: string;
 };
 
+export function getHealthRequestErrorMessage(error: unknown, fallback: string) {
+  return error instanceof ApiError && error.message.trim() ? error.message : fallback;
+}
+
 function readRecord(value: unknown): JsonRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid-health-response');
   return value as JsonRecord;
@@ -63,29 +68,16 @@ function readId(value: unknown) {
   return String(id);
 }
 
-function toLocalDate(value: string): Date {
-  // 타임존 정보 없으면 UTC로 강제 파싱 → 로컬(KST) 변환
-  const utcStr = /Z$|[+-]\d{2}:\d{2}$/.test(value) ? value : value + 'Z';
-  return new Date(utcStr);
-}
-
 function formatDate(value: string) {
-  const dt = toLocalDate(value);
-  if (Number.isNaN(dt.getTime())) throw new Error('invalid-health-response');
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, '0');
-  const d = String(dt.getDate()).padStart(2, '0');
-  return `${y}.${m}.${d}`;
+  const match = /^(\d{4})년 (\d{1,2})월 (\d{1,2})일$/.exec(formatKoreanChatDate(value));
+  if (!match) throw new Error('invalid-health-response');
+  return `${match[1]}.${match[2].padStart(2, '0')}.${match[3].padStart(2, '0')}`;
 }
 
 function formatTime(value: string) {
-  const dt = toLocalDate(value);
-  if (Number.isNaN(dt.getTime())) throw new Error('invalid-health-response');
-  const hour = dt.getHours();
-  const minute = String(dt.getMinutes()).padStart(2, '0');
-  const period = hour < 12 ? '오전' : '오후';
-  const displayHour = hour % 12 || 12;
-  return `${period} ${displayHour}:${minute}`;
+  const time = formatKoreanChatTime(value);
+  if (!time) throw new Error('invalid-health-response');
+  return time;
 }
 
 function toServerDate(value: string) {
@@ -289,6 +281,11 @@ export async function getWeightRecords(petId: string, year: number, month: numbe
   const result = readEnvelope(response);
   if (!Array.isArray(result)) throw new Error('invalid-health-response');
   return result.map(parseWeightRecord);
+}
+
+export async function getWeightRecord(petId: string, recordId: string) {
+  const response = await apiRequest<unknown>(`/pets/${numericId(petId)}/weights/${numericId(recordId)}`);
+  return parseWeightRecord(readEnvelope(response));
 }
 
 export async function saveWeightRecord(record: WeightRecord) {

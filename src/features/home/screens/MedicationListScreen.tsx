@@ -1,9 +1,11 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
+import { EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import type { DiagnosisMedication, DiagnosisMedicationTiming } from '@/src/features/dashboard/types';
+import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { useMedicationStore } from '../MedicationStore';
 
@@ -17,7 +19,8 @@ const TIMING_CHIP_LABELS: Record<DiagnosisMedicationTiming, string> = {
 const ALL_TIMINGS: DiagnosisMedicationTiming[] = ['morning', 'lunch', 'dinner', 'bedtime'];
 
 export function MedicationListScreen() {
-  const { medications } = useMedicationStore();
+  const { hasMedicationLoadError, isReady, medications, reloadMedications } = useMedicationStore();
+  const { hasLoadError: petLoadError, isReady: petsReady, reloadPets, selectedPet } = usePetStore();
 
   return (
     <ScreenLayout
@@ -29,6 +32,18 @@ export function MedicationListScreen() {
         showsVerticalScrollIndicator={false}
         style={styles.scroll}
       >
+        {!petsReady || !isReady ? <LoadingView label="복용 약물을 불러오고 있어요." /> : null}
+        {petsReady && petLoadError ? (
+          <EmptyState actionLabel="다시 시도" onActionPress={reloadPets} title="반려동물 정보를 불러오지 못했어요" />
+        ) : null}
+        {petsReady && !petLoadError && !selectedPet ? (
+          <EmptyState description="반려동물을 등록하면 처방 약물을 확인할 수 있어요." title="등록된 반려동물이 없어요" />
+        ) : null}
+        {petsReady && selectedPet && isReady && hasMedicationLoadError ? (
+          <EmptyState actionLabel="다시 시도" onActionPress={reloadMedications} title="복용 약물을 불러오지 못했어요" />
+        ) : null}
+        {petsReady && selectedPet && isReady && !hasMedicationLoadError ? (
+          <>
         {/* 배너 */}
         <View style={styles.banner}>
           <View pointerEvents="none" style={[styles.decoCircle, styles.decoCircleLarge]} />
@@ -69,6 +84,8 @@ export function MedicationListScreen() {
             ))}
           </View>
         )}
+          </>
+        ) : null}
       </ScrollView>
     </ScreenLayout>
   );

@@ -517,9 +517,12 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
       const uri = current?.[field] ?? null;
       if (!current) return;
 
+      const nextUri = mode === 'edit' ? (base?.[field] ?? null) : null;
+      if (uri === nextUri) return;
+
       imageMutationLock.current = true;
       setIsImageMutating(true);
-      const nextDraft = { ...current, [field]: null };
+      const nextDraft = { ...current, [field]: nextUri };
 
       try {
         await queueDraftImagesForRemoval(uri);
@@ -529,13 +532,13 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         setDraft(nextDraft);
         await flushPetImageRemovals().catch(() => undefined);
       } catch {
-        showAlert('사진을 삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
+        showAlert('사진 변경을 취소하지 못했어요', '잠시 후 다시 시도해주세요.');
       } finally {
         imageMutationLock.current = false;
         setIsImageMutating(false);
       }
     },
-    [flushPetImageRemovals, queueDraftImagesForRemoval, showAlert],
+    [flushPetImageRemovals, mode, queueDraftImagesForRemoval, showAlert],
   );
 
   const updateField = useCallback(
@@ -813,6 +816,9 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
         }
       >
         <PetFormFields
+          canRemoveImage={
+            mode === 'add' || draft.profileImageUri !== baseDraft?.profileImageUri
+          }
           disabled={isImageMutating || isSubmitting || Boolean(pendingCompletion)}
           errors={visibleErrors}
           onBlur={(field) => setTouched((current) => new Set(current).add(field))}
@@ -828,6 +834,7 @@ export function PetFormScreen({ mode, petId }: PetFormScreenProps) {
             void pickImage(field);
           }}
           onRemoveImage={removeImage}
+          removeImageLabel={mode === 'edit' ? '사진 변경 취소' : '사진 삭제'}
           values={draft}
         />
       </FormScreen>

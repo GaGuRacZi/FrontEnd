@@ -31,6 +31,7 @@ export function toChatPostReference(
 
   if (post.kind === 'market') {
     return {
+      authorId: post.author.userId,
       authorNickname: post.author.nickname,
       kind: 'market',
       marketStatus: post.status,
@@ -43,6 +44,7 @@ export function toChatPostReference(
   }
 
   return {
+    authorId: post.author.userId,
     authorNickname: post.author.nickname,
     ...(commentCount === undefined ? {} : { commentCount }),
     kind: post.kind,

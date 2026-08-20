@@ -31,3 +31,7 @@ jobs:
       - run: node scripts/check-api-refresh.mjs
       - run: npm run check:chat-api
       - run: node scripts/check-chat-format.mjs
+      - run: npm run check:notifications
+      - run: npm run check:health-summary
+      - run: npm run check:home-api
+      - run: npm run check:frontend-flow

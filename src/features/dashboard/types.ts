@@ -21,6 +21,7 @@ export type DiagnosisMedication = {
 	frequencyLabel: string;
 	id: string;
 	mealTimingLabel: string;
+	medicationId?: string;
 	name: string;
 	timings: DiagnosisMedicationTiming[];
 	warningNote?: string;

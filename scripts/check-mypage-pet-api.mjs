@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-import { appendMultipartAudio, appendMultipartJson } from '../src/utils/file.ts';
-
 function loadModule(path, dependencies) {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: {
@@ -19,6 +17,12 @@ function loadModule(path, dependencies) {
   });
   return module.exports;
 }
+
+const { appendMultipartJson } = loadModule('../src/utils/file.ts', {
+  'expo-file-system': { File: class {} },
+  'file-type/core': { fileTypeFromBuffer: async () => undefined },
+  mime: { default: { getType: () => undefined } },
+});
 
 const petApi = loadModule('../src/features/pet/services/petApi.ts', {
   '@/src/services/apiClient': { apiRequest: async () => undefined },
@@ -68,6 +72,15 @@ assert.deepEqual(
     { ...petApi.parseRemotePetEnvelope(petEnvelope, 'PET_CREATE_200'), id: '2', main: false },
   ],
 );
+assert.equal(
+  petApi.parseRemotePetDetailEnvelope({
+    code: 'PET_GET_200',
+    isSuccess: true,
+    message: 'ok',
+    result: { ...petEnvelope.result, breedId: null, breedName: null, main: true },
+  }).breed,
+  '',
+);
 
 const petRequests = [];
 const petMutations = loadModule('../src/features/pet/services/petApi.ts', {
@@ -82,19 +95,49 @@ const petMutations = loadModule('../src/features/pet/services/petApi.ts', {
           result: [{ ...petEnvelope.result, main: true }],
         };
       }
+      if (path === '/pets/1' && !options) {
+        return {
+          code: 'PET_GET_200',
+          isSuccess: true,
+          message: 'ok',
+          result: { ...petEnvelope.result, main: true },
+        };
+      }
       return { code: 'PET_MAIN_UPDATE_200', isSuccess: true, message: 'ok', result: null };
     },
   },
   '@/src/utils/file': { appendMultipartImage: () => undefined, appendMultipartJson: () => undefined },
 });
 await petMutations.getRemotePets();
+await petMutations.getRemotePet('1');
 await petMutations.updateRemoteMainPet('1');
 await petMutations.deleteRemotePet('1');
 assert.deepEqual(petRequests, [
   ['/pets', undefined],
+  ['/pets/1', undefined],
   ['/pets/1/main', { method: 'PATCH' }],
   ['/pets/1', { method: 'DELETE' }],
 ]);
+
+const petStoreSource = readFileSync(
+  new URL('../src/features/pet/PetStore.tsx', import.meta.url),
+  'utf8',
+);
+assert.doesNotMatch(petStoreSource, /cacheLoadFailed/);
+assert.match(petStoreSource, /await getRemotePet\(petId\)/);
+
+const accountLifecycleSource = readFileSync(
+  new URL('../src/hooks/useAccountLifecycle.ts', import.meta.url),
+  'utf8',
+);
+assert.doesNotMatch(accountLifecycleSource, /logoutRemoteSession\)\.catch/);
+assert.doesNotMatch(accountLifecycleSource, /registerRemotePushToken\(null\)\)\.catch/);
+
+const recordingScreenSource = readFileSync(
+  new URL('../src/features/dashboard/screens/RecordingScreen.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(recordingScreenSource, /const toggleRecording = \(\) => \{[\s\S]*?try \{[\s\S]*?recorder\.record/);
 
 const petValidation = loadModule('../src/features/pet/petValidation.ts', {});
 const today = new Date();
@@ -113,16 +156,6 @@ assert.equal(petValidation.getBirthDateError(formatDate(yesterday)), undefined);
 const multipartParts = [];
 appendMultipartJson({ append: (...part) => multipartParts.push(part) }, { petName: '초코' });
 assert.deepEqual(multipartParts, [['data', { string: '{"petName":"초코"}', type: 'application/json' }]]);
-const audioParts = [];
-appendMultipartAudio(
-  { append: (...part) => audioParts.push(part) },
-  'audio',
-  'file:///cache/visit.m4a',
-);
-assert.deepEqual(audioParts, [[
-  'audio',
-  { name: 'visit.m4a', type: 'audio/mp4', uri: 'file:///cache/visit.m4a' },
-]]);
 assert.deepEqual(
   petApi.parseRemoteBreedEnvelope({
     code: 'BREED_SEARCH_200',
@@ -163,10 +196,10 @@ assert.deepEqual(
 );
 
 const locationService = loadModule('../src/features/auth/signup/services/locationService.ts', {
+  '@/src/services/locationApi': {
+    resolveRemoteLocation: async () => ({ regionName: '서울특별시 종로구' }),
+  },
   'expo-location': {
-    reverseGeocodeAsync: async () => [
-      { city: '서울특별시', district: '종로구', region: '서울특별시' },
-    ],
   },
   'react-native': { Platform: { OS: 'android' } },
 });
@@ -246,6 +279,92 @@ assert.deepEqual(
   }),
   { subscription: { active: true, displayName: '꼬마 젤리', plan: 'BASIC' } },
 );
+
+const billingRequests = [];
+const billingApi = loadModule('../src/features/mypage/services/mypageApi.ts', {
+  '@/src/services/apiClient': {
+    apiRequest: async (path, options) => {
+      billingRequests.push([path, options]);
+      if (path === '/mypage/subscription') {
+        return {
+          code: options?.method === 'POST' ? 'BILLING_PLAN_CHANGE_200' : 'BILLING_PLAN_200',
+          isSuccess: true,
+          result: {
+            pendingPlan: options?.method === 'POST' ? 'PRO' : null,
+            periodEnd: '2026-09-20T09:00:00',
+            plan: options?.method === 'POST' ? 'ULTIMATE' : 'PRO',
+            plans: [
+              { displayName: '꼬마 젤리', plan: 'BASIC', priceWon: 0 },
+              { displayName: '새싹 젤리', plan: 'PRO', priceWon: 4900 },
+              { displayName: '어른 젤리', plan: 'ULTIMATE', priceWon: 9900 },
+            ],
+            status: options?.method === 'POST' ? 'PENDING_CHANGE' : 'ACTIVE',
+          },
+        };
+      }
+      if (path === '/mypage/payments?size=50') {
+        return {
+          code: 'BILLING_PAYMENT_LIST_200',
+          isSuccess: true,
+          result: {
+            content: [{ amount: 4900, displayName: '새싹 젤리', paidAt: '2026-08-20T09:00:00', paymentId: 2, status: 'SUCCESS', type: 'PURCHASE' }],
+            hasNext: true,
+            nextCursor: 'next',
+          },
+        };
+      }
+      if (path === '/mypage/payments?size=50&cursor=next') {
+        return {
+          code: 'BILLING_PAYMENT_LIST_200',
+          isSuccess: true,
+          result: {
+            content: [{ amount: 4900, displayName: '새싹 젤리', paidAt: '2026-07-20T09:00:00', paymentId: 1, status: 'SUCCESS', type: 'RENEWAL' }],
+            hasNext: false,
+            nextCursor: null,
+          },
+        };
+      }
+      return {
+        code: 'BILLING_PAYMENT_DETAIL_200',
+        isSuccess: true,
+        result: { amount: 4900, displayName: '새싹 젤리', paidAt: '2026-08-20T09:00:00', paymentId: 2, status: 'SUCCESS', type: 'PURCHASE' },
+      };
+    },
+  },
+});
+assert.deepEqual(await billingApi.getRemoteSubscription(), {
+  currentPlanId: 'little-jelly',
+  nextBillingDate: '2026-09-20',
+  pendingPlanId: null,
+  pendingType: null,
+  plans: [
+    { id: 'baby-jelly', monthlyPrice: 0, name: '꼬마 젤리' },
+    { id: 'little-jelly', monthlyPrice: 4900, name: '새싹 젤리' },
+    { id: 'adult-jelly', monthlyPrice: 9900, name: '어른 젤리' },
+  ],
+});
+assert.deepEqual(await billingApi.changeRemoteSubscription('adult-jelly'), {
+  currentPlanId: 'adult-jelly',
+  nextBillingDate: '2026-09-20',
+  pendingPlanId: 'little-jelly',
+  pendingType: 'downgrade',
+  plans: [
+    { id: 'baby-jelly', monthlyPrice: 0, name: '꼬마 젤리' },
+    { id: 'little-jelly', monthlyPrice: 4900, name: '새싹 젤리' },
+    { id: 'adult-jelly', monthlyPrice: 9900, name: '어른 젤리' },
+  ],
+});
+assert.deepEqual(billingRequests[1], [
+  '/mypage/subscription',
+  { json: { plan: 'ULTIMATE' }, method: 'POST' },
+]);
+assert.deepEqual((await billingApi.getRemotePaymentHistory()).map(({ id }) => id), ['2', '1']);
+assert.equal((await billingApi.getRemotePayment('2')).title, '새싹 젤리 결제');
+assert.deepEqual(billingRequests.slice(2).map(([path]) => path), [
+  '/mypage/payments?size=50',
+  '/mypage/payments?size=50&cursor=next',
+  '/mypage/payments/2',
+]);
 
 const mypageMutationRequests = [];
 const mypageMutations = loadModule('../src/features/mypage/services/mypageApi.ts', {

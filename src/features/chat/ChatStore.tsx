@@ -11,6 +11,7 @@ import {
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
+import { compareChatTimes, isChatTimeNewer } from './chatFormat';
 import {
   flushQueuedChatImageRemovals,
   getChatImageAssetKey,
@@ -60,7 +61,6 @@ type ChatStoreContextValue = {
   getUnreadCount: (roomId: string) => number;
   hasLoadError: boolean;
   isReady: boolean;
-  markPostDeleted: (postId: string) => Promise<ChatMutationResult>;
   markRoomRead: (roomId: string) => Promise<ChatMutationResult>;
   openMarketRoom: (postId: string) => Promise<ChatRoomMutationResult>;
   refreshChatRoom: (roomId: string) => Promise<ChatMutationResult>;
@@ -100,7 +100,7 @@ function getRoomMessages(state: StoredChatState, roomId: string) {
   return state.messages
     .filter((message) => message.roomId === roomId)
     .sort((first, second) =>
-      first.createdAt.localeCompare(second.createdAt) || first.id.localeCompare(second.id),
+      compareChatTimes(first.createdAt, second.createdAt) || first.id.localeCompare(second.id),
     );
 }
 
@@ -125,6 +125,18 @@ function getRetainedImageIds(state: StoredChatState) {
 
 function hasParticipant(room: ChatRoom, userId: string) {
   return room.participants.some((participant) => participant.userId === userId);
+}
+
+function getUserChatState(state: StoredChatState, userId: string): StoredChatState {
+  const rooms = state.rooms.filter((room) => hasParticipant(room, userId));
+  const roomIds = new Set(rooms.map((room) => room.id));
+  const viewerState = state.viewerStates[userId];
+
+  return {
+    messages: state.messages.filter((message) => roomIds.has(message.roomId)),
+    rooms,
+    viewerStates: viewerState ? { [userId]: viewerState } : {},
+  };
 }
 
 function sameParticipant(
@@ -179,8 +191,7 @@ function toRemoteRoom(
 ): ChatRoom {
   const updatedAt = remote.lastMessageAt ?? previous?.updatedAt ?? new Date().toISOString();
   const postReference: ChatPostReferenceSnapshot = {
-    authorId: remote.opponent.userId,
-    authorNickname: remote.opponent.nickname,
+    authorNickname: previous?.postReference?.authorNickname ?? '판매자',
     kind: 'market',
     marketStatus: toMarketStatus(remote.post.marketStatus),
     postId: remote.post.postId,
@@ -194,7 +205,9 @@ function toRemoteRoom(
     dedupeKey: getMarketChatRoomKey(remote.post.postId, currentUserId, remote.opponent.userId),
     id: remote.roomId,
     kind: 'market',
-    ...(remote.lastMessagePreview ? { lastMessagePreview: remote.lastMessagePreview } : {}),
+    ...((remote.lastMessagePreview ?? previous?.lastMessagePreview)
+      ? { lastMessagePreview: remote.lastMessagePreview ?? previous?.lastMessagePreview }
+      : {}),
     participants: [
       previous?.participants.find(({ userId }) => userId === currentUserId) ?? {
         nickname: '나',
@@ -207,7 +220,7 @@ function toRemoteRoom(
       },
     ],
     postReference,
-    unreadCount: remote.unreadCount,
+    unreadCount: remote.unreadCount ?? previous?.unreadCount ?? 0,
     updatedAt,
   };
 }
@@ -241,12 +254,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const [isReady, setIsReady] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
   const [loadRequest, setLoadRequest] = useState(0);
+  const activeUserIdRef = useRef<string | null>(currentUserId);
   const stateRef = useRef<StoredChatState>(EMPTY_CHAT_STATE);
   const readyRef = useRef(false);
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const clearedScreenSessionUserIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
+    activeUserIdRef.current = currentUserId;
     if (currentUserId) clearedScreenSessionUserIdsRef.current.delete(currentUserId);
   }, [currentUserId]);
 
@@ -272,18 +287,37 @@ export function ChatProvider({ children }: PropsWithChildren) {
     setIsReady(false);
     setHasLoadError(false);
 
+    if (!currentUserId) {
+      readyRef.current = true;
+      applyState(EMPTY_CHAT_STATE);
+      setIsReady(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    const userId = currentUserId;
+
     void enqueueMutation(async () => {
       try {
-        const loadedState = await chatRepository.loadState();
+        const loadedState = getUserChatState(await chatRepository.loadState(), userId);
         if (!active) return;
         await flushQueuedChatImageRemovals(getRetainedImageIds(loadedState)).catch(
           () => undefined,
         );
         if (!active) return;
+        await chatRepository.saveState(loadedState).catch(() => undefined);
         readyRef.current = true;
         applyState(loadedState);
       } catch {
-        if (active) setHasLoadError(true);
+        try {
+          await chatRepository.clearState();
+          if (!active) return;
+          readyRef.current = true;
+          applyState(EMPTY_CHAT_STATE);
+        } catch {
+          if (active) setHasLoadError(true);
+        }
       } finally {
         if (active) setIsReady(true);
       }
@@ -296,10 +330,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const persist = useCallback(
     async (nextState: StoredChatState) => {
-      await chatRepository.saveState(nextState);
+      if (!currentUserId || activeUserIdRef.current !== currentUserId) return;
       applyState(nextState);
+      await chatRepository.saveState(nextState).catch(() => undefined);
     },
-    [applyState],
+    [applyState, currentUserId],
   );
 
   const refreshChatRooms = useCallback(
@@ -309,13 +344,16 @@ export function ChatProvider({ children }: PropsWithChildren) {
         if (!userId || !readyRef.current) return { ok: false, reason: 'not-ready' };
         try {
           const remoteRooms = await getRemoteChatRooms();
+          if (activeUserIdRef.current !== userId) return { ok: false, reason: 'not-ready' };
           const previousById = new Map(stateRef.current.rooms.map((room) => [room.id, room]));
           const rooms = remoteRooms.map((room) => toRemoteRoom(room, userId, previousById.get(room.roomId)));
           const roomIds = new Set(rooms.map((room) => room.id));
           const messages = stateRef.current.messages.filter((message) => roomIds.has(message.roomId));
           await persist({ ...stateRef.current, messages, rooms });
+          setHasLoadError(false);
           return { ok: true };
         } catch {
+          setHasLoadError(true);
           return { ok: false, reason: 'error' };
         }
       }),
@@ -332,6 +370,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
             getRemoteChatRoom(roomId),
             getRemoteChatMessages(roomId),
           ]);
+          if (activeUserIdRef.current !== userId) return { ok: false, reason: 'not-ready' };
           const previous = stateRef.current.rooms.find((room) => room.id === remoteRoom.roomId);
           const room = toRemoteRoom(remoteRoom, userId, previous);
           const pendingMessages = stateRef.current.messages.filter(
@@ -364,8 +403,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }, [currentUserId, isReady, refreshChatRooms]);
 
   const reloadChat = useCallback(() => {
-    setLoadRequest((current) => current + 1);
-    void refreshChatRooms();
+    setHasLoadError(false);
+    if (readyRef.current) void refreshChatRooms();
+    else setLoadRequest((current) => current + 1);
   }, [refreshChatRooms]);
 
   const mutate = useCallback(
@@ -404,7 +444,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     grouped.forEach((messages) => {
       messages.sort(
         (first, second) =>
-          first.createdAt.localeCompare(second.createdAt) ||
+          compareChatTimes(first.createdAt, second.createdAt) ||
           first.id.localeCompare(second.id),
       );
     });
@@ -432,13 +472,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
     return state.rooms
       .filter((room) => hasParticipant(room, currentUserId))
       .sort((first, second) => {
-        const firstTime =
-          visibleMessagesByRoomId.get(first.id)?.at(-1)?.createdAt ??
-          first.updatedAt;
-        const secondTime =
-          visibleMessagesByRoomId.get(second.id)?.at(-1)?.createdAt ??
-          second.updatedAt;
-        return secondTime.localeCompare(firstTime);
+        const firstMessageTime = visibleMessagesByRoomId.get(first.id)?.at(-1)?.createdAt;
+        const secondMessageTime = visibleMessagesByRoomId.get(second.id)?.at(-1)?.createdAt;
+        const firstTime = firstMessageTime && isChatTimeNewer(firstMessageTime, first.updatedAt)
+          ? firstMessageTime
+          : first.updatedAt;
+        const secondTime = secondMessageTime && isChatTimeNewer(secondMessageTime, second.updatedAt)
+          ? secondMessageTime
+          : second.updatedAt;
+        return compareChatTimes(secondTime, firstTime);
       });
   }, [currentUserId, state.rooms, visibleMessagesByRoomId]);
 
@@ -480,8 +522,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
     (roomId: string) => {
       const room = getRoomById(roomId);
       if (!currentUserId || !room) return 0;
+      if (room.unreadCount !== undefined) return room.unreadCount;
       const messages = messagesByRoomId.get(roomId) ?? EMPTY_MESSAGES;
-      if (!messages.length) return room.unreadCount ?? 0;
+      if (!messages.length) return 0;
       const lastReadMessageId = getViewerState(state, currentUserId).lastReadMessageIds[roomId];
       const lastReadIndex = lastReadMessageId
         ? messages.findIndex((message) => message.id === lastReadMessageId)
@@ -541,6 +584,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
           await markRemoteChatRoomRead(roomId, lastMessage.id);
           await persist({
           ...current,
+          rooms: current.rooms.map((candidate) =>
+            candidate.id === roomId ? { ...candidate, unreadCount: 0 } : candidate,
+          ),
           viewerStates: {
             ...current.viewerStates,
             [userId]: {
@@ -779,7 +825,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
                 candidate.id === roomId ? { ...candidate, updatedAt: sentMessage.createdAt } : candidate,
               ),
             });
-            if (image) await queueChatImageRemovals([image]);
+            if (image) {
+              void queueChatImageRemovals([image]).then(() => flushQueuedChatImageRemovals(
+                getRetainedImageIds(stateRef.current),
+              )).catch(() => undefined);
+            }
             sentMessageId = sentMessage.id;
           }
           return sentMessageId ? { messageId: sentMessageId, ok: true } : { ok: false, reason: 'error' };
@@ -841,7 +891,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
               room.id === message.roomId ? { ...room, updatedAt: sentMessage.createdAt } : room,
             ),
           });
-          if (image) await queueChatImageRemovals([image]);
+          if (image) {
+            void queueChatImageRemovals([image]).then(() => flushQueuedChatImageRemovals(
+              getRetainedImageIds(stateRef.current),
+            )).catch(() => undefined);
+          }
           return { messageId: sentMessage.id, ok: true };
         } catch {
           const failedState = {
@@ -895,7 +949,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
           return {
             ...reference,
             ...(authorId ? { authorId } : {}),
-            ...(previous.deletedAt ? { deletedAt: previous.deletedAt } : {}),
             ...(authorWithdrawn ? { authorNickname: '탈퇴한 사용자' } : {}),
           };
         };
@@ -916,31 +969,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
           changed = true;
           return { ...message, postReference: nextReference };
         });
-        return changed ? { ...current, messages, rooms } : { ok: true };
-      }),
-    [mutate],
-  );
-
-  const markPostDeleted = useCallback(
-    (postId: string) =>
-      mutate((current) => {
-        const deletedAt = new Date().toISOString();
-        let changed = false;
-        const markDeleted = (reference: ChatPostReferenceSnapshot) => {
-          if (reference.deletedAt) return reference;
-          changed = true;
-          return { ...reference, deletedAt };
-        };
-        const rooms = current.rooms.map((room) =>
-          room.postReference?.postId === postId
-            ? { ...room, postReference: markDeleted(room.postReference) }
-            : room,
-        );
-        const messages = current.messages.map((message) =>
-          message.postReference?.postId === postId
-            ? { ...message, postReference: markDeleted(message.postReference) }
-            : message,
-        );
         return changed ? { ...current, messages, rooms } : { ok: true };
       }),
     [mutate],
@@ -1046,7 +1074,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
                       (message) =>
                         message.roomId === roomId && message.status === 'sent',
                     )
-                    .sort((first, second) => first.createdAt.localeCompare(second.createdAt))
+                    .sort((first, second) =>
+                      compareChatTimes(first.createdAt, second.createdAt),
+                    )
                     .at(-1);
                   return lastMessage ? [[roomId, lastMessage.id]] : [];
                 },
@@ -1107,7 +1137,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
       getUnreadCount,
       hasLoadError,
       isReady: storeReady,
-      markPostDeleted,
       markRoomRead,
       openMarketRoom,
       refreshChatRoom,
@@ -1135,7 +1164,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
       getRoomById,
       getUnreadCount,
       hasLoadError,
-      markPostDeleted,
       markRoomRead,
       openMarketRoom,
       refreshChatRoom,

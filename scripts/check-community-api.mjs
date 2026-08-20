@@ -36,6 +36,9 @@ assert.equal(
 let likeRequest;
 let locationRequestCount = 0;
 const regionQueries = [];
+const imageAppends = [];
+let createData;
+let createRequest;
 let updateData;
 let updateRequest;
 const marketDetail = {
@@ -82,6 +85,15 @@ const communityApi = loadModule('../src/features/community/services/communityApi
           result: marketDetail,
         };
       }
+      if (path === '/communities') {
+        createRequest = { options, path };
+        return {
+          code: 'COMMUNITY_CREATE_200',
+          isSuccess: true,
+          message: 'ok',
+          result: { ...marketDetail, postId: 11 },
+        };
+      }
       updateRequest = { options, path };
       return {
         code: 'COMMUNITY_UPDATE_200',
@@ -102,9 +114,10 @@ const communityApi = loadModule('../src/features/community/services/communityApi
     },
   },
   '@/src/utils/file': {
-    appendMultipartImage: () => undefined,
+    appendMultipartImage: (_formData, field, uri) => imageAppends.push({ field, uri }),
     appendMultipartJson: (_formData, data) => {
-      updateData = data;
+      if (data.postType === 'MARKET') createData = data;
+      else updateData = data;
     },
   },
   '../utils/marketValidation': {
@@ -269,6 +282,44 @@ assert.deepEqual(likeRequest, {
   path: '/communities/10/likes',
 });
 
+const createdMarketPost = await communityApi.createRemoteCommunityPost({
+  author: { nickname: '나', userId: 'user-me' },
+  baseBookmarkCount: 0,
+  body: '개봉만 했습니다.',
+  category: '사료·간식',
+  categoryCode: 'FOOD_SNACK',
+  createdAt: '2026-08-20T10:00:00+09:00',
+  id: '',
+  imageCount: 1,
+  images: [{ assetId: 'new-photo', localUri: 'file:///market.jpg' }],
+  kind: 'market',
+  location: '서울특별시 종로구',
+  priceLabel: '무료 나눔',
+  status: '진행 중',
+  tags: ['사료·간식', '나눔', '직거래'],
+  title: '사료 나눔',
+  tradeType: '나눔',
+  updatedAt: '2026-08-20T10:00:00+09:00',
+}, [{ code: 'FOOD_SNACK', name: '사료·간식', postType: 'MARKET', sortOrder: 1 }], '1111000000');
+assert.equal(createdMarketPost.postId, '11');
+assert.equal(createRequest.path, '/communities');
+assert.equal(createRequest.options.method, 'POST');
+assert.deepEqual(createData, {
+  content: '개봉만 했습니다.',
+  expiryDate: undefined,
+  hashTags: [],
+  price: null,
+  priceNegotiable: false,
+  postType: 'MARKET',
+  regionCode: '1111000000',
+  tagCode: 'FOOD_SNACK',
+  thumbnailIndex: 0,
+  title: '사료 나눔',
+  tradeMethod: 'DIRECT',
+  tradeType: 'SHARE',
+});
+assert.deepEqual(imageAppends, [{ field: 'images', uri: 'file:///market.jpg' }]);
+
 const updatedMarketPost = await communityApi.updateRemoteMarketStatus(
   '10',
   '예약 중',
@@ -289,6 +340,10 @@ assert.equal(updateData.tradeMethod, 'DIRECT');
 assert.equal(updateData.tradeType, 'SHARE');
 assert.deepEqual(updateData.keepPhotoUrls, ['https://cdn.example.com/saved.jpg']);
 assert.equal(updateData.thumbnailUrl, 'https://cdn.example.com/saved.jpg');
+
+const storeSource = readFileSync(new URL('../src/features/community/CommunityStore.tsx', import.meta.url), 'utf8');
+assert.match(storeSource, /applyState\(nextState\);\s+void communityRepository\.saveState\(nextState\)/);
+assert.match(storeSource, /localPost\.location === profileLocation \? profileRegionCode/);
 
 assert.deepEqual(
   communityApi.parseRemoteCommentMutation({

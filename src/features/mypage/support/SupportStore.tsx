@@ -53,10 +53,12 @@ type SupportStoreValue = {
   getInquiry: (inquiryId: string) => Inquiry | undefined;
   getNotice: (noticeId: string) => Notice | undefined;
   inquiries: Inquiry[];
+  inquiriesLoadError: boolean;
   loadInquiry: (inquiryId: string) => Promise<Inquiry | null>;
   loadNotice: (noticeId: string) => Promise<Notice | null>;
   notices: Notice[];
   removeDraftImage: (assetId: string) => Promise<MutationResult>;
+  reloadSupport: () => void;
   saveDraft: () => Promise<MutationResult>;
   searchNotices: (query: string) => Promise<Notice[]>;
   status: SupportStatus;
@@ -74,6 +76,7 @@ export function SupportProvider({ children }: PropsWithChildren) {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [status, setStatus] = useState<SupportStatus>('loading');
   const [loadRequest, setLoadRequest] = useState(0);
+  const [inquiriesLoadError, setInquiriesLoadError] = useState(false);
   const activeUserRef = useRef<string | null>(null);
   const loadGenerationRef = useRef(0);
   const stateRef = useRef<StoredSupportState | null>(null);
@@ -103,6 +106,7 @@ export function SupportProvider({ children }: PropsWithChildren) {
     activeUserRef.current = currentUserId;
     applyState(null);
     setNotices([]);
+    setInquiriesLoadError(false);
 
     if (!currentUserId) {
       setStatus('ready');
@@ -138,6 +142,7 @@ export function SupportProvider({ children }: PropsWithChildren) {
         const inquiries = remoteInquiries.status === 'fulfilled'
           ? remoteInquiries.value
           : loadedState.inquiries;
+        setInquiriesLoadError(remoteInquiries.status === 'rejected');
         applyState({ ...loadedState, inquiries });
         setStatus('ready');
         void enqueueMutation(async () => {
@@ -379,17 +384,16 @@ export function SupportProvider({ children }: PropsWithChildren) {
               ...current.inquiries.filter(({ id }) => id !== inquiry.id),
             ],
           };
-          await queueSupportImageRemovals(userId, current.draft.images);
-          if (loadGenerationRef.current !== sessionGeneration) {
-            throw new Error('inactive-support-session');
-          }
-          await supportRepository.saveState(userId, nextState);
           if (
             activeUserRef.current === userId &&
             loadGenerationRef.current === sessionGeneration
           ) applyState(nextState);
-          await clearDraftInquiryImages(userId).catch(() => undefined);
-          await flushQueuedSupportImageRemovals(
+          await Promise.all([
+            supportRepository.saveState(userId, nextState),
+            queueSupportImageRemovals(userId, current.draft.images),
+          ]).catch(() => undefined);
+          void clearDraftInquiryImages(userId).catch(() => undefined);
+          void flushQueuedSupportImageRemovals(
             userId,
             getRetainedInquiryImageAssetKeys(nextState),
           ).catch(() => undefined);
@@ -438,6 +442,10 @@ export function SupportProvider({ children }: PropsWithChildren) {
     },
     [applyState, currentUserId, enqueueMutation],
   );
+
+  const reloadSupport = useCallback(() => {
+    setLoadRequest((current) => current + 1);
+  }, []);
 
   const deleteUserSupportData = useCallback(
     (userId = currentUserId ?? undefined) => {
@@ -539,10 +547,12 @@ export function SupportProvider({ children }: PropsWithChildren) {
       getInquiry,
       getNotice,
       inquiries: visibleState?.inquiries ?? EMPTY_INQUIRIES,
+      inquiriesLoadError,
       loadInquiry,
       loadNotice,
       notices: currentUserId ? notices : EMPTY_NOTICES,
       removeDraftImage,
+      reloadSupport,
       saveDraft,
       searchNotices,
       status,
@@ -557,10 +567,12 @@ export function SupportProvider({ children }: PropsWithChildren) {
       draft,
       getInquiry,
       getNotice,
+      inquiriesLoadError,
       loadInquiry,
       loadNotice,
       notices,
       removeDraftImage,
+      reloadSupport,
       saveDraft,
       searchNotices,
       status,

@@ -20,8 +20,17 @@ import {
 export function MyPageScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { hasLoadError, isReady, profile, reloadMyPage, subscription } = useMyPageStore();
-  const plan = subscription ? getPlan(subscription.currentPlanId) : null;
+  const {
+    hasLoadError,
+    isReady,
+    profile,
+    reloadMyPage,
+    subscription,
+    subscriptionLoadError,
+  } = useMyPageStore();
+  const plan = subscription && !subscriptionLoadError
+    ? getPlan(subscription.currentPlanId, subscription.plans)
+    : null;
 
   if (!isReady) {
     return (
@@ -45,7 +54,7 @@ export function MyPageScreen() {
     );
   }
 
-  if (!profile || !plan) {
+  if (!profile) {
     return (
       <MyPageHeader variant="root">
         <EmptyState
@@ -82,24 +91,41 @@ export function MyPageScreen() {
         </Pressable>
 
         <View style={styles.subscriptionBanner}>
-          <View style={styles.planStatus}>
-            <View style={styles.planBadge}>
-              <Image source={plan.icon} style={styles.planIcon} />
-              <Text style={styles.planBadgeText}>{plan.name}</Text>
-            </View>
-            <Text style={styles.planStatusText}>이용 중</Text>
-          </View>
-          <Text style={styles.bannerDescription}>
-            요금제별 혜택과 가격을 확인해보세요
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            hitSlop={SPACING.sm}
-            onPress={() => navigateOnce(() => router.push('/mypage/subscription'))}
-            style={({ pressed }) => [styles.bannerButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.bannerButtonText}>구독 살펴보기</Text>
-          </Pressable>
+          {plan ? (
+            <>
+              <View style={styles.planStatus}>
+                <View style={styles.planBadge}>
+                  <Image source={plan.icon} style={styles.planIcon} />
+                  <Text style={styles.planBadgeText}>{plan.name}</Text>
+                </View>
+                <Text style={styles.planStatusText}>이용 중</Text>
+              </View>
+              <Text style={styles.bannerDescription}>
+                요금제별 혜택과 가격을 확인해보세요
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={SPACING.sm}
+                onPress={() => navigateOnce(() => router.push('/mypage/subscription'))}
+                style={({ pressed }) => [styles.bannerButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.bannerButtonText}>구독 살펴보기</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.planBadgeText}>요금제 정보를 불러오지 못했어요</Text>
+              <Text style={styles.bannerDescription}>네트워크 상태를 확인한 뒤 다시 시도해주세요.</Text>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={SPACING.sm}
+                onPress={reloadMyPage}
+                style={({ pressed }) => [styles.bannerButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.bannerButtonText}>다시 시도</Text>
+              </Pressable>
+            </>
+          )}
         </View>
 
         <MyPageCard title="커뮤니티">

@@ -1,27 +1,19 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/src/components/common';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
+import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageHeader } from '../components';
 import { useMyPageStore } from '../MyPageStore';
 import type { PaymentStatus } from '../types';
 
 const STATUS_LABELS: Record<PaymentStatus, string> = {
-  canceled: '결제 취소',
-  failed: '결제 실패',
   paid: '결제 완료',
 };
 
 const STATUS_BADGES: Record<PaymentStatus, { backgroundColor: string; color: string }> = {
-  canceled: {
-    backgroundColor: COLORS.gray200,
-    color: COLORS.gray600,
-  },
-  failed: {
-    backgroundColor: COLORS.errorBackground,
-    color: COLORS.danger,
-  },
   paid: {
     backgroundColor: COLORS.primarySoft,
     color: COLORS.primary,
@@ -29,19 +21,37 @@ const STATUS_BADGES: Record<PaymentStatus, { backgroundColor: string; color: str
 };
 
 export function MyPagePaymentHistoryScreen() {
-  const { paymentHistory } = useMyPageStore();
+  const router = useRouter();
+  const navigateOnce = useNavigationLock();
+  const { paymentHistory, paymentHistoryLoadError, reloadMyPage } = useMyPageStore();
 
   return (
     <MyPageHeader title="결제 내역">
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {paymentHistory.length === 0 ? (
+        {paymentHistoryLoadError ? (
+          <EmptyState
+            actionLabel="다시 시도"
+            description="네트워크 상태를 확인한 뒤 다시 불러와주세요."
+            onActionPress={reloadMyPage}
+            title="결제 내역을 불러오지 못했어요"
+          />
+        ) : paymentHistory.length === 0 ? (
           <EmptyState
             description="아직 결제한 내역이 없어요."
             title="결제 내역이 없어요."
           />
         ) : (
           paymentHistory.map((item) => (
-            <View key={item.id} style={styles.historyCard}>
+            <Pressable
+              accessibilityLabel={`${item.title} 상세 보기`}
+              accessibilityRole="button"
+              key={item.id}
+              onPress={() => navigateOnce(() => router.push({
+                pathname: '/mypage/payment-history/[paymentId]',
+                params: { paymentId: item.id },
+              }))}
+              style={({ pressed }) => [styles.historyCard, pressed && styles.historyCardPressed]}
+            >
               <View style={styles.historyText}>
                 <Text style={styles.historyTitle}>{item.title}</Text>
                 <Text style={styles.historyMeta}>{item.date}</Text>
@@ -59,7 +69,7 @@ export function MyPagePaymentHistoryScreen() {
                 </View>
                 <Text style={styles.amount}>{item.amount.toLocaleString('ko-KR')}원</Text>
               </View>
-            </View>
+            </Pressable>
           ))
         )}
       </ScrollView>
@@ -85,6 +95,9 @@ const styles = StyleSheet.create({
   },
   historyText: {
     flex: 1,
+  },
+  historyCardPressed: {
+    opacity: 0.72,
   },
   historyTitle: {
     ...TYPOGRAPHY.body1,

@@ -13,7 +13,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -144,7 +143,6 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
     getMessages,
     getOtherParticipant,
     getRoomById,
-    hasLoadError,
     isReady,
     markRoomRead,
     refreshChatRoom,
@@ -169,6 +167,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [hasCheckedRoom, setHasCheckedRoom] = useState(false);
+  const [roomLoadError, setRoomLoadError] = useState(false);
   const [refreshPromptVisible, setRefreshPromptVisible] = useState(false);
   const composerInputRef = useRef<TextInput>(null);
   const initializedRoomRef = useRef('');
@@ -194,6 +193,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
 
   useEffect(() => {
     setHasCheckedRoom(false);
+    setRoomLoadError(false);
   }, [roomId]);
 
   const persistDraftText = useCallback(
@@ -214,10 +214,17 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
       clearTimeout(draftTimerRef.current);
       draftTimerRef.current = null;
     }
-    if (!isReady || hasLoadError) return { ok: true } as const;
+    if (!isReady) return { ok: true } as const;
     if (!getRoomById(roomId) || !canSendMessage(roomId)) return { ok: true } as const;
     return updateDraftText(roomId, textRef.current);
-  }, [canSendMessage, getRoomById, hasLoadError, isReady, roomId, updateDraftText]);
+  }, [canSendMessage, getRoomById, isReady, roomId, updateDraftText]);
+
+  const loadRoom = useCallback(async () => {
+    setRoomLoadError(false);
+    const result = await refreshChatRoom(roomId);
+    setRoomLoadError(!result.ok);
+    setHasCheckedRoom(true);
+  }, [refreshChatRoom, roomId]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -257,8 +264,11 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      void refreshChatRoom(roomId).finally(() => {
-        if (active) setHasCheckedRoom(true);
+      setRoomLoadError(false);
+      void refreshChatRoom(roomId).then((result) => {
+        if (!active) return;
+        setRoomLoadError(!result.ok);
+        setHasCheckedRoom(true);
       });
       return () => {
         active = false;
@@ -282,8 +292,8 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const refreshMessages = useCallback(() => {
     if (!isReady) return;
     setRefreshPromptVisible(false);
-    void refreshChatRoom(roomId);
-  }, [isReady, refreshChatRoom, roomId]);
+    void loadRoom();
+  }, [isReady, loadRoom]);
 
   useFocusEffect(
     useCallback(() => {
@@ -445,13 +455,13 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
     );
   }
 
-  if (hasLoadError) {
+  if (roomLoadError) {
     return (
       <ChatRoomState onBack={handleBack}>
         <EmptyState
           actionLabel="다시 시도"
           description="잠시 후 다시 대화방을 열어주세요."
-          onActionPress={() => void refreshChatRoom(roomId)}
+          onActionPress={() => void loadRoom()}
           title="대화방을 불러오지 못했어요"
         />
       </ChatRoomState>
@@ -553,14 +563,6 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
             }
           }}
           ref={listRef}
-          refreshControl={(
-            <RefreshControl
-              colors={[COLORS.primary]}
-              onRefresh={refreshMessages}
-              refreshing={!isReady && hasLoadedOnce}
-              tintColor={COLORS.primary}
-            />
-          )}
           renderItem={({ index, item }) => {
             const previous = messages[index - 1];
             const showDate = !previous || !isSameKoreanCalendarDate(item.createdAt, previous.createdAt);
@@ -595,7 +597,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
               style={({ pressed }) => [styles.refreshPrompt, pressed && styles.pressed]}
             >
               <AppIcon color={COLORS.primary} name="refresh" size={16} />
-              <Text style={styles.refreshPromptText}>위로 쓸어올려 새 메시지 확인</Text>
+              <Text style={styles.refreshPromptText}>새로 고침하여 메시지를 확인하세요</Text>
             </Pressable>
           ) : null}
           {draft.images.length ? (

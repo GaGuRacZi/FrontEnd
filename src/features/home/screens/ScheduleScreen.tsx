@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EmptyState, LoadingView } from '@/src/components/common';
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { KeyboardAwareScrollView, ScreenLayout } from '@/src/components/layout';
 import { COLORS, SIZE, SPACING } from '@/src/constants';
@@ -62,13 +63,18 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
     customTags,
     deleteTag,
     deleteScheduleTodo,
+    getTag,
     getDayProgress,
     getScheduleTodoDetail,
     getTodosForDate,
+    hasLoadError,
+    isReady,
     loadCalendarMonth,
     loadTodosForDate,
+    reloadSchedule,
     toggleTodo,
     updateScheduleTodo,
+    updateTag,
   } = useScheduleTodoStore();
 
   // ── 모달 visible
@@ -107,6 +113,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
   // ── 태그 모달 입력
   const [newTagName, setNewTagName] = useState('');
   const [selectedColorIdx, setSelectedColorIdx] = useState(0);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
 
   // ── 애니메이션
   const addSheetY = useRef(new Animated.Value(500)).current;
@@ -122,6 +129,20 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
   };
   const closeSheet = (anim: Animated.Value, setVisible: (v: boolean) => void) => {
     Animated.timing(anim, { toValue: 500, duration: 220, useNativeDriver: true }).start(() => setVisible(false));
+  };
+  const closeTagSheet = () => {
+    setFormError(null);
+    setEditingTagId(null);
+    setNewTagName('');
+    setSelectedColorIdx(0);
+    closeSheet(tagSheetY, setTagModalVisible);
+  };
+  const openTagSheet = () => {
+    setFormError(null);
+    setEditingTagId(null);
+    setNewTagName('');
+    setSelectedColorIdx(0);
+    openSheet(tagSheetY, setTagModalVisible);
   };
 
   const formattedTime = `${String(newTimeHour).padStart(2, '0')}:${String(newTimeMinute).padStart(2, '0')}`;
@@ -223,7 +244,9 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
   };
 
   const handleToggle = (id: string) => {
-    void toggleTodo(id, selectedDate).catch(() => undefined);
+    void toggleTodo(id, selectedDate).catch(() => {
+      Alert.alert('완료 상태를 바꾸지 못했어요', '잠시 후 다시 시도해주세요.');
+    });
   };
 
   const closeAddSheet = () => {
@@ -276,7 +299,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
       setIsSaving(true);
       try {
         await deleteScheduleTodo(todoId, selectedDate);
-        await loadCalendarMonth(viewYear, viewMonth + 1);
+        void loadCalendarMonth(viewYear, viewMonth + 1).catch(() => undefined);
       } catch {
         Alert.alert('할 일을 삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
       } finally {
@@ -295,7 +318,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
 
   const handleAdd = () => {
     if (customTags.length === 0) {
-      openSheet(tagSheetY, setTagModalVisible);
+      openTagSheet();
       return;
     }
 
@@ -315,15 +338,18 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
           timeLabel: formattedTime,
           title: newTitle,
         };
+        const createResult = editingTodoId ? 'ok' : await createScheduleTodos(input);
         if (editingTodoId) await updateScheduleTodo(editingTodoId, input);
-        else await createScheduleTodos(input);
-        await Promise.all([
-          loadTodosForDate(selectedDate),
-          loadCalendarMonth(viewYear, viewMonth + 1),
-        ]);
         setNewTitle('');
         setNewDesc('');
         closeAddSheet();
+        void Promise.allSettled([
+          loadTodosForDate(selectedDate),
+          loadCalendarMonth(viewYear, viewMonth + 1),
+        ]);
+        if (createResult === 'partial') {
+          Alert.alert('일부 할 일만 등록됐어요', '등록된 항목을 확인한 뒤 나머지 요일을 다시 추가해주세요.');
+        }
       } catch {
         setFormError('할 일을 저장하지 못했어요. 다시 시도해주세요.');
       } finally {
@@ -335,18 +361,39 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
   const handleSaveTag = () => {
     const name = newTagName.trim();
     if (!name || isSaving) return;
-    if (customTags.some((ct) => ct.name === name)) return;
+    if (customTags.some((ct) => ct.id !== editingTagId && ct.name === name)) return;
     void (async () => {
       setIsSaving(true);
       setFormError(null);
       try {
-        const tag = await createTag(name, selectedColorIdx);
+        const previousName = customTags.find((tag) => tag.id === editingTagId)?.name;
+        const tag = editingTagId
+          ? await updateTag(editingTagId, name, selectedColorIdx)
+          : await createTag(name, selectedColorIdx);
+        if (previousName && selectedTag === previousName) setSelectedTag(tag.name);
+        if (previousName && newTag === previousName) setNewTag(tag.name);
         setNewTag(tag.name);
-        setNewTagName('');
-        setSelectedColorIdx(0);
-        closeSheet(tagSheetY, setTagModalVisible);
+        closeTagSheet();
       } catch {
         setFormError('태그를 저장하지 못했어요. 다시 시도해주세요.');
+      } finally {
+        setIsSaving(false);
+      }
+    })();
+  };
+
+  const handleEditCustomTag = (tagId: string) => {
+    if (isSaving) return;
+    void (async () => {
+      setIsSaving(true);
+      setFormError(null);
+      try {
+        const tag = await getTag(tagId);
+        setEditingTagId(tag.id);
+        setNewTagName(tag.name);
+        setSelectedColorIdx(tag.colorIdx);
+      } catch {
+        setFormError('태그를 불러오지 못했어요. 다시 시도해주세요.');
       } finally {
         setIsSaving(false);
       }
@@ -359,6 +406,11 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
     void (async () => {
       try {
         await deleteTag(tagId);
+        if (editingTagId === tagId) {
+          setEditingTagId(null);
+          setNewTagName('');
+          setSelectedColorIdx(0);
+        }
         if (selectedTag === ct.name) setSelectedTag('전체');
         if (newTag === ct.name) setNewTag('');
       } catch {
@@ -366,6 +418,23 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
       }
     })();
   };
+
+  if (!isReady) {
+    return <ScreenLayout headerVariant="auth" title="오늘의 할 일"><LoadingView label="할 일을 불러오고 있어요." /></ScreenLayout>;
+  }
+
+  if (hasLoadError) {
+    return (
+      <ScreenLayout headerVariant="auth" title="오늘의 할 일">
+        <EmptyState
+          actionLabel="다시 시도"
+          description="네트워크 상태를 확인한 뒤 다시 불러와주세요."
+          onActionPress={reloadSchedule}
+          title="할 일을 불러오지 못했어요"
+        />
+      </ScreenLayout>
+    );
+  }
 
   return (
     <>
@@ -548,7 +617,7 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
                     </Pressable>
                   );
                 })}
-                <Pressable onPress={() => openSheet(tagSheetY, setTagModalVisible)} style={styles.tagAddBtn}>
+                <Pressable onPress={openTagSheet} style={styles.tagAddBtn}>
                   <AppIcon color={COLORS.gray500} name="add" size={18} />
                 </Pressable>
               </View>
@@ -634,13 +703,13 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
       </Modal>
 
       {/* ── 태그 추가/수정 모달 */}
-      <Modal animationType="none" onRequestClose={() => closeSheet(tagSheetY, setTagModalVisible)} statusBarTranslucent transparent visible={tagModalVisible}>
-        <Pressable onPress={() => closeSheet(tagSheetY, setTagModalVisible)} style={styles.overlay}>
+      <Modal animationType="none" onRequestClose={closeTagSheet} statusBarTranslucent transparent visible={tagModalVisible}>
+        <Pressable onPress={closeTagSheet} style={styles.overlay}>
           <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: tagSheetY }] }]}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>태그 추가/수정</Text>
-              <Pressable hitSlop={8} onPress={() => closeSheet(tagSheetY, setTagModalVisible)} style={styles.closeCircleBtn}>
+              <Pressable hitSlop={8} onPress={closeTagSheet} style={styles.closeCircleBtn}>
                 <AppIcon color={COLORS.gray600} name="close" size={18} />
               </Pressable>
             </View>
@@ -651,10 +720,14 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
                 {customTags.map((ct) => {
                   const cfg = getTagColorPair(ct.colorIdx);
                   return (
-                    <Pressable key={ct.id} onPress={() => handleDeleteCustomTag(ct.id)} style={[styles.tagChipWithX, { backgroundColor: cfg.bg }]}>
-                      <Text style={[styles.tagChipText, { color: cfg.color }]}>{ct.name}</Text>
-                      <AppIcon color={cfg.color} name="close" size={11} />
-                    </Pressable>
+                    <View key={ct.id} style={[styles.tagChipWithX, { backgroundColor: cfg.bg }]}>
+                      <Pressable onPress={() => handleEditCustomTag(ct.id)}>
+                        <Text style={[styles.tagChipText, { color: cfg.color }]}>{ct.name}</Text>
+                      </Pressable>
+                      <Pressable hitSlop={6} onPress={() => handleDeleteCustomTag(ct.id)}>
+                        <AppIcon color={cfg.color} name="close" size={11} />
+                      </Pressable>
+                    </View>
                   );
                 })}
               </View>
@@ -704,11 +777,11 @@ export function ScheduleScreen({ notificationTodoId }: ScheduleScreenProps) {
             </View>
 
             <View style={styles.tagFooter}>
-              <Pressable onPress={() => closeSheet(tagSheetY, setTagModalVisible)} style={styles.deleteBtn}>
+              <Pressable onPress={closeTagSheet} style={styles.deleteBtn}>
                 <Text style={styles.deleteBtnText}>취소</Text>
               </Pressable>
               <Pressable disabled={isSaving} onPress={handleSaveTag} style={[styles.saveBtn, isSaving && styles.submitBtnDisabled]}>
-                <Text style={styles.saveBtnText}>저장하기</Text>
+                <Text style={styles.saveBtnText}>{editingTagId ? '수정하기' : '저장하기'}</Text>
               </Pressable>
             </View>
             {formError ? <Text accessibilityLiveRegion="polite" style={styles.formError}>{formError}</Text> : null}

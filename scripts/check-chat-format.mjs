@@ -22,16 +22,33 @@ function loadModule(path, dependencies) {
 }
 
 const koreanDateTime = loadModule('../src/utils/koreanDateTime.ts', {});
-const { formatChatDate, formatChatTime, normalizeChatSearch } = loadModule(
+const { compareChatTimes, formatChatDate, formatChatTime, isChatTimeNewer, normalizeChatSearch } = loadModule(
   '../src/features/chat/chatFormat.ts',
   { '@/src/utils/koreanDateTime': koreanDateTime },
 );
 
-process.env.TZ = 'Asia/Seoul';
+process.env.TZ = 'UTC';
 
 assert.equal(normalizeChatSearch('  아리   병원  '), '아리 병원');
 assert.equal(formatChatTime('2026-08-03T04:05:00+09:00'), '오전 4:05');
 assert.equal(formatChatDate('2026-08-03T04:05:00+09:00'), '2026년 8월 3일');
+assert.equal(
+  isChatTimeNewer('2026-08-03T04:06:00+09:00', '2026-08-03T04:05:00+09:00'),
+  true,
+);
+assert.equal(
+  isChatTimeNewer('2026-08-03T04:04:00+09:00', '2026-08-03T04:05:00+09:00'),
+  false,
+);
+assert.equal(
+  isChatTimeNewer('2026-08-03T04:05:00+09:00', '2026-08-03T04:05:00+09:00'),
+  false,
+);
+assert.equal(compareChatTimes('2026-08-03T04:05:00', '2026-08-03T04:05:00+09:00'), 0);
+assert.doesNotMatch(
+  readFileSync(new URL('../src/features/chat/ChatStore.tsx', import.meta.url), 'utf8'),
+  /createdAt\.localeCompare/,
+);
 assert.notEqual(
   getDirectChatRoomKey('a:b', 'c'),
   getDirectChatRoomKey('a', 'b:c'),

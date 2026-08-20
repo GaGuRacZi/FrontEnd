@@ -1159,7 +1159,7 @@ export function CommunityWriteScreen() {
           }
 
           await communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
-          showAlert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+          showAlert('저장하지 못했어요', result.message ?? '입력 내용을 다시 확인해주세요.');
           return;
         }
 
@@ -1179,7 +1179,10 @@ export function CommunityWriteScreen() {
           return;
         }
 
-        showAlert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
+        showAlert(
+          '등록하지 못했어요',
+          ('message' in result ? result.message : undefined) ?? '입력 내용을 다시 확인해주세요.',
+        );
         return;
       }
 
@@ -1211,7 +1214,7 @@ export function CommunityWriteScreen() {
           }
 
           await communityRepository.saveWriteDraft(currentDraft).catch(() => undefined);
-          showAlert('저장하지 못했어요', '입력 내용을 다시 확인해주세요.');
+          showAlert('저장하지 못했어요', result.message ?? '입력 내용을 다시 확인해주세요.');
           return;
         }
 
@@ -1226,7 +1229,10 @@ export function CommunityWriteScreen() {
           return;
         }
 
-        showAlert('등록하지 못했어요', '입력 내용을 다시 확인해주세요.');
+        showAlert(
+          '등록하지 못했어요',
+          ('message' in result ? result.message : undefined) ?? '입력 내용을 다시 확인해주세요.',
+        );
         return;
       }
 
