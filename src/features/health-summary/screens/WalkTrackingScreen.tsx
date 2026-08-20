@@ -49,7 +49,7 @@ export function WalkTrackingScreen() {
 				startTime: startTimeString,
 				duration: durationText,
 			},
-		} as Href);
+		} as unknown as Href);
 	};
 
 	return (

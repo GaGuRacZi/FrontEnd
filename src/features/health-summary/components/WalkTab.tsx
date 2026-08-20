@@ -60,7 +60,10 @@ export function WalkTab() {
 	const barPointsByDate = new Map<string, { date: Date; minutes: number }>();
 	MOCK_WALK_RECORDS.forEach((record) => {
 		const parsedDate = parseRecordDate(record.date);
-		if (!barPointsByDate.has(record.date)) {
+		const existing = barPointsByDate.get(record.date);
+		if (existing) {
+			existing.minutes += record.durationMinutes;
+		} else {
 			barPointsByDate.set(record.date, { date: parsedDate, minutes: record.durationMinutes });
 		}
 	});
@@ -112,8 +115,8 @@ export function WalkTab() {
 			<MonthNavigator
 				month={month}
 				onAddPress={() => router.push('/health-summary/walk-record' as Href)}
-				onNextMonth={() => setMonth(m => (m === 12 ? 1 : m + 1))}
-				onPrevMonth={() => setMonth(m => (m === 1 ? 12 : m - 1))}
+				onNextMonth={() => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); }}
+				onPrevMonth={() => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); }}
 				showAddButton
 				year={year}
 			/>

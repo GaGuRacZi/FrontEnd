@@ -23,10 +23,23 @@ const toChartLabel = (date: Date) => `${date.getMonth() + 1}/${date.getDate()}`;
 
 type WeightEntry = { record: WeightRecord; parsedDate: Date };
 
+const parseRecordDateTime = (record: WeightRecord): number => {
+	const [y, m, d] = record.date.split('.').map(Number);
+	const match = record.time ? record.time.match(/([오전오후]+)\s+(\d+):(\d+)/) : null;
+	let h = 0, min = 0;
+	if (match) {
+		h = Number(match[2]);
+		min = Number(match[3]);
+		if (match[1] === '오후' && h !== 12) h += 12;
+		if (match[1] === '오전' && h === 12) h = 0;
+	}
+	return new Date(y, (m || 1) - 1, d || 1, h, min).getTime();
+};
+
 const getSortedWeightEntries = (records: WeightRecord[]): WeightEntry[] =>
 	records
 		.map((record) => ({ record, parsedDate: parseRecordDate(record.date) }))
-		.sort((a, b) => a.parsedDate.getTime() - b.parsedDate.getTime());
+		.sort((a, b) => parseRecordDateTime(a.record) - parseRecordDateTime(b.record));
 
 export function WeightTab() {
 	const router = useRouter();
@@ -193,8 +206,8 @@ export function WeightTab() {
 
 			<MonthNavigator
 				month={month}
-				onNextMonth={() => setMonth(m => (m === 12 ? 1 : m + 1))}
-				onPrevMonth={() => setMonth(m => (m === 1 ? 12 : m - 1))}
+				onNextMonth={() => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); }}
+				onPrevMonth={() => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); }}
 				year={year}
 			/>
 
@@ -211,7 +224,7 @@ export function WeightTab() {
 								<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.weight} style={styles.badgeIcon} />
 							</View>
 							<View>
-								<Text style={styles.recordItemTitle}>오늘 기록</Text>
+								<Text style={styles.recordItemTitle}>{record.time}</Text>
 								<Text style={styles.recordItemSub}>
 									{record.date} · {record.isDirectInput ? '직접 입력' : '측정'}
 								</Text>
