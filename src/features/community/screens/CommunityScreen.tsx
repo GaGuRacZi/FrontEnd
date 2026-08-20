@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { BrandPawLogo, EmptyState, LoadingView } from '@/src/components/common';
@@ -253,9 +254,14 @@ function isNearScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
 }
 
 function AdBanner() {
+  const adUnitId = __DEV__ ? TestIds.BANNER : 'YOUR_PRODUCTION_SUPPLIES_AD_UNIT_ID';
   return (
     <View style={styles.adBanner}>
-      <Text style={styles.adText}>{COMMUNITY_AD_TEXT}</Text>
+      <BannerAd
+        unitId={adUnitId}
+        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+        requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+      />
     </View>
   );
 }
@@ -2690,12 +2696,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 76,
     justifyContent: 'center',
+    overflow: 'hidden',
     paddingHorizontal: SPACING.xxxl,
-  },
-  adText: {
-    ...TYPOGRAPHY.body2,
-    color: COLORS.gray600,
-    textAlign: 'center',
   },
   chipRow: {
     gap: SPACING.xs,
