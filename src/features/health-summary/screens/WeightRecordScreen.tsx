@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Href, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppButton, AppIcon, DatePickerSheet, TimePickerSheet } from '@/src/components/common';
@@ -24,6 +24,7 @@ const formatRecordTime = (date: Date) => {
 
 export function WeightRecordScreen() {
 	const router = useRouter();
+	const isSaving = useRef(false);
 	const [recordedAt, setRecordedAt] = useState(() => new Date());
 	const [datePickerVisible, setDatePickerVisible] = useState(false);
 	const [timePickerVisible, setTimePickerVisible] = useState(false);
@@ -73,11 +74,18 @@ export function WeightRecordScreen() {
 	};
 
 	const handleSaveRecord = () => {
+		if (isSaving.current) return;
+		const parsedWeight = parseFloat(weight);
+		if (!parsedWeight || parsedWeight <= 0) {
+			Alert.alert('입력 오류', '올바른 체중을 입력해주세요.');
+			return;
+		}
+		isSaving.current = true;
 		const newRecord: WeightRecord = {
 			id: String(Date.now()),
 			date: recordDate,
 			time: recordTime,
-			weight: parseFloat(weight) || 0,
+			weight: parsedWeight,
 			bodyCondition,
 			appetite,
 			memo: memo.trim() || undefined,

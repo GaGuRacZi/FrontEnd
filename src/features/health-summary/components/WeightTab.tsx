@@ -193,8 +193,8 @@ export function WeightTab() {
 
 			<MonthNavigator
 				month={month}
-				onNextMonth={() => setMonth(m => (m === 12 ? 1 : m + 1))}
-				onPrevMonth={() => setMonth(m => (m === 1 ? 12 : m - 1))}
+				onNextMonth={() => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); }}
+				onPrevMonth={() => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); }}
 				year={year}
 			/>
 
@@ -211,7 +211,7 @@ export function WeightTab() {
 								<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.weight} style={styles.badgeIcon} />
 							</View>
 							<View>
-								<Text style={styles.recordItemTitle}>오늘 기록</Text>
+								<Text style={styles.recordItemTitle}>{record.time}</Text>
 								<Text style={styles.recordItemSub}>
 									{record.date} · {record.isDirectInput ? '직접 입력' : '측정'}
 								</Text>

@@ -1,6 +1,6 @@
 ﻿import * as ImagePicker from 'expo-image-picker';
 import { Href, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { AppButton, AppIcon, DatePickerSheet } from '@/src/components/common';
@@ -34,20 +34,24 @@ const parseNumericValue = (value: string) => {
 	return numericOnly ? Number(numericOnly) : 0;
 };
 
+const INITIAL_ITEMS: ExpenseItem[] = [
+	{ id: '1', name: '진찰료', cost: '35,000원' },
+	{ id: '2', name: '유선종양 수술', cost: '42,000원' },
+];
+
 export function MedicalExpenseRecordScreen() {
 	const router = useRouter();
+	const isSaving = useRef(false);
 	const [recordedAt, setRecordedAt] = useState(() => new Date());
 	const [datePickerVisible, setDatePickerVisible] = useState(false);
-	const [amount, setAmount] = useState('72,000');
+	const [items, setItems] = useState<ExpenseItem[]>(INITIAL_ITEMS);
+	const [amount, setAmount] = useState(() =>
+		INITIAL_ITEMS.reduce((sum, item) => sum + parseNumericValue(item.cost), 0).toLocaleString()
+	);
 	const [hospitalName, setHospitalName] = useState('??동물병원');
 	const [receiptImageUri, setReceiptImageUri] = useState<string | null>(null);
 
 	const recordDate = formatRecordDate(recordedAt);
-
-	const [items, setItems] = useState<ExpenseItem[]>([
-		{ id: '1', name: '진찰료', cost: '35,000원' },
-		{ id: '2', name: '유선종양 수술', cost: '42,000원' },
-	]);
 	const [isAddModalVisible, setIsAddModalVisible] = useState(false);
 	const [newItemName, setNewItemName] = useState('');
 	const [newItemCost, setNewItemCost] = useState('');
@@ -117,11 +121,14 @@ export function MedicalExpenseRecordScreen() {
 	};
 
 	const handleSaveRecord = () => {
+		if (isSaving.current) return;
+		isSaving.current = true;
+		const finalCost = Math.max(parseNumericValue(amount), totalItemsCost);
 		const newRecord: MedicalExpenseRecord = {
 			id: String(Date.now()),
 			date: recordDate,
 			hospitalName: hospitalName.trim() || '병원 미입력',
-			totalCost: parseNumericValue(amount),
+			totalCost: finalCost,
 			paymentMethod: '카카오페이',
 			receiptScanned: !!receiptImageUri,
 			items: items.map((item) => ({

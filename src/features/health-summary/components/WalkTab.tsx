@@ -112,8 +112,8 @@ export function WalkTab() {
 			<MonthNavigator
 				month={month}
 				onAddPress={() => router.push('/health-summary/walk-record' as Href)}
-				onNextMonth={() => setMonth(m => (m === 12 ? 1 : m + 1))}
-				onPrevMonth={() => setMonth(m => (m === 1 ? 12 : m - 1))}
+				onNextMonth={() => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); }}
+				onPrevMonth={() => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); }}
 				showAddButton
 				year={year}
 			/>

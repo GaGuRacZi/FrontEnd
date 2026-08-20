@@ -1,5 +1,5 @@
 ﻿import { Href, useRouter } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppIcon, AppButton } from '@/src/components/common';
@@ -11,16 +11,22 @@ import { usePetStore } from '@/src/features/pet/PetStore';
 export function WalkTrackingScreen() {
 	const router = useRouter();
 	const { selectedPet } = usePetStore();
+	const isNavigating = useRef(false);
 	const [seconds, setSeconds] = useState(0);
 	const [isPaused, setIsPaused] = useState(false);
 
-	const now = new Date();
-	const year = now.getFullYear();
-	const month = now.getMonth() + 1;
-	const day = now.getDate();
-	const dateString = `${year}년 ${month}월 ${day}일`;
-
-	const startTimeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+	const [startInfo] = useState(() => {
+		const now = new Date();
+		const year = now.getFullYear();
+		const month = now.getMonth() + 1;
+		const day = now.getDate();
+		return {
+			dateString: `${year}년 ${month}월 ${day}일`,
+			formattedDate: `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`,
+			startTimeString: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+		};
+	});
+	const { dateString, formattedDate, startTimeString } = startInfo;
 
 	useEffect(() => {
 		if (isPaused) return;
@@ -37,12 +43,13 @@ export function WalkTrackingScreen() {
 	};
 
 	const handleFinishWalk = () => {
+		if (isNavigating.current) return;
+		isNavigating.current = true;
 		setIsPaused(true);
 
 		const durationText = seconds < 60 ? '1분 미만' : `${Math.floor(seconds / 60)}분`;
-		const formattedDate = `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
 
-		router.push({
+		router.replace({
 			pathname: '/health-summary/walk-record',
 			params: {
 				date: formattedDate,

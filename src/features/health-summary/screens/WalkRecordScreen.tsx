@@ -1,5 +1,5 @@
 import { Href, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppButton, AppIcon, DatePickerSheet, TimePickerSheet } from '@/src/components/common';
@@ -11,6 +11,7 @@ import { WalkIntensity, WalkRecord } from '../types';
 
 export function WalkRecordScreen() {
 	const router = useRouter();
+	const isSaving = useRef(false);
 	const params = useLocalSearchParams<{ date?: string; startTime?: string; duration?: string }>();
 
 	const [intensity, setIntensity] = useState<WalkIntensity>('moderate');
@@ -71,6 +72,8 @@ export function WalkRecordScreen() {
 	];
 
 	const handleSaveRecord = () => {
+		if (isSaving.current) return;
+		isSaving.current = true;
 		const newRecord: WalkRecord = {
 			id: String(Date.now()),
 			date: displayDate,
