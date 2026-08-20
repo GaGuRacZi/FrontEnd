@@ -63,17 +63,26 @@ function readId(value: unknown) {
   return String(id);
 }
 
+function toLocalDate(value: string): Date {
+  // 타임존 정보 없으면 UTC로 강제 파싱 → 로컬(KST) 변환
+  const utcStr = /Z$|[+-]\d{2}:\d{2}$/.test(value) ? value : value + 'Z';
+  return new Date(utcStr);
+}
+
 function formatDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (!match) throw new Error('invalid-health-response');
-  return `${match[1]}.${match[2]}.${match[3]}`;
+  const dt = toLocalDate(value);
+  if (Number.isNaN(dt.getTime())) throw new Error('invalid-health-response');
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}.${m}.${d}`;
 }
 
 function formatTime(value: string) {
-  const match = /T(\d{2}):(\d{2})/.exec(value);
-  if (!match) throw new Error('invalid-health-response');
-  const hour = Number(match[1]);
-  const minute = match[2];
+  const dt = toLocalDate(value);
+  if (Number.isNaN(dt.getTime())) throw new Error('invalid-health-response');
+  const hour = dt.getHours();
+  const minute = String(dt.getMinutes()).padStart(2, '0');
   const period = hour < 12 ? '오전' : '오후';
   const displayHour = hour % 12 || 12;
   return `${period} ${displayHour}:${minute}`;

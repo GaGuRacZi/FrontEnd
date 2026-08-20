@@ -17,7 +17,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { BrandPawLogo, EmptyState, LoadingView } from '@/src/components/common';
@@ -72,6 +71,8 @@ type CommunitySearchResult =
 type ToggleBookmark = ReturnType<typeof useCommunityStore>['toggleBookmark'];
 
 const PAW_LOGO = require('@/assets/images/paw-logo.png');
+const AD_TALK = require('@/assets/images/community/ad-talk.webp');
+const AD_MARKET = require('@/assets/images/community/ad-market.webp');
 const COMMUNITY_BATCH_SIZE = 10;
 
 const CATEGORY_PILL_STYLE = {
@@ -251,16 +252,13 @@ function isNearScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
   return contentOffset.y + layoutMeasurement.height >= contentSize.height - SPACING.xxxl;
 }
 
-function AdBanner() {
-  const adUnitId = __DEV__ ? TestIds.BANNER : 'YOUR_PRODUCTION_SUPPLIES_AD_UNIT_ID';
+function AdBanner({ type }: { type: 'talk' | 'market' }) {
   return (
-    <View style={styles.adBanner}>
-      <BannerAd
-        unitId={adUnitId}
-        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-        requestOptions={{ requestNonPersonalizedAdsOnly: true }}
-      />
-    </View>
+    <Image
+      source={type === 'talk' ? AD_TALK : AD_MARKET}
+      style={styles.adBannerImage}
+      resizeMode="cover"
+    />
   );
 }
 
@@ -2452,7 +2450,7 @@ export function CommunityScreen() {
 
         {activeTab === 'talk' ? (
           <>
-            <AdBanner />
+            <AdBanner type="talk" />
             <ChipRow
               compact
               activeValue={talkCategory}
@@ -2484,7 +2482,7 @@ export function CommunityScreen() {
 
         {activeTab === 'market' ? (
           <>
-            <AdBanner />
+            <AdBanner type="market" />
             <View style={styles.marketFilterHeader}>
               <ChipRow
                 activeValue={marketCategory}
@@ -2685,6 +2683,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     paddingHorizontal: SPACING.xxxl,
+  },
+  adBannerImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 12,
+    marginVertical: SPACING.sm,
   },
   chipRow: {
     gap: SPACING.xs,

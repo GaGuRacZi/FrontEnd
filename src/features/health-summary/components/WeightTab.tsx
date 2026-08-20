@@ -177,10 +177,8 @@ export function WeightTab() {
 								<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.weight} style={styles.badgeIcon} />
 							</View>
 							<View>
-								<Text style={styles.recordItemTitle}>{record.time}</Text>
-								<Text style={styles.recordItemSub}>
-									{record.date} · {record.isDirectInput ? '직접 입력' : '측정'}
-								</Text>
+								<Text style={styles.recordItemTitle}>{record.date}</Text>
+								<Text style={styles.recordItemSub}>{record.time}</Text>
 							</View>
 						</View>
 						<View style={styles.recordItemRight}>
