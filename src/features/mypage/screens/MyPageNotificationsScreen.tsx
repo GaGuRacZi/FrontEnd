@@ -57,7 +57,13 @@ function getClockTimeError(value: string) {
 
 export function MyPageNotificationsScreen() {
   const showAlert = useAppAlert();
-  const { isReady, notificationSettings, updateNotificationSettings } = useMyPageStore();
+  const {
+    isReady,
+    notificationSettings,
+    notificationSettingsLoadError,
+    reloadMyPage,
+    updateNotificationSettings,
+  } = useMyPageStore();
   const permissionRequestRef = useRef(false);
   const [checkingPermissionKey, setCheckingPermissionKey] = useState<PermissionCheckKey | null>(null);
   const [doNotDisturbModalVisible, setDoNotDisturbModalVisible] = useState(false);
@@ -69,6 +75,19 @@ export function MyPageNotificationsScreen() {
     return (
       <MyPageHeader title="알림 설정">
         <LoadingView label="알림 설정을 불러오고 있어요." />
+      </MyPageHeader>
+    );
+  }
+
+  if (notificationSettingsLoadError) {
+    return (
+      <MyPageHeader title="알림 설정">
+        <EmptyState
+          actionLabel="다시 시도"
+          description="네트워크 상태를 확인한 뒤 다시 불러와주세요."
+          onActionPress={reloadMyPage}
+          title="알림 설정을 불러오지 못했어요"
+        />
       </MyPageHeader>
     );
   }

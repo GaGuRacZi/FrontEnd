@@ -14,7 +14,6 @@ import type {
 
 const STORAGE_PREFIX = 'paw:mypage:';
 const PLAN_IDS: PlanId[] = ['adult-jelly', 'baby-jelly', 'little-jelly'];
-const PAYMENT_STATUSES = ['canceled', 'failed', 'paid'];
 
 function getStorageKey(userId: string) {
   return `${STORAGE_PREFIX}${encodeURIComponent(userId)}`;
@@ -112,7 +111,7 @@ function isPaymentHistoryItem(value: unknown): value is PaymentHistoryItem {
     isNumber(value.amount) &&
     isString(value.date) &&
     isString(value.id) &&
-    PAYMENT_STATUSES.includes(String(value.status)) &&
+    value.status === 'paid' &&
     isString(value.title)
   );
 }

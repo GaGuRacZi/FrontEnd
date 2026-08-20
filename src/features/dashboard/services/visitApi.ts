@@ -72,6 +72,11 @@ export type RemoteMedicationSearchResult = {
   nameKo: string;
 };
 
+export type RemoteMedicationDetail = RemoteMedicationSearchResult & {
+  description: string;
+  precaution: string;
+};
+
 export type RemoteTranscript = {
   audioUrl: string | null;
   durationSec: number;
@@ -326,6 +331,23 @@ export async function searchRemoteMedications(query: string) {
       nameKo: readString(medication.nameKo),
     };
   });
+}
+
+export async function getRemoteMedicationDetail(medicationId: string) {
+  const id = Number(medicationId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new VisitApiContractError();
+  const medication = readRecord(readSuccess(
+    await apiRequest<unknown>(`/medications/${id}`),
+    'MEDICATION_GET_200',
+  ));
+  return {
+    description: readString(medication.descriptionMd),
+    id: readId(medication.medicationId),
+    ingredient: readNullableString(medication.ingredient),
+    nameEn: readNullableString(medication.nameEn),
+    nameKo: readString(medication.nameKo),
+    precaution: readString(medication.precautionMd),
+  } satisfies RemoteMedicationDetail;
 }
 
 export async function addRemotePrescription(visitId: string, input: {

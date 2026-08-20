@@ -15,6 +15,7 @@ const POLL_INTERVAL_MS = 5000;
 
 export function AiProcessingScreen({ onNavigateHome, onVisitSettled, visitId }: AiProcessingScreenProps) {
 	const insets = useSafeAreaInsets();
+	const [failureReason, setFailureReason] = useState<string | null>(null);
 	const [status, setStatus] = useState<RemoteVisitStatus>('PROCESSING');
 
 	useEffect(() => {
@@ -25,6 +26,7 @@ export function AiProcessingScreen({ onNavigateHome, onVisitSettled, visitId }: 
 			void getRemoteVisitDetail(visitId)
 				.then((visit) => {
 					if (!active) return;
+					setFailureReason(visit.failReason);
 					setStatus(visit.status);
 					if (visit.status !== 'PROCESSING') {
 						onVisitSettled();
@@ -53,7 +55,7 @@ export function AiProcessingScreen({ onNavigateHome, onVisitSettled, visitId }: 
 			? '진료 요약이 준비됐어요'
 			: 'AI가 진료 내용을 요약하고 있어요';
 	const description = isFailed
-		? '잠시 후 진료 요약에서 다시 확인해주세요'
+		? failureReason ?? '잠시 후 진료 요약에서 다시 확인해주세요'
 		: isReady
 			? '홈으로 이동해 진료 요약을 확인해주세요'
 			: '요약하는 데 시간이 필요해요\n홈으로 이동할까요?\n완료되면 알림을 보내 드릴게요';

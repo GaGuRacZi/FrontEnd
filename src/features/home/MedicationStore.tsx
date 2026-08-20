@@ -14,6 +14,7 @@ import { usePetStore } from '@/src/features/pet/PetStore';
 type MedicationStoreContextValue = {
   clearScreenSession: () => Promise<void>;
   hasLoadError: boolean;
+  hasMedicationLoadError: boolean;
   isReady: boolean;
   medications: DiagnosisMedication[];
   reloadMedications: () => void;
@@ -57,6 +58,7 @@ export function mapRemotePrescriptionToMedication(
     frequencyLabel: FREQUENCY_LABEL[prescription.frequency],
     id,
     mealTimingLabel: MEAL_TIMING_LABEL[prescription.mealTiming],
+    medicationId: prescription.medicationId ?? undefined,
     name: prescription.nameKo,
     timings: prescription.takeTimes.map((time) => TAKE_TIME[time]),
     warningNote: prescription.caution ?? undefined,
@@ -70,6 +72,7 @@ export function MedicationProvider({ children }: PropsWithChildren) {
   const [medications, setMedications] = useState<DiagnosisMedication[]>([]);
   const [visits, setVisits] = useState<RemoteVisit[]>([]);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [hasMedicationLoadError, setHasMedicationLoadError] = useState(false);
   const [request, setRequest] = useState(0);
 
   useEffect(() => {
@@ -78,6 +81,7 @@ export function MedicationProvider({ children }: PropsWithChildren) {
     let active = true;
     setIsReady(false);
     setHasLoadError(false);
+    setHasMedicationLoadError(false);
     setMedications([]);
     setVisits([]);
 
@@ -97,6 +101,7 @@ export function MedicationProvider({ children }: PropsWithChildren) {
         );
         if (!active) return;
         setVisits(nextVisits);
+        setHasMedicationLoadError(details.some(({ status }) => status === 'rejected'));
         setMedications(details.flatMap((result) => (
           result.status === 'fulfilled'
             ? result.value.prescriptions.map((prescription) => mapRemotePrescriptionToMedication(
@@ -107,7 +112,10 @@ export function MedicationProvider({ children }: PropsWithChildren) {
         )));
       })
       .catch(() => {
-        if (active) setHasLoadError(true);
+        if (active) {
+          setHasLoadError(true);
+          setHasMedicationLoadError(true);
+        }
       })
       .finally(() => {
         if (active) setIsReady(true);
@@ -122,6 +130,7 @@ export function MedicationProvider({ children }: PropsWithChildren) {
     setMedications([]);
     setVisits([]);
     setHasLoadError(false);
+    setHasMedicationLoadError(false);
     setIsReady(false);
   }, []);
 
@@ -131,7 +140,7 @@ export function MedicationProvider({ children }: PropsWithChildren) {
 
   return (
     <MedicationStoreContext.Provider
-      value={{ clearScreenSession, hasLoadError, isReady, medications, reloadMedications, visits }}
+      value={{ clearScreenSession, hasLoadError, hasMedicationLoadError, isReady, medications, reloadMedications, visits }}
     >
       {children}
     </MedicationStoreContext.Provider>

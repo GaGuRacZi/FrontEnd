@@ -1,4 +1,4 @@
-import type { PlanId } from './types';
+import type { PlanCatalogItem, PlanId } from './types';
 
 export type PlanDefinition = {
   aiSummary: string;
@@ -18,7 +18,7 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
     icon: require('@/assets/images/plans/baby-jelly.png'),
     id: 'baby-jelly',
     monthlyPrice: 0,
-    name: '아기 젤리',
+    name: '꼬마 젤리',
     priceLabel: '무료',
     recording: '진료 녹음 10분',
   },
@@ -28,7 +28,7 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
     icon: require('@/assets/images/plans/little-jelly.png'),
     id: 'little-jelly',
     monthlyPrice: 4900,
-    name: '꼬마 젤리',
+    name: '새싹 젤리',
     priceLabel: '월 4,900원',
     recording: '진료 녹음 60분',
   },
@@ -44,47 +44,24 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
   },
 ];
 
-export function getPlan(planId: PlanId) {
-  return (
+export function getPlan(planId: PlanId, catalog: readonly PlanCatalogItem[] = []) {
+  const definition = (
     PLAN_DEFINITIONS.find((plan) => plan.id === planId) ?? PLAN_DEFINITIONS[0]
   );
+  const remote = catalog.find((plan) => plan.id === planId);
+  if (!remote) return definition;
+  return {
+    ...definition,
+    monthlyPrice: remote.monthlyPrice,
+    name: remote.name,
+    priceLabel: remote.monthlyPrice === 0
+      ? '무료'
+      : `월 ${remote.monthlyPrice.toLocaleString('ko-KR')}원`,
+  };
 }
 
 export function getPlanRank(planId: PlanId) {
   return PLAN_DEFINITIONS.findIndex((plan) => plan.id === planId);
-}
-
-export function getPlanPrice(planId: PlanId) {
-  return getPlan(planId).monthlyPrice;
-}
-
-export function getUpgradePaymentAmount(currentPlanId: PlanId, nextPlanId: PlanId) {
-  return Math.max(getPlanPrice(nextPlanId) - getPlanPrice(currentPlanId), 0);
-}
-
-function padDatePart(value: number) {
-  return String(value).padStart(2, '0');
-}
-
-export function getLocalCalendarDate(date = new Date()) {
-  return [
-    date.getFullYear(),
-    padDatePart(date.getMonth() + 1),
-    padDatePart(date.getDate()),
-  ].join('-');
-}
-
-export function getNextBillingDate(date = new Date()) {
-  const targetYear = date.getMonth() === 11 ? date.getFullYear() + 1 : date.getFullYear();
-  const targetMonth = (date.getMonth() + 1) % 12;
-  const lastTargetDay = new Date(targetYear, targetMonth + 1, 0).getDate();
-  const targetDate = new Date(
-    targetYear,
-    targetMonth,
-    Math.min(date.getDate(), lastTargetDay),
-  );
-
-  return getLocalCalendarDate(targetDate);
 }
 
 export function isValidClockTime(value: string) {

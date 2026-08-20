@@ -17,7 +17,7 @@ import {
 export function InquiryListScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { inquiries } = useSupportStore();
+  const { inquiries, inquiriesLoadError, reloadSupport } = useSupportStore();
 
   return (
     <SupportScreen loadingLabel="문의 내역을 불러오고 있어요." title="문의하기">
@@ -50,7 +50,14 @@ export function InquiryListScreen() {
           <Text style={styles.count}>{inquiries.length}</Text>
         </View>
 
-        {inquiries.length ? (
+        {inquiriesLoadError && inquiries.length === 0 ? (
+          <EmptyState
+            actionLabel="다시 시도"
+            description="네트워크 상태를 확인한 뒤 다시 불러와주세요."
+            onActionPress={reloadSupport}
+            title="문의 내역을 불러오지 못했어요"
+          />
+        ) : inquiries.length ? (
           <View accessibilityRole="list" style={styles.list}>
             {inquiries.map((inquiry) => {
               const date = formatSupportDate(inquiry.createdAt);

@@ -7,7 +7,7 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
-import { useHealthSummaryStore } from '../HealthSummaryStore';
+import { getHealthRecordLoadKey, useHealthSummaryStore } from '../HealthSummaryStore';
 import { getRecordsForMonth, getWeightOverview } from '../healthSummarySelectors';
 import { MonthNavigator } from './MonthNavigator';
 
@@ -22,7 +22,7 @@ const toChartLabel = (value: string) => {
 export function WeightTab() {
 	const router = useRouter();
 	const { selectedPet } = usePetStore();
-	const { loadMonth, weightGraphs, weightRecords, weightSummaries } = useHealthSummaryStore();
+	const { loadMonth, recordLoadErrors, weightGraphs, weightRecords, weightSummaries } = useHealthSummaryStore();
 	const [rangeTab, setRangeTab] = useState<'1m' | '6m'>('1m');
 	const [year, setYear] = useState(() => new Date().getFullYear());
 	const [month, setMonth] = useState(() => new Date().getMonth() + 1);
@@ -32,6 +32,9 @@ export function WeightTab() {
 		? weightRecords.filter((record) => record.petId === selectedPet.id)
 		: [];
 	const filteredRecords = getRecordsForMonth(records, year, month);
+	const recordsLoadFailed = selectedPet
+		? recordLoadErrors[getHealthRecordLoadKey(selectedPet.id, year, month)]?.weight
+		: false;
 	const fallbackOverview = getWeightOverview(records);
 	const summary = selectedPet ? weightSummaries[selectedPet.id] : undefined;
 	const currentWeight = summary?.currentWeight ?? fallbackOverview.currentWeight;
@@ -189,7 +192,9 @@ export function WeightTab() {
 				))
 			) : (
 				<View style={styles.emptyContainer}>
-					<Text style={styles.emptyText}>해당 월에 기록된 체중이 없어요.</Text>
+					<Text style={styles.emptyText}>
+						{recordsLoadFailed ? '체중 기록을 불러오지 못했어요.' : '해당 월에 기록된 체중이 없어요.'}
+					</Text>
 				</View>
 			)}
 		</View>

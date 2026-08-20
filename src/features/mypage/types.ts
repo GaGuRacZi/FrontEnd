@@ -1,7 +1,7 @@
 import type { AuthMethod } from '@/src/features/auth/session/AuthSessionStore';
 
 export type PlanId = 'adult-jelly' | 'baby-jelly' | 'little-jelly';
-export type PaymentStatus = 'canceled' | 'failed' | 'paid';
+export type PaymentStatus = 'paid';
 
 export type LoginConnection = {
   email: string;
@@ -37,6 +37,13 @@ export type SubscriptionState = {
   nextBillingDate: string | null;
   pendingPlanId: PlanId | null;
   pendingType: 'cancel' | 'downgrade' | null;
+  plans?: PlanCatalogItem[];
+};
+
+export type PlanCatalogItem = {
+  id: PlanId;
+  monthlyPrice: number;
+  name: string;
 };
 
 export type PaymentHistoryItem = {

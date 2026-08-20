@@ -11,7 +11,7 @@ const AVATAR_SIZE = 28;
 
 type TranscriptMessageBubbleProps = {
 	message: DiagnosisTranscriptMessage;
-	pet: PetEntity;
+	pet: PetEntity | null;
 	showAvatar: boolean;
 	vetAvatarSource?: ImageSourcePropType;
 };

@@ -1,4 +1,5 @@
 import {
+  compareKoreanServerDates,
   formatKoreanChatDate,
   formatKoreanChatListTime,
   formatKoreanChatTime,
@@ -6,6 +7,14 @@ import {
 
 export function normalizeChatSearch(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function isChatTimeNewer(candidate: string, baseline: string) {
+  return compareChatTimes(candidate, baseline) > 0;
+}
+
+export function compareChatTimes(left: string, right: string) {
+  return compareKoreanServerDates(left, right);
 }
 
 export function formatChatTime(value: string) {

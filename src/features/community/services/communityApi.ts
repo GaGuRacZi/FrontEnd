@@ -1,5 +1,5 @@
 import { apiRequest } from '@/src/services/apiClient';
-import { getRemoteUserLocation, searchRemoteRegions } from '@/src/services/locationApi';
+import { searchRemoteRegions } from '@/src/services/locationApi';
 import { appendMultipartImage, appendMultipartJson } from '@/src/utils/file';
 
 import type { UserProfile } from '@/src/features/mypage/types';
@@ -349,11 +349,7 @@ function getCategoryCode(
 
   const tag = tags.find((current) => current.postType === postType && current.name === category);
   if (tag) return tag.code;
-  const fallback = postType === 'COMMUNICATION'
-    ? Object.entries(TALK_CATEGORY_BY_CODE).find(([, name]) => name === category)?.[0]
-    : Object.entries(MARKET_CATEGORY_BY_CODE).find(([, name]) => name === category)?.[0];
-  if (!fallback) throw new CommunityApiContractError();
-  return fallback;
+  throw new CommunityApiContractError();
 }
 
 function createPostFormData(data: Record<string, unknown>, images: readonly CommunityImageAsset[]) {
@@ -371,14 +367,12 @@ function getTradeMethod(post: MarketPost) {
   return REMOTE_TRADE_METHOD[method];
 }
 
-async function getMarketRegionCode() {
-  return (await getRemoteUserLocation()).regionCode;
-}
-
-async function getExistingMarketRegionCode(location: string) {
+async function getMarketRegionCode(location: string) {
   const normalizedLocation = location.trim();
-  const region = (await searchRemoteRegions(normalizedLocation)).find(
-    ({ name }) => name === normalizedLocation,
+  if (!normalizedLocation || normalizedLocation === '지역 미설정') return undefined;
+  const regions = await searchRemoteRegions(normalizedLocation);
+  const region = regions.find(({ name }) => name === normalizedLocation) ?? (
+    regions.length === 1 ? regions[0] : undefined
   );
   if (!region) throw new CommunityApiContractError();
   return region.code;
@@ -435,14 +429,14 @@ export function createRemotePostData(
   };
   return {
     data: isUpdate
-      ? { ...base, ...imageData, ...marketData, marketStatus: REMOTE_MARKET_STATUS[post.status], regionCode: '' }
-      : { ...base, ...imageData, ...marketData, postType: 'MARKET', regionCode: '' },
+      ? { ...base, ...imageData, ...marketData, marketStatus: REMOTE_MARKET_STATUS[post.status] }
+      : { ...base, ...imageData, ...marketData, postType: 'MARKET' },
     images,
   };
 }
 
-function withMarketRegion(data: Record<string, unknown>, regionCode: string) {
-  return { ...data, regionCode };
+function withMarketRegion(data: Record<string, unknown>, regionCode?: string) {
+  return regionCode ? { ...data, regionCode } : data;
 }
 
 export function mapRemotePost(remote: RemoteCommunityPost, identity: CommunityIdentity): CommunityPost {
@@ -592,10 +586,14 @@ export async function getRemoteComments(postId: string, cursor?: string | null, 
   );
 }
 
-export async function createRemoteCommunityPost(post: TalkPost | MarketPost, tags: readonly RemoteCommunityTag[]) {
+export async function createRemoteCommunityPost(
+  post: TalkPost | MarketPost,
+  tags: readonly RemoteCommunityTag[],
+  marketRegionCode?: string,
+) {
   const request = createRemotePostData(post, tags, false);
   const data = post.kind === 'market'
-    ? withMarketRegion(request.data, await getMarketRegionCode())
+    ? withMarketRegion(request.data, marketRegionCode ?? await getMarketRegionCode(post.location))
     : request.data;
   return parseRemoteCommunityMutation(
     await apiRequest<unknown>('/communities', { body: createPostFormData(data, request.images), method: 'POST' }),
@@ -610,7 +608,7 @@ async function putRemoteCommunityPost(
 ) {
   const request = createRemotePostData(post, tags, true);
   const data = post.kind === 'market'
-    ? withMarketRegion(request.data, marketRegionCode ?? await getMarketRegionCode())
+    ? withMarketRegion(request.data, marketRegionCode ?? await getMarketRegionCode(post.location))
     : request.data;
   return parseRemoteCommunityMutation(
     await apiRequest<unknown>(`/communities/${encodeURIComponent(post.id)}`, { body: createPostFormData(data, request.images), method: 'PUT' }),
@@ -633,7 +631,7 @@ export async function updateRemoteMarketStatus(
   return putRemoteCommunityPost(
     { ...post, status },
     tags,
-    await getExistingMarketRegionCode(post.location),
+    await getMarketRegionCode(post.location),
   );
 }
 

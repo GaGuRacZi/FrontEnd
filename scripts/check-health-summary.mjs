@@ -14,10 +14,19 @@ function loadModule(path, requireModule = () => {
 }
 
 const selectors = loadModule('../src/features/health-summary/healthSummarySelectors.ts');
+const koreanDateTime = loadModule('../src/utils/koreanDateTime.ts');
 const requests = [];
 const multipartJson = [];
+class MockApiError extends Error {
+  constructor(message, status, data) {
+    super(message);
+    this.data = data;
+    this.status = status;
+  }
+}
 const healthApi = loadModule('../src/features/health-summary/services/healthSummaryApi.ts', (path) => {
   if (path === '@/src/services/apiClient') return {
+    ApiError: MockApiError,
     apiRequest: async (url, options) => {
       requests.push({ options, url });
       if (url === '/pets/12/weights' && options?.method === 'POST') {
@@ -48,6 +57,21 @@ const healthApi = loadModule('../src/features/health-summary/services/healthSumm
             recordedAt: '2026-08-20T21:05:00',
             weight: 4.2,
           }],
+        };
+      }
+      if (url === '/pets/12/weights/30') {
+        return {
+          isSuccess: true,
+          result: {
+            appetiteType: 'MIDDLE',
+            bodyType: 'HEALTHY',
+            memoContent: '저녁 측정',
+            petId: 12,
+            petWeightId: 30,
+            photos: [],
+            recordedAt: '2026-08-20T21:05:00',
+            weight: 4.2,
+          },
         };
       }
       if (url === '/api/walks' && options?.method === 'POST') {
@@ -169,6 +193,7 @@ const healthApi = loadModule('../src/features/health-summary/services/healthSumm
     appendMultipartImage: () => undefined,
     appendMultipartJson: (_formData, data) => multipartJson.push(data),
   };
+  if (path === '@/src/utils/koreanDateTime') return koreanDateTime;
   throw new Error(`Unexpected import: ${path}`);
 });
 
@@ -183,6 +208,15 @@ assert.deepEqual(
     difference: 0.1,
     latest: { date: '2026.08.10', recordedAt: '2026-08-10T20:00:30', time: '오후 8:00', weight: 4.5 },
   },
+);
+
+assert.equal(
+  healthApi.getHealthRequestErrorMessage(new MockApiError('미래 날짜로는 기록할 수 없습니다.', 400), '저장하지 못했어요.'),
+  '미래 날짜로는 기록할 수 없습니다.',
+);
+assert.equal(
+  healthApi.getHealthRequestErrorMessage(new Error('invalid-health-response'), '저장하지 못했어요.'),
+  '저장하지 못했어요.',
 );
 
 assert.deepEqual(
@@ -285,6 +319,7 @@ assert.deepEqual(multipartJson[0], {
   weight: 4.2,
 });
 assert.deepEqual((await healthApi.getWeightRecords('12', 2026, 8)).map(({ id }) => id), ['30']);
+assert.equal((await healthApi.getWeightRecord('12', '30')).id, '30');
 
 const savedWalk = await healthApi.saveWalkRecord({
   date: '2026.08.20',
@@ -328,6 +363,16 @@ const savedExpense = await healthApi.saveMedicalExpenseRecord({
   totalCost: 30000,
 });
 assert.equal(savedExpense.id, '51');
+assert.deepEqual(
+  requests.find(({ options, url }) => url === '/api/v1/pets/12/expenses' && options?.method === 'POST')?.options?.json,
+  {
+    expenseAmount: 30000,
+    expenseDate: '2026-08-20',
+    expenseDetails: [{ expenseAmount: 30000, expenseDetailName: '진료비' }],
+    expenseName: '파우동물병원',
+    paymentType: 'CARD',
+  },
+);
 assert.deepEqual((await healthApi.getMedicalExpenseRecords('12', 2026, 8)).map(({ id }) => id), ['51']);
 
 assert.deepEqual(
@@ -342,3 +387,11 @@ assert.deepEqual(
     { date: '2026.08.20', totalMinutes: 10 },
   ],
 );
+
+const storeSource = readFileSync(new URL('../src/features/health-summary/HealthSummaryStore.tsx', import.meta.url), 'utf8');
+assert.match(storeSource, /void refreshPetSummary\(saved\.petId, false\)\.catch/);
+assert.match(storeSource, /ownerId !== activeUserRef\.current/);
+assert.match(storeSource, /recordLoadErrors:/);
+
+const walkTabSource = readFileSync(new URL('../src/features/health-summary/components/WalkTab.tsx', import.meta.url), 'utf8');
+assert.match(walkTabSource, /dailySummaries\.some\(\(entry\) => entry\.totalMinutes > 0\)/);

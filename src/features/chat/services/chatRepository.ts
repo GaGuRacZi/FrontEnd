@@ -383,6 +383,10 @@ export function normalizeStoredChatState(value: unknown): StoredChatState {
 }
 
 export const chatRepository = {
+  clearState() {
+    return enqueue(() => AsyncStorage.removeItem(CHAT_STORAGE_KEY));
+  },
+
   loadState() {
     return enqueue(async () => {
       const stored = await AsyncStorage.getItem(CHAT_STORAGE_KEY);

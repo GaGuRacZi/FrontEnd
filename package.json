@@ -21,6 +21,7 @@
     "check:pet-image-removal": "node scripts/check-pet-image-removal.mjs",
     "check:health-summary": "node scripts/check-health-summary.mjs",
     "check:home-api": "node scripts/check-home-api.mjs",
+    "check:frontend-flow": "node scripts/check-frontend-flow.mjs",
     "postinstall": "patch-package"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@expo-google-fonts/noto-sans-kr": "^0.4.3",
     "@expo/env": "2.0.12",
     "@expo/vector-icons": "^15.0.3",
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-firebase/app": "^26.2.0",
@@ -79,6 +81,7 @@
       "reactNativeDirectoryCheck": {
         "exclude": [
           "@bitnet-infotech/react-native-wav-to-mp3",
+          "@notifee/react-native",
           "@react-native-seoul/kakao-login"
         ]
       }

@@ -76,6 +76,8 @@ function getTargetHref(notification: NotificationItem): Href | null {
         pathname: '/chat/[roomId]',
         params: { roomId: notification.target.id },
       };
+    case 'map':
+      return '/health-summary';
     default:
       return null;
   }

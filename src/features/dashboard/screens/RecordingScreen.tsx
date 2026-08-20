@@ -11,10 +11,10 @@ import {
 } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import wavToMp3 from '@bitnet-infotech/react-native-wav-to-mp3';
 
-import { AppIcon } from '@/src/components/common';
+import { AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useMedicationStore } from '@/src/features/home/MedicationStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
@@ -53,7 +53,8 @@ function formatTime(totalSeconds: number) {
 
 export function RecordingScreen() {
   const router = useRouter();
-  const { selectedPet } = usePetStore();
+  const showAlert = useAppAlert();
+  const { hasLoadError, isReady, reloadPets, selectedPet } = usePetStore();
   const { reloadMedications } = useMedicationStore();
   const recorder = useAudioRecorder(AAC_RECORDING_OPTIONS);
   const recorderState = useAudioRecorderState(recorder, 1000);
@@ -61,25 +62,47 @@ export function RecordingScreen() {
   const [hasRecording, setHasRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const mountedRef = useRef(true);
   const startingRef = useRef(false);
+<<<<<<< HEAD
   const automaticCompletionRef = useRef(false);
+  // 컴포넌트가 unmount됐는지 추적 — 뒤로가기 후 setState 방지
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+=======
+>>>>>>> f85efe416e2c5b1127f2e79139e3939d4016e5a9
 
   const startRecording = useCallback(async () => {
-    if (startingRef.current || recorder.isRecording) return;
+    if (startingRef.current) return;
     startingRef.current = true;
-    setErrorMessage(null);
+    if (isMountedRef.current) setErrorMessage(null);
     try {
       const permission = await requestRecordingPermissionsAsync();
+      if (!mountedRef.current) return;
       if (!permission.granted) {
-        setErrorMessage('마이크 권한을 허용하면 진료 내용을 녹음할 수 있어요.');
+        if (isMountedRef.current) setErrorMessage('마이크 권한을 허용하면 진료 내용을 녹음할 수 있어요.');
         return;
       }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      if (!mountedRef.current) return;
       await recorder.prepareToRecordAsync();
+      if (!mountedRef.current) return;
       recorder.record({ forDuration: MAX_RECORDING_SECONDS });
-      setHasRecording(true);
+      if (isMountedRef.current) setHasRecording(true);
     } catch {
-      setErrorMessage('녹음을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
+<<<<<<< HEAD
+      if (isMountedRef.current) setErrorMessage('녹음을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
+=======
+      if (mountedRef.current) {
+        setErrorMessage('녹음을 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
+      }
+>>>>>>> f85efe416e2c5b1127f2e79139e3939d4016e5a9
     } finally {
       startingRef.current = false;
     }
@@ -88,52 +111,91 @@ export function RecordingScreen() {
   const completeRecording = useCallback(async () => {
     if (!selectedPet || isUploading) return;
     if (!hasRecording) {
-      setErrorMessage('진료 내용을 녹음한 뒤 완료할 수 있어요.');
+      if (isMountedRef.current) setErrorMessage('진료 내용을 녹음한 뒤 완료할 수 있어요.');
       return;
     }
-    setIsUploading(true);
-    setErrorMessage(null);
+    if (isMountedRef.current) {
+      setIsUploading(true);
+      setErrorMessage(null);
+    }
     try {
       await recorder.stop();
+      if (!mountedRef.current) return;
       if (!recorder.uri) throw new Error('recording-uri-required');
-      const audioUri = Platform.OS === 'android'
-        ? await wavToMp3.convertAac(
-          recorder.uri,
-          recorder.uri.replace(/\.aac$/, '.mp3'),
-          { bitrate: 256, quality: 2 },
-        )
-        : recorder.uri;
+
+      // wavToMp3 패키지 없이 AAC 그대로 업로드 (Android도 AAC 사용)
+      // 패키지 설치 후 아래 주석 해제
+      // const audioUri = Platform.OS === 'android'
+      //   ? await wavToMp3.convertAac(
+      //       recorder.uri,
+      //       recorder.uri.replace(/\.aac$/, '.mp3'),
+      //       { bitrate: 256, quality: 2 },
+      //     )
+      //   : recorder.uri;
+      const audioUri = recorder.uri;
+
       const visit = await createRemoteVisit(
         selectedPet.id,
         audioUri.startsWith('/') ? `file://${audioUri}` : audioUri,
       );
+      if (!mountedRef.current) return;
       reloadMedications();
-      setProcessingVisitId(visit.id);
+      if (isMountedRef.current) setProcessingVisitId(visit.id);
     } catch {
-      setErrorMessage('진료 기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+<<<<<<< HEAD
+      if (isMountedRef.current) setErrorMessage('진료 기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
     } finally {
-      setIsUploading(false);
+      if (isMountedRef.current) setIsUploading(false);
+=======
+      if (mountedRef.current) {
+        setHasRecording(false);
+        setErrorMessage('진료 기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+      }
+    } finally {
+      if (mountedRef.current) setIsUploading(false);
+>>>>>>> f85efe416e2c5b1127f2e79139e3939d4016e5a9
     }
-  }, [hasRecording, isUploading, recorder, reloadMedications, selectedPet]);
+  }, [
+    hasRecording,
+    isUploading,
+    recorder,
+    reloadMedications,
+    selectedPet,
+  ]);
 
   useEffect(() => {
-    void startRecording();
+    mountedRef.current = true;
     return () => {
-      if (recorder.isRecording) void recorder.stop().catch(() => undefined);
+<<<<<<< HEAD
+      // expo-audio가 unmount 시 recorder를 내부적으로 release하므로
+      // try-catch로 감싸 "already released" 크래시 방지
+      try {
+        if (recorder.isRecording) void recorder.stop().catch(() => undefined);
+      } catch {
+        // 이미 해제된 경우 무시
+      }
+=======
+      mountedRef.current = false;
+>>>>>>> f85efe416e2c5b1127f2e79139e3939d4016e5a9
     };
-  }, [recorder, startRecording]);
+  }, []);
 
-  useEffect(() => {
-    if (
-      recorderState.durationMillis >= MAX_RECORDING_SECONDS * 1000 &&
-      !automaticCompletionRef.current
-    ) {
-      automaticCompletionRef.current = true;
-      void completeRecording();
-    }
-  }, [completeRecording, recorderState.durationMillis]);
+  if (!isReady) {
+    return <ScreenLayout headerVariant="auth" title="진료 기록"><LoadingView label="반려동물 정보를 불러오고 있어요." /></ScreenLayout>;
+  }
 
-  if (!selectedPet) return null;
+  if (!selectedPet) {
+    return (
+      <ScreenLayout headerVariant="auth" title="진료 기록">
+        <EmptyState
+          actionLabel={hasLoadError ? '다시 시도' : '반려동물 등록'}
+          description={hasLoadError ? '네트워크 상태를 확인한 뒤 다시 불러와주세요.' : '진료 기록을 시작하려면 반려동물을 먼저 등록해주세요.'}
+          onActionPress={hasLoadError ? reloadPets : () => router.push('/pet/add' as Href)}
+          title={hasLoadError ? '반려동물 정보를 불러오지 못했어요' : '등록된 반려동물이 없어요'}
+        />
+      </ScreenLayout>
+    );
+  }
 
   if (processingVisitId) {
     return (
@@ -150,17 +212,34 @@ export function RecordingScreen() {
     Math.floor(recorderState.durationMillis / 1000),
   );
   const isPaused = hasRecording && !recorderState.isRecording;
+  const recordingControlLabel = !hasRecording
+    ? '녹음 시작'
+    : isPaused
+      ? '녹음 재개'
+      : '녹음 일시정지';
   const toggleRecording = () => {
     if (isUploading) return;
-    if (recorderState.isRecording) {
-      recorder.pause();
-      return;
+    try {
+      if (recorderState.isRecording) {
+        recorder.pause();
+        return;
+      }
+      if (hasRecording) {
+        recorder.record({ forDuration: Math.max(1, MAX_RECORDING_SECONDS - elapsedSeconds) });
+        return;
+      }
+      showAlert(
+        '음성을 인식하시겠습니까?',
+        '확인을 누르면 진료 내용 녹음을 시작합니다.',
+        [
+          { text: '아니오', style: 'cancel' },
+          { text: '예', onPress: () => void startRecording() },
+        ],
+      );
+    } catch {
+      setHasRecording(false);
+      setErrorMessage('녹음을 다시 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
     }
-    if (hasRecording) {
-      recorder.record({ forDuration: Math.max(1, MAX_RECORDING_SECONDS - elapsedSeconds) });
-      return;
-    }
-    void startRecording();
   };
 
   return (
@@ -172,22 +251,24 @@ export function RecordingScreen() {
 
         <Text style={styles.timer}>{formatTime(elapsedSeconds)}</Text>
 
-        <RecordingPetAnimation isPaused={isPaused} petType={selectedPet.type} />
+        <RecordingPetAnimation isAnimating={recorderState.isRecording} petType={selectedPet.type} />
 
         <Text style={styles.description}>
-          대화를 자동으로 듣고 있어요{'\n'}
-          진료를 잠시 멈추고 싶다면 하단 버튼을 눌러주세요{'\n'}
-          진료가 끝나면 아래 완료 버튼을 눌러주세요
+          {!hasRecording
+            ? '재생 버튼을 눌러 진료 내용 녹음을 시작해주세요.'
+            : isPaused
+              ? `녹음이 일시정지되었어요.${'\n'}계속 녹음하거나 진료 완료 버튼을 눌러주세요.`
+              : `대화를 듣고 있어요.${'\n'}진료를 잠시 멈추려면 하단 버튼을 눌러주세요.${'\n'}진료가 끝나면 진료 완료 버튼을 눌러주세요.`}
         </Text>
 
         <Pressable
-          accessibilityLabel={isPaused ? '녹음 재개' : '녹음 일시정지'}
+          accessibilityLabel={recordingControlLabel}
           accessibilityRole="button"
           disabled={isUploading}
           onPress={toggleRecording}
           style={({ pressed }) => [styles.pauseButton, isUploading && styles.disabled, pressed && styles.pressed]}
         >
-          <AppIcon color={COLORS.background} name={isPaused ? 'play' : 'pause'} size={28} />
+          <AppIcon color={COLORS.background} name={recorderState.isRecording ? 'pause' : 'play'} size={28} />
         </Pressable>
         {errorMessage ? <Text accessibilityLiveRegion="polite" style={styles.error}>{errorMessage}</Text> : null}
       </View>

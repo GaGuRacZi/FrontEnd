@@ -12,10 +12,12 @@ import {
   deleteRemoteTodo,
   deleteRemoteTodoTag,
   formatTodoApiDate,
+  getRemoteTodoTag,
   getRemoteTodoDetail,
   getRemoteTodoCalendar,
   getRemoteTodoTags,
   getRemoteTodos,
+  updateRemoteTodoTag,
   updateRemoteTodo,
   type RemoteTodo,
   type RemoteTodoDetail,
@@ -66,11 +68,12 @@ export type ScheduleTodoDetail = {
 type TodoDayProgress = { completed: number; total: number };
 
 type ScheduleTodoStoreContextValue = {
-  createScheduleTodos: (input: ScheduleTodoInput) => Promise<'ok'>;
+  createScheduleTodos: (input: ScheduleTodoInput) => Promise<'ok' | 'partial'>;
   createTag: (name: string, colorIdx: number) => Promise<CustomTag>;
   customTags: CustomTag[];
   deleteTag: (tagId: string) => Promise<void>;
   deleteScheduleTodo: (todoId: string, date: string) => Promise<void>;
+  getTag: (tagId: string) => Promise<CustomTag>;
   getScheduleTodoDetail: (todoId: string) => Promise<ScheduleTodoDetail>;
   getDayProgress: (date: string) => TodoDayProgress | undefined;
   getTodosForDate: (date: string) => ScheduleTodo[];
@@ -78,7 +81,9 @@ type ScheduleTodoStoreContextValue = {
   isReady: boolean;
   loadCalendarMonth: (year: number, month: number) => Promise<void>;
   loadTodosForDate: (date: string) => Promise<void>;
+  reloadSchedule: () => void;
   toggleTodo: (todoId: string, date: string) => Promise<void>;
+  updateTag: (tagId: string, name: string, colorIdx: number) => Promise<CustomTag>;
   updateScheduleTodo: (todoId: string, input: ScheduleTodoInput) => Promise<void>;
 };
 
@@ -150,8 +155,11 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
   const [dayProgress, setDayProgress] = useState<Record<string, TodoDayProgress>>({});
   const [isReady, setIsReady] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [loadRequest, setLoadRequest] = useState(0);
+  const activeUserRef = useRef(currentUserId);
   const todosByDateRef = useRef<Record<string, ScheduleTodo[]>>({});
   const customTagsRef = useRef<CustomTag[]>([]);
+  activeUserRef.current = currentUserId;
 
   const applyTodos = useCallback((date: string, todos: ScheduleTodo[]) => {
     setTodosByDate((current) => {
@@ -162,14 +170,28 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
   }, []);
 
   const loadTodosForDate = useCallback(async (date: string) => {
-    const todos = (await getRemoteTodos(date)).map(mapRemoteTodo);
-    applyTodos(date, todos);
-  }, [applyTodos]);
+    const userId = currentUserId;
+    try {
+      const todos = (await getRemoteTodos(date)).map(mapRemoteTodo);
+      if (!userId || activeUserRef.current !== userId) return;
+      applyTodos(date, todos);
+    } catch (error) {
+      setHasLoadError(true);
+      throw error;
+    }
+  }, [applyTodos, currentUserId]);
 
   const loadCalendarMonth = useCallback(async (year: number, month: number) => {
-    const days = await getRemoteTodoCalendar(year, month);
-    setDayProgress((current) => ({ ...current, ...Object.fromEntries(days.map(mapCalendarDay)) }));
-  }, []);
+    const userId = currentUserId;
+    try {
+      const days = await getRemoteTodoCalendar(year, month);
+      if (!userId || activeUserRef.current !== userId) return;
+      setDayProgress((current) => ({ ...current, ...Object.fromEntries(days.map(mapCalendarDay)) }));
+    } catch (error) {
+      setHasLoadError(true);
+      throw error;
+    }
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!sessionReady) return;
@@ -217,21 +239,29 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applyTodos, currentUserId, sessionReady]);
+  }, [applyTodos, currentUserId, loadRequest, sessionReady]);
+
+  const reloadSchedule = useCallback(() => {
+    setLoadRequest((current) => current + 1);
+  }, []);
 
   const createTag = useCallback(async (name: string, colorIdx: number) => {
+    const userId = currentUserId;
     const color = TODO_TAG_COLORS[colorIdx] ?? TODO_TAG_COLORS[0];
     const tag = mapRemoteTag(await createRemoteTodoTag(name, color));
+    if (!userId || activeUserRef.current !== userId) return tag;
     setCustomTags((current) => {
       const next = [...current, tag];
       customTagsRef.current = next;
       return next;
     });
     return tag;
-  }, []);
+  }, [currentUserId]);
 
   const deleteTag = useCallback(async (tagId: string) => {
+    const userId = currentUserId;
     await deleteRemoteTodoTag(tagId);
+    if (!userId || activeUserRef.current !== userId) return;
     setCustomTags((current) => {
       const next = current.filter((tag) => tag.id !== tagId);
       customTagsRef.current = next;
@@ -247,36 +277,83 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
       todosByDateRef.current = next;
       return next;
     });
-  }, []);
+  }, [currentUserId]);
+
+  const getTag = useCallback(async (tagId: string) => (
+    mapRemoteTag(await getRemoteTodoTag(tagId))
+  ), []);
+
+  const updateTag = useCallback(async (tagId: string, name: string, colorIdx: number) => {
+    const userId = currentUserId;
+    const color = TODO_TAG_COLORS[colorIdx] ?? TODO_TAG_COLORS[0];
+    const tag = mapRemoteTag(await updateRemoteTodoTag(tagId, name, color));
+    if (!userId || activeUserRef.current !== userId) return tag;
+    setCustomTags((current) => {
+      const next = current.map((item) => (item.id === tag.id ? tag : item));
+      customTagsRef.current = next;
+      return next;
+    });
+    setTodosByDate((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).map(([date, todos]) => [
+          date,
+          todos.map((todo) => todo.tagId === tag.id ? { ...todo, tag: tag.name } : todo),
+        ]),
+      );
+      todosByDateRef.current = next;
+      return next;
+    });
+    return tag;
+  }, [currentUserId]);
 
   const createScheduleTodos = useCallback(async (input: ScheduleTodoInput) => {
     const tag = customTagsRef.current.find((item) => item.name === input.tag);
     if (!tag) throw new Error('todo-tag-required');
     const startDate = formatTodoApiDate(input.startDate);
     const endDate = formatTodoApiDate(input.endDate);
+    if (startDate === endDate) {
+      await createRemoteTodo({
+        date: startDate,
+        description: input.description,
+        routineEnabled: false,
+        tagId: tag.id,
+        timeLabel: input.timeLabel,
+        title: input.title,
+      });
+      return 'ok' as const;
+    }
     const weeks = input.routineType === '매일'
       ? WEEK_CODES
       : input.routineDays.map((day) => WEEK_CODES[day]).filter((week): week is typeof WEEK_CODES[number] => Boolean(week));
     if (weeks.length === 0) throw new Error('todo-week-required');
-    for (const week of weeks) {
-      await createRemoteTodo({
-        description: input.description,
-        endDate,
-        routineEnabled: true,
-        startDate,
-        tagId: tag.id,
-        timeLabel: input.timeLabel,
-        title: input.title,
-        week,
-      });
+    let created = 0;
+    try {
+      for (const week of weeks) {
+        await createRemoteTodo({
+          description: input.description,
+          endDate,
+          routineEnabled: true,
+          startDate,
+          tagId: tag.id,
+          timeLabel: input.timeLabel,
+          title: input.title,
+          week,
+        });
+        created += 1;
+      }
+    } catch (error) {
+      if (created > 0) return 'partial' as const;
+      throw error;
     }
     return 'ok' as const;
   }, []);
 
   const toggleTodo = useCallback(async (todoId: string, date: string) => {
+    const userId = currentUserId;
     const current = todosByDateRef.current[date]?.find((todo) => todo.id === todoId);
     if (!current) throw new Error('todo-not-found');
     const next = mapRemoteTodo(await completeRemoteTodo(todoId, date, current.status !== 'done'));
+    if (!userId || activeUserRef.current !== userId) return;
     setTodosByDate((cache) => {
       const updated = updateCachedTodo(cache, next);
       todosByDateRef.current = updated;
@@ -293,7 +370,7 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
         },
       };
     });
-  }, []);
+  }, [currentUserId]);
 
   const getScheduleTodoDetail = useCallback(async (todoId: string) => (
     mapRemoteTodoDetail(await getRemoteTodoDetail(todoId))
@@ -302,6 +379,19 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
   const updateScheduleTodo = useCallback(async (todoId: string, input: ScheduleTodoInput) => {
     const tag = customTagsRef.current.find((item) => item.name === input.tag);
     if (!tag) throw new Error('todo-tag-required');
+    const startDate = formatTodoApiDate(input.startDate);
+    const endDate = formatTodoApiDate(input.endDate);
+    if (startDate === endDate) {
+      await updateRemoteTodo(todoId, {
+        date: startDate,
+        description: input.description,
+        routineEnabled: false,
+        tagId: tag.id,
+        timeLabel: input.timeLabel,
+        title: input.title,
+      });
+      return;
+    }
     const week = input.routineType === '매일'
       ? WEEK_CODES[0]
       : input.routineDays.map((day) => WEEK_CODES[day]).find(Boolean);
@@ -309,9 +399,9 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
 
     await updateRemoteTodo(todoId, {
       description: input.description,
-      endDate: formatTodoApiDate(input.endDate),
+      endDate,
       routineEnabled: true,
-      startDate: formatTodoApiDate(input.startDate),
+      startDate,
       tagId: tag.id,
       timeLabel: input.timeLabel,
       title: input.title,
@@ -320,7 +410,9 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
   }, []);
 
   const deleteScheduleTodo = useCallback(async (todoId: string, date: string) => {
+    const userId = currentUserId;
     await deleteRemoteTodo(todoId, date);
+    if (!userId || activeUserRef.current !== userId) return;
     const deleted = todosByDateRef.current[date]?.find((todo) => todo.id === todoId);
     setTodosByDate((cache) => {
       const next = {
@@ -341,7 +433,7 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
         },
       };
     });
-  }, []);
+  }, [currentUserId]);
 
   const getTodosForDate = useCallback((date: string) => todosByDate[date] ?? [], [todosByDate]);
   const getDayProgress = useCallback((date: string) => dayProgress[date], [dayProgress]);
@@ -354,6 +446,7 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
         customTags,
         deleteTag,
         deleteScheduleTodo,
+        getTag,
         getScheduleTodoDetail,
         getDayProgress,
         getTodosForDate,
@@ -361,7 +454,9 @@ export function ScheduleTodoProvider({ children }: PropsWithChildren) {
         isReady,
         loadCalendarMonth,
         loadTodosForDate,
+        reloadSchedule,
         toggleTodo,
+        updateTag,
         updateScheduleTodo,
       }}
     >

@@ -9,7 +9,7 @@ import { AppModal } from '@/src/components/modal';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
-import { formatChatListTime, normalizeChatSearch } from '../chatFormat';
+import { formatChatListTime, isChatTimeNewer, normalizeChatSearch } from '../chatFormat';
 import { useChatStore } from '../ChatStore';
 import { ChatSafetyBanner, ParticipantAvatar } from '../components';
 import type { ChatMessage, ChatParticipantSnapshot, ChatRoom } from '../types';
@@ -39,8 +39,11 @@ function ChatRoomRow({
   room: ChatRoom;
   unreadCount: number;
 }) {
-  const preview = getMessagePreview(lastMessage, currentUserId, room);
-  const time = formatChatListTime(lastMessage?.createdAt ?? room.updatedAt);
+  const latestLocalMessage = lastMessage && isChatTimeNewer(lastMessage.createdAt, room.updatedAt)
+    ? lastMessage
+    : null;
+  const preview = getMessagePreview(latestLocalMessage, currentUserId, room);
+  const time = formatChatListTime(latestLocalMessage?.createdAt ?? room.updatedAt);
   return (
     <Pressable
       accessibilityLabel={`${participant.nickname}님과의 채팅${participant.petName ? `, 반려동물 ${participant.petName}` : ''}, ${preview}, ${time}${unreadCount ? `, 읽지 않은 메시지 ${unreadCount}개` : ''}`}

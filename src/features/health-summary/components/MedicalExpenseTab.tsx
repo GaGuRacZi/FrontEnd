@@ -1,55 +1,38 @@
-import { Href, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Href, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { usePetStore } from '@/src/features/pet/PetStore';
-import {
-    ExpenseListItem,
-    ExpenseSummary,
-    getExpenses,
-    getExpenseSummary,
-} from '../services/medicalCostService';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
+import { getHealthRecordLoadKey, useHealthSummaryStore } from '../HealthSummaryStore';
 import { MonthNavigator } from './MonthNavigator';
+import { usePetStore } from '@/src/features/pet/PetStore';
 
 const CARROT_AD_IMAGE = require('@/assets/images/health-summary/ad.jpg');
 
 export function MedicalExpenseTab() {
     const router = useRouter();
+    const { expenseSummaries, loadMonth, medicalExpenseRecords, recordLoadErrors } = useHealthSummaryStore();
     const { selectedPet } = usePetStore();
     const [year, setYear] = useState(() => new Date().getFullYear());
     const [month, setMonth] = useState(() => new Date().getMonth() + 1);
-    const [summary, setSummary] = useState<ExpenseSummary | null>(null);
-    const [expenses, setExpenses] = useState<ExpenseListItem[]>([]);
-    const [loading, setLoading] = useState(false);
 
-    useFocusEffect(
-        useCallback(() => {
-            if (!selectedPet) return;
-            let cancelled = false;
-            setLoading(true);
-            Promise.all([
-                getExpenseSummary(selectedPet.id, { year, month }),
-                getExpenses(selectedPet.id, { year, month }),
-            ])
-                .then(([summaryData, listData]) => {
-                    if (cancelled) return;
-                    setSummary(summaryData);
-                    setExpenses(listData.expenses);
-                })
-                .catch(() => {
-                    // 에러 시 빈 상태 유지
-                })
-                .finally(() => {
-                    if (!cancelled) setLoading(false);
-                });
-            return () => {
-                cancelled = true;
-            };
-        }, [selectedPet, year, month]),
+    const formattedTargetMonth = `${year}.${String(month).padStart(2, '0')}`;
+    const filteredRecords = medicalExpenseRecords.filter((record) =>
+        record.petId === selectedPet?.id && record.date.startsWith(formattedTargetMonth)
     );
+    const recordsLoadFailed = selectedPet
+        ? recordLoadErrors[getHealthRecordLoadKey(selectedPet.id, year, month)]?.expense
+        : false;
+
+    const summary = selectedPet ? expenseSummaries[selectedPet.id] : undefined;
+    const monthlyExpenseTotal = summary?.monthlyTotalAmount ?? filteredRecords.reduce((sum, record) => sum + record.totalCost, 0);
+    const allTimeExpenseTotal = summary?.totalAmount ?? filteredRecords.reduce((sum, record) => sum + record.totalCost, 0);
+
+    useEffect(() => {
+        if (selectedPet) void loadMonth(selectedPet.id, year, month).catch(() => undefined);
+    }, [loadMonth, month, selectedPet, year]);
 
     return (
         <View style={styles.container}>
@@ -65,11 +48,9 @@ export function MedicalExpenseTab() {
                 <View style={styles.summaryText}>
                     <Text style={styles.cardLabel}>이번 달 병원비</Text>
                     <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1} style={styles.expenseValue}>
-                        {(summary?.monthlyTotalAmount ?? 0).toLocaleString()}원
+                        {monthlyExpenseTotal.toLocaleString()}원
                     </Text>
-                    <Text numberOfLines={1} style={styles.totalValue}>
-                        총 병원비: {(summary?.totalAmount ?? 0).toLocaleString()}원
-                    </Text>
+                    <Text numberOfLines={1} style={styles.totalValue}>총 병원비: {allTimeExpenseTotal.toLocaleString()}원</Text>
                 </View>
                 <TouchableOpacity
                     activeOpacity={0.8}
@@ -87,19 +68,12 @@ export function MedicalExpenseTab() {
                 year={year}
             />
 
-            {loading ? (
-                <ActivityIndicator color={COLORS.primary} style={styles.loadingIndicator} />
-            ) : expenses.length > 0 ? (
-                expenses.map((record) => (
+            {filteredRecords.length > 0 ? (
+                filteredRecords.map((record) => (
                     <TouchableOpacity
                         activeOpacity={0.8}
-                        key={record.expenseId}
-                        onPress={() =>
-                            router.push({
-                                pathname: '/health-summary/medical-expense-record',
-                                params: { expenseId: record.expenseId },
-                            } as Href)
-                        }
+                        key={record.id}
+                        onPress={() => router.push({ pathname: '/health-summary/medical-expense-record', params: { recordId: record.id } } as Href)}
                         style={styles.recordItem}
                     >
                         <View style={styles.recordItemLeft}>
@@ -107,13 +81,13 @@ export function MedicalExpenseTab() {
                                 <Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.bill} style={styles.badgeIcon} />
                             </View>
                             <View>
-                                <Text style={styles.recordItemTitle}>{record.expenseName}</Text>
-                                <Text style={styles.recordItemSub}>{record.expenseDate}</Text>
+                                <Text style={styles.recordItemTitle}>{record.hospitalName}</Text>
+                                <Text style={styles.recordItemSub}>{record.date}</Text>
                             </View>
                         </View>
                         <View style={styles.recordItemRight}>
                             <Text style={styles.recordExpenseText}>
-                                {record.expenseAmount.toLocaleString()}원
+                                {record.totalCost.toLocaleString()}원
                             </Text>
                             <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
                         </View>
@@ -121,7 +95,9 @@ export function MedicalExpenseTab() {
                 ))
             ) : (
                 <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>해당 월에 기록된 의료비가 없어요.</Text>
+                    <Text style={styles.emptyText}>
+                        {recordsLoadFailed ? '의료비 기록을 불러오지 못했어요.' : '해당 월에 기록된 의료비가 없어요.'}
+                    </Text>
                 </View>
             )}
         </View>
@@ -129,7 +105,7 @@ export function MedicalExpenseTab() {
 }
 
 const styles = StyleSheet.create({
-    container: { gap: SPACING.xl },
+    container: { gap: SPACING.jumbo },
     promoCard: {
         backgroundColor: COLORS.background,
         borderColor: COLORS.gray200,
@@ -141,7 +117,7 @@ const styles = StyleSheet.create({
     promoTitle: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
     promoImage: {
         width: '100%',
-        height: 200,
+        height: 170,
         resizeMode: 'contain',
     },
     promoSubtitle: {
@@ -163,10 +139,10 @@ const styles = StyleSheet.create({
     summaryText: { flex: 1, minWidth: 0 },
     cardLabel: { ...TYPOGRAPHY.body2, color: COLORS.gray800, fontFamily: TYPOGRAPHY.button.fontFamily },
     expenseValue: { ...TYPOGRAPHY.title1, color: COLORS.black, fontSize: 30, lineHeight: 40, marginVertical: 4 },
+    totalBadge: { ...TYPOGRAPHY.small, color: COLORS.primary },
     totalValue: { color: COLORS.primary, fontFamily: TYPOGRAPHY.button.fontFamily },
     recordButton: { alignItems: 'center', backgroundColor: COLORS.gold, borderRadius: RADIUS.segment, flexShrink: 0, justifyContent: 'center', paddingVertical: 12, width: 108 },
     recordButtonText: { ...TYPOGRAPHY.smallButton, color: COLORS.background },
-    loadingIndicator: { paddingVertical: SPACING.xxl },
     recordItem: { alignItems: 'center', backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl },
     recordItemLeft: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
     expenseBadge: { alignItems: 'center', backgroundColor: COLORS.summarycontainer, borderRadius: RADIUS.round, height: 44, justifyContent: 'center', width: 44 },

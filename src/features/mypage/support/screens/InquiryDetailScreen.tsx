@@ -16,6 +16,8 @@ export function InquiryDetailScreen() {
   const { getInquiry, loadInquiry } = useSupportStore();
   const inquiry = inquiryId ? getInquiry(inquiryId) : undefined;
   const [loading, setLoading] = useState(Boolean(inquiryId));
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadRequest, setReloadRequest] = useState(0);
 
   useEffect(() => {
     if (!inquiryId) {
@@ -25,13 +27,18 @@ export function InquiryDetailScreen() {
 
     let active = true;
     setLoading(true);
-    void loadInquiry(inquiryId).finally(() => {
-      if (active) setLoading(false);
-    });
+    setLoadFailed(false);
+    void loadInquiry(inquiryId)
+      .then((loadedInquiry) => {
+        if (active && !loadedInquiry) setLoadFailed(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, [inquiryId, loadInquiry]);
+  }, [inquiryId, loadInquiry, reloadRequest]);
 
   return (
     <SupportScreen
@@ -100,6 +107,15 @@ export function InquiryDetailScreen() {
         </ScrollView>
       ) : loading ? (
         <LoadingView label="문의 내용을 불러오고 있어요." />
+      ) : loadFailed ? (
+        <View style={styles.empty}>
+          <EmptyState
+            actionLabel="다시 시도"
+            description="네트워크 상태를 확인한 뒤 다시 불러와주세요."
+            onActionPress={() => setReloadRequest((current) => current + 1)}
+            title="문의 내용을 불러오지 못했어요."
+          />
+        </View>
       ) : (
         <View style={styles.empty}>
           <EmptyState

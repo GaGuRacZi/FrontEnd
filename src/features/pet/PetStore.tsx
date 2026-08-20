@@ -23,6 +23,7 @@ import {
 import {
   createRemotePet,
   deleteRemotePet,
+  getRemotePet,
   getRemotePets,
   updateRemoteMainPet,
   updateRemotePet,
@@ -50,6 +51,7 @@ type PetStoreContextValue = {
   pets: PetEntity[];
   registerSignupPet: (userId: string, pet: PetEntity) => Promise<void>;
   reloadPets: () => void;
+  refreshPet: (petId: string) => Promise<PetMutationResult>;
   selectedPet: PetEntity | null;
   selectedPetId: string | null;
   selectPet: (petId: string) => Promise<PetMutationResult>;
@@ -152,22 +154,15 @@ export function PetProvider({ children }: PropsWithChildren) {
 
     void (async () => {
       let state: StoredPetState;
-      let cacheLoadFailed = false;
 
       try {
         state = await petRepository.loadState(currentUserId);
       } catch {
         state = { pets: [], selectedPetId: null };
-        cacheLoadFailed = true;
       }
       if (!active || loadRevisionRef.current !== loadRevision) return;
 
-      let nextState = state;
-      try {
-        nextState = mergeRemoteState(state, currentUserId, await getRemotePets());
-      } catch {
-        if (cacheLoadFailed) throw new Error('pet-state-load-failed');
-      }
+      const nextState = mergeRemoteState(state, currentUserId, await getRemotePets());
       if (!active || loadRevisionRef.current !== loadRevision) return;
 
       readyUserIdRef.current = currentUserId;
@@ -207,19 +202,15 @@ export function PetProvider({ children }: PropsWithChildren) {
 
   const persist = useCallback(
     async (userId: string, nextPets: PetEntity[], nextSelectedPetId: string | null) => {
+      if (activeUserRef.current === userId && readyUserIdRef.current === userId) {
+        applyState({ pets: nextPets, selectedPetId: nextSelectedPetId });
+      }
       await petRepository.saveState(userId, {
         pets: nextPets,
         selectedPetId: nextSelectedPetId,
-      });
-
-      if (activeUserRef.current === userId && readyUserIdRef.current === userId) {
-        petsRef.current = nextPets;
-        selectedPetIdRef.current = nextSelectedPetId;
-        setPets(nextPets);
-        setSelectedPetId(nextSelectedPetId);
-      }
+      }).catch(() => undefined);
     },
-    [],
+    [applyState],
   );
 
   const persistMutation = useCallback(
@@ -228,12 +219,8 @@ export function PetProvider({ children }: PropsWithChildren) {
       nextPets: PetEntity[],
       nextSelectedPetId: string | null,
     ): Promise<PetMutationResult> => {
-      try {
-        await persist(userId, nextPets, nextSelectedPetId);
-        return { ok: true };
-      } catch {
-        return { ok: false, reason: 'error' };
-      }
+      await persist(userId, nextPets, nextSelectedPetId);
+      return { ok: true };
     },
     [persist],
   );
@@ -268,6 +255,38 @@ export function PetProvider({ children }: PropsWithChildren) {
         }
 
         return persistMutation(userId, currentPets, petId);
+      });
+    },
+    [currentUserId, enqueueMutation, persistMutation],
+  );
+
+  const refreshPet = useCallback(
+    (petId: string) => {
+      const userId = currentUserId;
+      return enqueueMutation(async (): Promise<PetMutationResult> => {
+        if (!userId || readyUserIdRef.current !== userId) {
+          return { ok: false, reason: 'not-ready' };
+        }
+
+        try {
+          const remotePet = await getRemotePet(petId);
+          const currentPets = petsRef.current;
+          const previous = currentPets.find((pet) => pet.id === remotePet.id);
+          const nextPet = previous
+            ? mergeRemotePet(previous, remotePet)
+            : remotePetToEntity(remotePet, userId);
+          const nextPets = previous
+            ? currentPets.map((pet) => (pet.id === nextPet.id ? nextPet : pet))
+            : [...currentPets, nextPet];
+          const result = await persistMutation(
+            userId,
+            nextPets,
+            resolveSelection(nextPets, selectedPetIdRef.current),
+          );
+          return result.ok ? { ok: true, pet: nextPet } : result;
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
       });
     },
     [currentUserId, enqueueMutation, persistMutation],
@@ -348,11 +367,7 @@ export function PetProvider({ children }: PropsWithChildren) {
             ? pet.profileImageUri
             : null,
         ];
-        try {
-          await queuePetImageRemovals(userId, imagesToRemove);
-        } catch {
-          return { ok: false, reason: 'error' };
-        }
+        await queuePetImageRemovals(userId, imagesToRemove).catch(() => undefined);
         const saveResult = await persistMutation(
           userId,
           nextPets,
@@ -527,6 +542,7 @@ export function PetProvider({ children }: PropsWithChildren) {
       pets: visiblePets,
       registerSignupPet,
       reloadPets,
+      refreshPet,
       selectedPet,
       selectedPetId: visibleSelectedPetId,
       selectPet,
@@ -541,6 +557,7 @@ export function PetProvider({ children }: PropsWithChildren) {
       hasStoredUserPetData,
       registerSignupPet,
       reloadPets,
+      refreshPet,
       selectedPet,
       selectPet,
       storeReady,

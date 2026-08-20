@@ -74,7 +74,7 @@ export function TermsAgreementScreen() {
       setSaveError(undefined);
 
       try {
-        await logoutRemoteSession().catch(() => undefined);
+        await logoutRemoteSession();
         await clearSignupDraft();
         await clearSession(pendingRemoteSignupUserId);
         router.replace(data.method === 'kakao' ? '/' : '/login');

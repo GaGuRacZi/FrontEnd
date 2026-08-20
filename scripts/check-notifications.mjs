@@ -15,6 +15,20 @@ function loadModule(path, dependencies) {
 }
 
 const koreanDateTime = loadModule('../src/utils/koreanDateTime.ts', {});
+const pushNotifications = loadModule('../src/services/pushNotifications.ts', {
+  'react-native': {
+    PermissionsAndroid: { PERMISSIONS: {}, RESULTS: {} },
+    Platform: { OS: 'android', Version: 35 },
+  },
+});
+const pushNotificationsSource = readFileSync(
+  new URL('../src/services/pushNotifications.ts', import.meta.url),
+  'utf8',
+);
+const firebaseConfig = JSON.parse(
+  readFileSync(new URL('../firebase.json', import.meta.url), 'utf8'),
+);
+const { retryOperation } = loadModule('../src/utils/retry.ts', {});
 const todayInKorea = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const requests = [];
 const notificationApi = loadModule('../src/features/home/services/notificationApi.ts', {
@@ -103,6 +117,75 @@ const notificationApi = loadModule('../src/features/home/services/notificationAp
 });
 
 const page = await notificationApi.getRemoteNotifications({ category: 'community' });
+assert.equal(
+  pushNotifications.getChatRoomIdFromPush({
+    category: 'CHAT',
+    roomId: '12',
+    type: 'CHAT_MESSAGE',
+  }),
+  '12',
+);
+assert.equal(
+  pushNotifications.getChatRoomIdFromPush({
+    category: 'COMMUNITY',
+    roomId: '12',
+    type: 'CHAT_MESSAGE',
+  }),
+  null,
+);
+assert.deepEqual(pushNotifications.getPushTargetFromPush({
+  category: 'CHAT',
+  roomId: '12',
+  type: 'CHAT_MESSAGE',
+}), { id: '12', type: 'chat_room' });
+assert.deepEqual(pushNotifications.getPushTargetFromPush({
+  todoId: '15',
+  type: 'TODO_REMINDER',
+}), { id: '15', type: 'todo' });
+assert.deepEqual(pushNotifications.getPushTargetFromPush({
+  type: 'VISIT_READY',
+  visitId: '7',
+}), { id: '7', type: 'visit' });
+assert.deepEqual(pushNotifications.getPushTargetFromPush({
+  postId: '10',
+  type: 'COMMUNITY_COMMENT',
+}), { id: '10', type: 'post' });
+assert.deepEqual(pushNotifications.getPushTargetFromPush({
+  category: 'EMERGENCY',
+  targetId: '3',
+  targetType: 'MAP',
+}), { id: '3', type: 'map' });
+assert.match(pushNotificationsSource, /createChannel\(\{/);
+assert.match(pushNotificationsSource, /sound: 'default'/);
+assert.match(pushNotificationsSource, /displayForegroundPushNotification/);
+assert.equal(
+  firebaseConfig['react-native'].messaging_android_notification_channel_id,
+  'paw_notifications',
+);
+const appProvidersSource = readFileSync(
+  new URL('../src/providers/AppProviders.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(appProvidersSource, /listenForNotificationOpens/);
+assert.match(appProvidersSource, /if \(roomResult\.ok\) pendingRoomIdsRef\.current\.delete\(roomId\)/);
+assert.match(appProvidersSource, /새 채팅 메시지가 도착했어요/);
+assert.match(appProvidersSource, /target\.type === 'map'/);
+const notificationScreenSource = readFileSync(
+  new URL('../src/features/home/screens/NotificationScreen.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(notificationScreenSource, /case 'map':\s+return '\/health-summary'/);
+assert.equal(typeof pushNotifications.listenForPushTokenRefresh, 'function');
+let retryAttempts = 0;
+assert.equal(
+  await retryOperation(async () => {
+    retryAttempts += 1;
+    if (retryAttempts < 3) throw new Error('temporary-failure');
+    return 'registered';
+  }),
+  'registered',
+);
+assert.equal(retryAttempts, 3);
 assert.equal(page.hasNext, true);
 assert.equal(page.nextCursor, 'next-cursor');
 assert.deepEqual(

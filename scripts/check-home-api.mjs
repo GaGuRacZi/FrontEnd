@@ -31,6 +31,16 @@ const todoApi = loadModule('../src/features/home/services/todoApi.ts', {
           result: [{ tagColorEnum: 'GREEN', tagId: 2, tagName: '산책' }],
         };
       }
+      if (path === '/api/tags/2') {
+        return {
+          isSuccess: true,
+          result: {
+            tagColorEnum: options?.method === 'PATCH' ? options.json.tagColorEnum : 'GREEN',
+            tagId: 2,
+            tagName: options?.method === 'PATCH' ? options.json.tagName : '산책',
+          },
+        };
+      }
       if (path === '/api/tags/2?force=true') {
         return { isSuccess: true, result: null };
       }
@@ -87,6 +97,14 @@ assert.deepEqual(await todoApi.createRemoteTodoTag('병원', 'PURPLE'), {
 assert.deepEqual(todoRequests.at(-1), [
   '/api/tags',
   { json: { tagColorEnum: 'PURPLE', tagName: '병원' }, method: 'POST' },
+]);
+assert.deepEqual(await todoApi.getRemoteTodoTag('2'), { color: 'GREEN', id: '2', name: '산책' });
+assert.deepEqual(await todoApi.updateRemoteTodoTag('2', '저녁 산책', 'ORANGE'), {
+  color: 'ORANGE', id: '2', name: '저녁 산책',
+});
+assert.deepEqual(todoRequests.at(-1), [
+  '/api/tags/2',
+  { json: { tagColorEnum: 'ORANGE', tagName: '저녁 산책' }, method: 'PATCH' },
 ]);
 await todoApi.deleteRemoteTodoTag('2');
 assert.deepEqual(todoRequests.at(-1), ['/api/tags/2?force=true', { method: 'DELETE' }]);
@@ -227,11 +245,25 @@ const visitApi = loadModule('../src/features/dashboard/services/visitApi.ts', {
       if (path.startsWith('/medications?')) {
         return { code: 'MEDICATION_SEARCH_200', isSuccess: true, result: [{ ingredient: '성분', medicationId: 7, nameEn: 'Medicine', nameKo: '약' }] };
       }
+      if (path === '/medications/7') {
+        return {
+          code: 'MEDICATION_GET_200',
+          isSuccess: true,
+          result: {
+            descriptionMd: '약 설명',
+            ingredient: '성분',
+            medicationId: 7,
+            nameEn: 'Medicine',
+            nameKo: '약',
+            precautionMd: '주의사항',
+          },
+        };
+      }
       if (path === '/visits/4/transcript') {
         return {
           code: 'VISIT_TRANSCRIPT_200',
           isSuccess: true,
-          result: { audioUrl: null, durationSec: 12, hospitalName: '병원', turns: [{ endSec: 12, speaker: 'VET', startSec: 0, text: '안녕하세요' }], visitId: 4, visitedAt: '2026-08-20T09:00:00' },
+          result: { audioUrl: 'https://cdn.example.com/visit-audio/4.m4a', durationSec: 12, hospitalName: '병원', turns: [{ endSec: 12, speaker: 'VET', startSec: 0, text: '안녕하세요' }], visitId: 4, visitedAt: '2026-08-20T09:00:00' },
         };
       }
       if (path === '/visits/4/medications' && options?.method === 'POST') {
@@ -246,7 +278,17 @@ assert.equal((await visitApi.getRemoteVisits('1'))[0].id, '4');
 assert.equal((await visitApi.getRemoteVisitDetail('4')).prescriptions[0].medicationId, '7');
 assert.equal((await visitApi.generateRemoteAiSummary('4')).summary, '상세 요약');
 assert.equal((await visitApi.searchRemoteMedications('약'))[0].nameKo, '약');
-assert.equal((await visitApi.getRemoteTranscript('4')).turns[0].speaker, 'VET');
+assert.deepEqual(await visitApi.getRemoteMedicationDetail('7'), {
+  description: '약 설명',
+  id: '7',
+  ingredient: '성분',
+  nameEn: 'Medicine',
+  nameKo: '약',
+  precaution: '주의사항',
+});
+const transcript = await visitApi.getRemoteTranscript('4');
+assert.equal(transcript.audioUrl, 'https://cdn.example.com/visit-audio/4.m4a');
+assert.equal(transcript.turns[0].speaker, 'VET');
 assert.deepEqual(await visitApi.createRemoteVisit('1', 'file:///visit.m4a'), {
   id: '5', petId: '1', status: 'PROCESSING',
 });
@@ -280,5 +322,12 @@ await assert.rejects(() => visitApi.addRemotePrescription('4', {
 }));
 await visitApi.deleteRemotePrescription('4', '3');
 assert.deepEqual(visitRequests.at(-1), ['/visits/4/medications/3', { method: 'DELETE' }]);
+
+const recordingScreenSource = readFileSync(
+  new URL('../src/features/dashboard/screens/RecordingScreen.tsx', import.meta.url),
+  'utf8',
+);
+assert.doesNotMatch(recordingScreenSource, /recorder\.isRecording/);
+assert.match(recordingScreenSource, /mountedRef\.current = false/);
 
 console.log('home API contract checks passed');

@@ -15,26 +15,9 @@ import {
 } from '@/src/features/mypage/services/mypageApi';
 import { useSupportStore } from '@/src/features/mypage/support';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import { retryOperation } from '@/src/utils/retry';
 
 const PENDING_WITHDRAWAL_KEY = 'paw:account-withdrawal';
-
-async function runWithRetry(operation: () => Promise<void>) {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await operation();
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
-      }
-    }
-  }
-
-  throw lastError;
-}
 
 async function runAll(operations: Promise<void>[]) {
   const results = await Promise.allSettled(operations);
@@ -67,18 +50,18 @@ export function useAccountLifecycle() {
   const logOut = useCallback(async () => {
     const userId = currentUserId;
     if (userId && isUuid(userId)) {
-      await runWithRetry(() => registerRemotePushToken(null)).catch(() => undefined);
-      await runWithRetry(logoutRemoteSession).catch(() => undefined);
+      await retryOperation(() => registerRemotePushToken(null));
+      await retryOperation(logoutRemoteSession);
     }
     await runAll([
-      runWithRetry(clearChatSession),
-      runWithRetry(clearCommunitySession),
-      runWithRetry(clearSupportSession),
-      runWithRetry(async () => clearScreenSession()),
-      runWithRetry(clearHealthSummarySession),
-      userId ? runWithRetry(() => clearDrafts(userId)) : Promise.resolve(),
+      retryOperation(clearChatSession),
+      retryOperation(clearCommunitySession),
+      retryOperation(clearSupportSession),
+      retryOperation(async () => clearScreenSession()),
+      retryOperation(clearHealthSummarySession),
+      userId ? retryOperation(() => clearDrafts(userId)) : Promise.resolve(),
     ]);
-    if (userId) await runWithRetry(() => clearSession(userId));
+    if (userId) await retryOperation(() => clearSession(userId));
   }, [
     clearChatSession,
     clearCommunitySession,
@@ -92,17 +75,17 @@ export function useAccountLifecycle() {
 
   const deleteAccountData = useCallback(async (userId: string) => {
     await runAll([
-      runWithRetry(() => deleteUserChatData(userId)),
-      runWithRetry(() => deleteUserCommunityData(userId)),
-      runWithRetry(() => deleteUserPetData(userId)),
-      runWithRetry(() => deleteUserProfileData(userId)),
-      runWithRetry(() => deleteUserSupportData(userId)),
-      runWithRetry(() => deleteUserHealthSummaryData(userId)),
-      runWithRetry(deleteConsentHistory),
+      retryOperation(() => deleteUserChatData(userId)),
+      retryOperation(() => deleteUserCommunityData(userId)),
+      retryOperation(() => deleteUserPetData(userId)),
+      retryOperation(() => deleteUserProfileData(userId)),
+      retryOperation(() => deleteUserSupportData(userId)),
+      retryOperation(() => deleteUserHealthSummaryData(userId)),
+      retryOperation(deleteConsentHistory),
     ]);
 
-    await runWithRetry(() => clearSession(userId));
-    await runWithRetry(() => AsyncStorage.removeItem(PENDING_WITHDRAWAL_KEY));
+    await retryOperation(() => clearSession(userId));
+    await retryOperation(() => AsyncStorage.removeItem(PENDING_WITHDRAWAL_KEY));
   }, [
     clearSession,
     deleteConsentHistory,
@@ -130,7 +113,7 @@ export function useAccountLifecycle() {
     if (!currentUserId) throw new Error('auth-session-required');
 
     await deleteRemoteAccount();
-    await runWithRetry(() =>
+    await retryOperation(() =>
       AsyncStorage.setItem(PENDING_WITHDRAWAL_KEY, currentUserId),
     );
     await deleteAccountData(currentUserId);

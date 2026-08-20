@@ -28,17 +28,20 @@ const DOG_FRAMES = [
 const FRAME_INTERVAL_MS = 600;
 
 type RecordingPetAnimationProps = {
-	isPaused: boolean;
+	isAnimating: boolean;
 	petType: 'cat' | 'dog';
 };
 
-export function RecordingPetAnimation({ isPaused, petType }: RecordingPetAnimationProps) {
+export function RecordingPetAnimation({ isAnimating, petType }: RecordingPetAnimationProps) {
 	const [frameIndex, setFrameIndex] = useState(0);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const frames = petType === 'cat' ? CAT_FRAMES : DOG_FRAMES;
 
 	useEffect(() => {
-		if (isPaused) return undefined;
+		if (!isAnimating) {
+			setFrameIndex(0);
+			return undefined;
+		}
 
 		intervalRef.current = setInterval(() => {
 			setFrameIndex((current) => (current + 1) % frames.length);
@@ -47,7 +50,7 @@ export function RecordingPetAnimation({ isPaused, petType }: RecordingPetAnimati
 		return () => {
 			if (intervalRef.current) clearInterval(intervalRef.current);
 		};
-	}, [isPaused, frames.length]);
+	}, [frames.length, isAnimating]);
 
 	return (
 		<Image resizeMode="contain" source={frames[frameIndex]} style={styles.image} />

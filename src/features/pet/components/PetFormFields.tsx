@@ -15,6 +15,7 @@ import {
 } from './PetInfoLayout';
 
 type PetFormFieldsProps = {
+  canRemoveImage?: boolean;
   disabled?: boolean;
   errors: PetFormErrors;
   onBlur: (field: keyof PetFormErrors) => void;
@@ -23,6 +24,7 @@ type PetFormFieldsProps = {
   onOpenCalendar: () => void;
   onPickImage: (field: PetImageField) => void;
   onRemoveImage: (field: PetImageField) => void;
+  removeImageLabel?: string;
   values: PetFormValues;
 };
 
@@ -75,17 +77,21 @@ function PickerField({
 }
 
 function ProfilePhoto({
+  canRemove,
   disabled,
   name,
   onPick,
   onRemove,
+  removeLabel,
   type,
   uri,
 }: {
+  canRemove: boolean;
   disabled: boolean;
   name: string;
   onPick: () => void;
   onRemove: () => void;
+  removeLabel: string;
   type: PetType | null;
   uri: string | null;
 }) {
@@ -108,9 +114,9 @@ function ProfilePhoto({
           <AppIcon color={COLORS.primary} name="camera-outline" size={18} />
         </View>
       </Pressable>
-      {uri ? (
+      {uri && canRemove ? (
         <Pressable
-          accessibilityLabel="프로필 사진 삭제"
+          accessibilityLabel={removeLabel}
           accessibilityRole="button"
           accessibilityState={{ disabled }}
           disabled={disabled}
@@ -118,16 +124,17 @@ function ProfilePhoto({
           onPress={onRemove}
           style={({ pressed }) => [disabled && styles.disabled, pressed && styles.pressed]}
         >
-          <Text style={styles.profileGuide}>사진 삭제</Text>
+          <Text style={styles.profileGuide}>{removeLabel}</Text>
         </Pressable>
-      ) : (
+      ) : !uri ? (
         <Text style={styles.profileGuide}>사진은 언제든 추가하거나 변경할 수 있어요</Text>
-      )}
+      ) : null}
     </View>
   );
 }
 
 export function PetFormFields({
+  canRemoveImage = true,
   disabled = false,
   errors,
   onBlur,
@@ -136,15 +143,18 @@ export function PetFormFields({
   onOpenCalendar,
   onPickImage,
   onRemoveImage,
+  removeImageLabel = '사진 삭제',
   values,
 }: PetFormFieldsProps) {
   return (
     <View style={styles.form}>
       <ProfilePhoto
+        canRemove={canRemoveImage}
         disabled={disabled}
         name={values.name}
         onPick={() => onPickImage('profileImageUri')}
         onRemove={() => onRemoveImage('profileImageUri')}
+        removeLabel={removeImageLabel}
         type={values.type}
         uri={values.profileImageUri}
       />

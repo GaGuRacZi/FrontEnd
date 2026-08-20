@@ -6,6 +6,7 @@ import { COLORS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { AppModal, useAppAlert } from '@/src/components/modal';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
+import { EmptyState } from '@/src/components/common';
 import { MyPageCard, MyPageDivider, MyPageHeader, MyPageRow } from '../components';
 import { getPlan } from '../mypageData';
 import { useMyPageStore } from '../MyPageStore';
@@ -17,15 +18,28 @@ export function MyPagePlanScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
-  const { scheduleCancelSubscription, subscription } = useMyPageStore();
+  const { reloadMyPage, scheduleCancelSubscription, subscription, subscriptionLoadError } = useMyPageStore();
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [canceling, setCanceling] = useState(false);
-  const plan = getPlan(subscription?.currentPlanId ?? 'baby-jelly');
+  const plan = getPlan(subscription?.currentPlanId ?? 'baby-jelly', subscription?.plans);
   const canCancel = Boolean(subscription && subscription.currentPlanId !== 'baby-jelly');
   const nextBillingDate = subscription?.nextBillingDate ?? '다음 결제일';
   const closeCancelModal = () => {
     if (!canceling) setCancelModalVisible(false);
   };
+
+  if (subscriptionLoadError) {
+    return (
+      <MyPageHeader title="내 요금제">
+        <EmptyState
+          actionLabel="다시 시도"
+          description="네트워크 상태를 확인한 뒤 다시 불러와주세요."
+          onActionPress={reloadMyPage}
+          title="요금제 정보를 불러오지 못했어요"
+        />
+      </MyPageHeader>
+    );
+  }
 
   const confirmCancel = async () => {
     setCanceling(true);
@@ -107,7 +121,7 @@ export function MyPagePlanScreen() {
       >
         <Text style={styles.modalDescription}>
           {nextBillingDate}까지 {plan.name} 혜택을 이용할 수 있고,{'\n'}
-          이후 아기 젤리로 변경돼요.
+          이후 꼬마 젤리로 변경돼요.
         </Text>
       </AppModal>
     </MyPageHeader>

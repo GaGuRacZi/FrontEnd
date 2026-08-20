@@ -23,7 +23,7 @@ export type RemoteChatRoom = {
   opponent: RemoteChatOpponent;
   post: RemoteChatPost;
   roomId: string;
-  unreadCount: number;
+  unreadCount: number | null;
 };
 
 export type RemoteChatMessage = {
@@ -64,6 +64,12 @@ function readId(value: unknown) {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
   if (typeof value === 'string' && /^\d+$/.test(value) && Number(value) > 0) return value;
   throw new ChatApiContractError();
+}
+
+function readRequestId(value: unknown) {
+  const id = Number(readId(value));
+  if (!Number.isSafeInteger(id)) throw new ChatApiContractError();
+  return id;
 }
 
 function readDate(value: unknown) {
@@ -136,7 +142,7 @@ function readRoom(value: unknown): RemoteChatRoom {
     opponent: readOpponent(room.opponent),
     post: readPost(room.post),
     roomId: readId(room.roomId),
-    unreadCount: room.unreadCount === undefined ? 0 : readCount(room.unreadCount),
+    unreadCount: room.unreadCount === undefined ? null : readCount(room.unreadCount),
   };
 }
 
@@ -164,12 +170,41 @@ function getRoomPath(roomId: string) {
   return `/chat/rooms/${encodeURIComponent(readId(roomId))}`;
 }
 
-export async function getRemoteChatRooms() {
-  const result = readRecord(
-    readEnvelope(await apiRequest<unknown>('/chat/rooms?size=100'), 'CHAT_ROOM_LIST_200'),
+async function getRemoteItems<T>(
+  path: string,
+  code: string,
+  readItem: (value: unknown) => T,
+  getId: (item: T) => string,
+) {
+  const items: T[] = [];
+  let cursor: string | null = null;
+
+  for (let pageIndex = 0; pageIndex < 2; pageIndex += 1) {
+    const query = cursor
+      ? `cursor=${encodeURIComponent(cursor)}&size=50`
+      : 'size=50';
+    const result = readRecord(
+      readEnvelope(await apiRequest<unknown>(`${path}?${query}`), code),
+    );
+    if (!Array.isArray(result.content) || typeof result.hasNext !== 'boolean') {
+      throw new ChatApiContractError();
+    }
+    items.push(...result.content.map(readItem));
+    if (!result.hasNext) break;
+    cursor = readOptionalString(result.nextCursor);
+    if (!cursor) throw new ChatApiContractError();
+  }
+
+  return [...new Map(items.map((item) => [getId(item), item])).values()];
+}
+
+export function getRemoteChatRooms() {
+  return getRemoteItems(
+    '/chat/rooms',
+    'CHAT_ROOM_LIST_200',
+    readRoom,
+    (room) => room.roomId,
   );
-  if (!Array.isArray(result.content)) throw new ChatApiContractError();
-  return result.content.map(readRoom);
 }
 
 export async function getRemoteChatRoom(roomId: string) {
@@ -178,21 +213,19 @@ export async function getRemoteChatRoom(roomId: string) {
   );
 }
 
-export async function getRemoteChatMessages(roomId: string) {
-  const result = readRecord(
-    readEnvelope(
-      await apiRequest<unknown>(`${getRoomPath(roomId)}/messages?size=100`),
-      'CHAT_MESSAGE_LIST_200',
-    ),
+export function getRemoteChatMessages(roomId: string) {
+  return getRemoteItems(
+    `${getRoomPath(roomId)}/messages`,
+    'CHAT_MESSAGE_LIST_200',
+    readMessage,
+    (message) => message.messageId,
   );
-  if (!Array.isArray(result.content)) throw new ChatApiContractError();
-  return result.content.map(readMessage);
 }
 
 export async function createRemoteChatRoom(postId: string) {
   const result = readRecord(
     readEnvelope(
-      await apiRequest<unknown>('/chat/rooms', { json: { postId: readId(postId) }, method: 'POST' }),
+      await apiRequest<unknown>('/chat/rooms', { json: { postId: readRequestId(postId) }, method: 'POST' }),
       'CHAT_ROOM_CREATE_200',
     ),
   );
@@ -206,6 +239,9 @@ export async function sendRemoteChatMessage(
   const text = message.text?.trim();
   const imageUri = message.imageUri?.trim();
   if (Boolean(text) === Boolean(imageUri)) throw new ChatApiContractError();
+  if (imageUri && !/\.(gif|heic|heif|jpe?g|png|webp)(?:[?#]|$)/i.test(imageUri)) {
+    throw new ChatApiContractError();
+  }
 
   const formData = new FormData();
   appendMultipartJson(formData, imageUri ? { type: 'IMAGE' } : { content: text, type: 'TEXT' });
@@ -224,7 +260,7 @@ export async function sendRemoteChatMessage(
 export async function markRemoteChatRoomRead(roomId: string, lastReadMessageId: string) {
   readEnvelope(
     await apiRequest<unknown>(`${getRoomPath(roomId)}/read`, {
-      json: { lastReadMessageId: readId(lastReadMessageId) },
+      json: { lastReadMessageId: readRequestId(lastReadMessageId) },
       method: 'PATCH',
     }),
     'CHAT_ROOM_READ_200',
