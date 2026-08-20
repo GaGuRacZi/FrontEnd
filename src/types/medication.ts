@@ -13,9 +13,9 @@ export type MedicationEntry = {
 };
 
 export const FREQUENCY_LABEL: Record<MedicationFrequency, string> = {
-	onceDaily: '하루 1회',
-	twiceDaily: '하루 2회',
-	threeTimesDaily: '하루 3회',
+	onceDaily: '1일 1회',
+	twiceDaily: '1일 2회',
+	threeTimesDaily: '1일 3회',
 	asNeeded: '필요 시',
 };
 

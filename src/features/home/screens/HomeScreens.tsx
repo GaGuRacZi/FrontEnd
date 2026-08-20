@@ -1,12 +1,13 @@
 // src/features/home/screens/HomeScreens.tsx
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { BrandLogoButton, EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
 import { SPACING } from '@/src/constants';
+import { useMedicationStore } from '../MedicationStore';
+import { useScheduleTodoStore } from '../ScheduleTodoStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { EmergencyBanner } from '../components/EmergencyBanner';
@@ -18,26 +19,44 @@ import { RecentDiagnosisCard } from '../components/RecentDiagnosisCard';
 import { TodaySummaryCard } from '../components/TodaySummaryCard';
 import {
   MOCK_HEALTH_TIP,
-  MOCK_MEDICATIONS,
   MOCK_MONTHLY_HEALTH,
   MOCK_RECENT_DIAGNOSIS,
-  MOCK_TODOS,
 } from '../mock';
 import { mapPetEntityToSummary } from '../utils/mapPetToSummary';
 
 export function HomeScreen() {
   const router = useRouter();
   const { isReady, selectedPet } = usePetStore();
-  const [todos, setTodos] = useState(MOCK_TODOS);
+  const { medications } = useMedicationStore();
+  const { todos: allTodos, toggleTodo } = useScheduleTodoStore();
+
+  // 오늘 날짜 기준 투두만 추출
+  const todayDate = new Date();
+  const todayTodos = allTodos
+    .filter(
+      (t) =>
+        t.day === todayDate.getDate() &&
+        t.month === todayDate.getMonth() &&
+        t.year === todayDate.getFullYear(),
+    )
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      timeLabel: t.timeLabel,
+      status: t.status,
+      category: t.category,
+    }));
+
+  // 홈 카드에는 추가된 순서 기준 상위 3개만 표시
+  const homeMedications = medications.slice(0, 3).map((med) => ({
+    id: med.id,
+    name: med.name,
+    doseLabel: med.frequencyLabel,
+  }));
 
   const handleToggleTodo = (todoId: string) => {
-    setTodos((current) =>
-      current.map((todo) =>
-        todo.id === todoId
-          ? { ...todo, status: todo.status === 'done' ? 'pending' : 'done' }
-          : todo,
-      ),
-    );
+    toggleTodo(todoId);
   };
 
   if (!isReady) {
@@ -89,7 +108,7 @@ export function HomeScreen() {
         <TodaySummaryCard
           onPressMore={() => router.push('/schedule' as Href)}
           onToggleTodo={handleToggleTodo}
-          todos={todos}
+          todos={todayTodos}
         />
 
         <EmergencyBanner onPress={() => router.push('/emergency' as Href)} />
@@ -100,7 +119,7 @@ export function HomeScreen() {
             onPress={() => router.push('/dashboard' as Href)}
           />
           <MedicationSummaryCard
-            medications={MOCK_MEDICATIONS}
+            medications={homeMedications}
             onPress={() => router.push('/medication' as Href)}
           />
         </View>
