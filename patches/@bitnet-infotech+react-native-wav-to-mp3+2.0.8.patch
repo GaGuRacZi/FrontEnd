@@ -1,0 +1,31 @@
+diff --git a/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/build.gradle b/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/build.gradle
+index 12cf417..ee9a2ab 100644
+--- a/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/build.gradle
++++ b/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/build.gradle
+@@ -56,1 +56,2 @@ android {
+         cppFlags "-std=c++17"
++        arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+diff --git a/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Module.kt b/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Module.kt
+index 84676f6..ef41a14 100644
+--- a/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Module.kt
++++ b/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Module.kt
+@@ -23,1 +23,7 @@ class WavToMp3Module(reactContext: ReactApplicationContext) :
+   }
++
++  @ReactMethod
++  fun addListener(_eventName: String) = Unit
++
++  @ReactMethod
++  fun removeListeners(_count: Int) = Unit
+@@ -101,2 +107,2 @@ class WavToMp3Module(reactContext: ReactApplicationContext) :
+-  private external fun nativeConvertWavToMp3(inputPath: String, outputPath: String, bitrate: Int?, quality: Int?): Int
+-  private external fun nativeConvertAudioToMp3(inputPath: String, outputPath: String, inputFormat: String, bitrate: Int?, quality: Int?): Int
++  private external fun nativeConvertWavToMp3(inputPath: String, outputPath: String, bitrate: Int, quality: Int): Int
++  private external fun nativeConvertAudioToMp3(inputPath: String, outputPath: String, inputFormat: String, bitrate: Int, quality: Int): Int
+diff --git a/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Package.kt b/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Package.kt
+index 03d8af2..920754f 100644
+--- a/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Package.kt
++++ b/node_modules/@bitnet-infotech/react-native-wav-to-mp3/android/src/main/java/com/wavtomp3/WavToMp3Package.kt
+@@ -29,1 +29,1 @@ class WavToMp3Package : TurboReactPackage() {
+-                    true // isTurboModule
++                    false // isTurboModule

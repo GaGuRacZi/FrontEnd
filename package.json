@@ -20,9 +20,11 @@
     "check:chat-api": "node scripts/check-chat-api.mjs",
     "check:pet-image-removal": "node scripts/check-pet-image-removal.mjs",
     "check:health-summary": "node scripts/check-health-summary.mjs",
-    "check:home-api": "node scripts/check-home-api.mjs"
+    "check:home-api": "node scripts/check-home-api.mjs",
+    "postinstall": "patch-package"
   },
   "dependencies": {
+    "@bitnet-infotech/react-native-wav-to-mp3": "^2.0.8",
     "@expo-google-fonts/noto-sans-kr": "^0.4.3",
     "@expo/env": "2.0.12",
     "@expo/vector-icons": "^15.0.3",
@@ -65,10 +67,21 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~10.0.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
   "private": true,
   "engines": {
     "node": ">=22.18.0"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@bitnet-infotech/react-native-wav-to-mp3",
+          "@react-native-seoul/kakao-login"
+        ]
+      }
+    }
   }
 }

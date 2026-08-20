@@ -1,14 +1,17 @@
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
 import {
-  RecordingPresets,
+  AudioQuality,
+  IOSOutputFormat,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
+  type RecordingOptions,
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import wavToMp3 from '@bitnet-infotech/react-native-wav-to-mp3';
 
 import { AppIcon } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
@@ -21,6 +24,26 @@ import { createRemoteVisit } from '../services/visitApi';
 import { AiProcessingScreen } from './AiProcessingScreen';
 
 const MAX_RECORDING_SECONDS = 10 * 60;
+const AAC_RECORDING_OPTIONS: RecordingOptions = {
+  extension: '.aac',
+  sampleRate: 44100,
+  numberOfChannels: 2,
+  bitRate: 256000,
+  android: {
+    extension: '.aac',
+    outputFormat: 'aac_adts',
+    audioEncoder: 'aac',
+  },
+  ios: {
+    extension: '.aac',
+    outputFormat: IOSOutputFormat.MPEG4AAC,
+    audioQuality: AudioQuality.MAX,
+  },
+  web: {
+    mimeType: 'audio/aac',
+    bitsPerSecond: 256000,
+  },
+};
 
 function formatTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -32,7 +55,7 @@ export function RecordingScreen() {
   const router = useRouter();
   const { selectedPet } = usePetStore();
   const { reloadMedications } = useMedicationStore();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(AAC_RECORDING_OPTIONS);
   const recorderState = useAudioRecorderState(recorder, 1000);
   const [processingVisitId, setProcessingVisitId] = useState<string | null>(null);
   const [hasRecording, setHasRecording] = useState(false);
@@ -73,7 +96,17 @@ export function RecordingScreen() {
     try {
       await recorder.stop();
       if (!recorder.uri) throw new Error('recording-uri-required');
-      const visit = await createRemoteVisit(selectedPet.id, recorder.uri);
+      const audioUri = Platform.OS === 'android'
+        ? await wavToMp3.convertAac(
+          recorder.uri,
+          recorder.uri.replace(/\.aac$/, '.mp3'),
+          { bitrate: 256, quality: 2 },
+        )
+        : recorder.uri;
+      const visit = await createRemoteVisit(
+        selectedPet.id,
+        audioUri.startsWith('/') ? `file://${audioUri}` : audioUri,
+      );
       reloadMedications();
       setProcessingVisitId(visit.id);
     } catch {
