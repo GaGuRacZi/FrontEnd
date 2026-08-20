@@ -6,7 +6,7 @@ export type PushTarget =
   | null;
 
 const foregroundPushListeners = new Set<(data: ForegroundPushData) => void>();
-const PUSH_NOTIFICATION_CHANNEL_ID = 'paw_notifications';
+const PUSH_NOTIFICATION_CHANNEL_ID = 'paw_notifications_v2';
 const PUSH_TARGET_TYPES: Readonly<
   Partial<Record<string, Exclude<PushTarget, null>['type']>>
 > = {

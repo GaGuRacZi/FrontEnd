@@ -1,5 +1,5 @@
 {
   "react-native": {
-    "messaging_android_notification_channel_id": "paw_notifications"
+    "messaging_android_notification_channel_id": "paw_notifications_v2"
   }
 }

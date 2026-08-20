@@ -160,8 +160,9 @@ assert.match(pushNotificationsSource, /sound: 'default'/);
 assert.match(pushNotificationsSource, /displayForegroundPushNotification/);
 assert.equal(
   firebaseConfig['react-native'].messaging_android_notification_channel_id,
-  'paw_notifications',
+  'paw_notifications_v2',
 );
+assert.match(pushNotificationsSource, /PUSH_NOTIFICATION_CHANNEL_ID = 'paw_notifications_v2'/);
 const appProvidersSource = readFileSync(
   new URL('../src/providers/AppProviders.tsx', import.meta.url),
   'utf8',
@@ -175,6 +176,11 @@ const notificationScreenSource = readFileSync(
   'utf8',
 );
 assert.match(notificationScreenSource, /case 'map':\s+return '\/health-summary'/);
+const notificationSettingsSource = readFileSync(
+  new URL('../src/features/mypage/screens/MyPageNotificationsScreen.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(notificationSettingsSource, /건강 이상을 제외한 휴대폰 알림이 울리지 않아요/);
 assert.equal(typeof pushNotifications.listenForPushTokenRefresh, 'function');
 let retryAttempts = 0;
 assert.equal(
