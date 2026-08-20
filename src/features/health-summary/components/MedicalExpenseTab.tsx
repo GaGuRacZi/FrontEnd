@@ -129,7 +129,7 @@ export function MedicalExpenseTab() {
 }
 
 const styles = StyleSheet.create({
-    container: { gap: SPACING.jumbo },
+    container: { gap: SPACING.xl },
     promoCard: {
         backgroundColor: COLORS.background,
         borderColor: COLORS.gray200,
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     promoTitle: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
     promoImage: {
         width: '100%',
-        height: 170,
+        height: 200,
         resizeMode: 'contain',
     },
     promoSubtitle: {
