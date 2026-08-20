@@ -1,9 +1,9 @@
-﻿import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { Href, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-import { AppButton, AppIcon } from '@/src/components/common';
+import { AppButton, AppIcon, DatePickerSheet, TimePickerSheet } from '@/src/components/common';
 import { AppScreen, TopHeader } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { MOCK_WEIGHT_RECORDS } from '../mock';
@@ -24,7 +24,9 @@ const formatRecordTime = (date: Date) => {
 
 export function WeightRecordScreen() {
 	const router = useRouter();
-	const [recordedAt] = useState(() => new Date());
+	const [recordedAt, setRecordedAt] = useState(() => new Date());
+	const [datePickerVisible, setDatePickerVisible] = useState(false);
+	const [timePickerVisible, setTimePickerVisible] = useState(false);
 	const [weight, setWeight] = useState('4.2');
 	const [bodyCondition, setBodyCondition] = useState<BodyCondition>('ideal');
 	const [appetite, setAppetite] = useState<AppetiteCondition>('low');
@@ -92,112 +94,132 @@ export function WeightRecordScreen() {
 	};
 
 	return (
-		<AppScreen scrollable={false} contentContainerStyle={{ flex: 1 }}>
-			<TopHeader leftAccessibilityLabel="뒤로가기" leftIcon="chevron-back" onLeftPress={() => router.back()} title="체중 기록하기" />
+		<>
+			<AppScreen scrollable={false} contentContainerStyle={{ flex: 1 }}>
+				<TopHeader leftAccessibilityLabel="뒤로가기" leftIcon="chevron-back" onLeftPress={() => router.back()} title="체중 기록하기" />
 
-			<ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-				<View style={styles.rowTwoCards}>
-					<View style={styles.metaCard}>
-						<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.calendar} style={styles.metaIcon} />
-						<View style={styles.metaTextGroup}>
-							<Text style={styles.metaLabel}>기록 날짜</Text>
-							<Text style={styles.metaValue}>{recordDate}</Text>
-						</View>
-					</View>
-					<View style={styles.metaCard}>
-						<View style={styles.metaTextGroup}>
-							<Text style={styles.metaLabel}>측정 시간</Text>
-							<Text style={styles.metaValue}>{recordTime}</Text>
-						</View>
-					</View>
-				</View>
-
-				<View style={styles.card}>
-					<Text style={styles.cardLabel}>몸무게</Text>
-					<View style={styles.inputRow}>
-						<TextInput keyboardType="decimal-pad" onChangeText={setWeight} style={styles.inputValue} value={weight} />
-						<Text style={styles.inputUnit}>kg</Text>
-					</View>
-				</View>
-
-				<View style={styles.card}>
-					<Text style={styles.cardLabel}>체형 상태</Text>
-					<Text style={styles.cardHint}>육안으로 봤을 때 가장 가까운 상태를 골라요.</Text>
-					<View style={styles.chipRow}>
-						{bodyOptions.map((opt) => (
-							<TouchableOpacity
-								activeOpacity={0.8}
-								key={opt.key}
-								onPress={() => setBodyCondition(opt.key)}
-								style={[styles.chip, bodyCondition === opt.key && styles.chipActive]}
-							>
-								<Text style={[styles.chipText, bodyCondition === opt.key && styles.chipTextActive]}>{opt.label}</Text>
-							</TouchableOpacity>
-						))}
-					</View>
-				</View>
-
-				<View style={[styles.card, { backgroundColor: COLORS.cream, borderColor: 'transparent' }]}>
-					<Text style={styles.cardLabel}>컨디션 체크</Text>
-					<View style={styles.radioGroup}>
-						{appetiteOptions.map((opt) => {
-							const active = appetite === opt.key;
-							return (
-								<TouchableOpacity activeOpacity={0.8} key={opt.key} onPress={() => setAppetite(opt.key)} style={styles.radioOption}>
-									<View style={[styles.radioCircle, active && styles.radioCircleActive]}>
-										{active && <AppIcon color={COLORS.background} name="checkmark" size={14} />}
-									</View>
-									<Text style={styles.radioLabel}>{opt.label}</Text>
-								</TouchableOpacity>
-							);
-						})}
-					</View>
-				</View>
-
-				<View style={styles.card}>
-					<View style={styles.memoHeader}>
-						<Text style={styles.cardLabel}>메모</Text>
-						<TouchableOpacity
-							accessibilityLabel="사진 추가"
-							accessibilityRole="button"
-							activeOpacity={0.7}
-							onPress={handlePickImage}
-							style={styles.photoButton}
-						>
-							<AppIcon color={COLORS.primary} name="camera" size={16} />
-							<Text style={styles.photoButtonText}>사진</Text>
+				<ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+					<View style={styles.rowTwoCards}>
+						<TouchableOpacity activeOpacity={0.8} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
+							<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.calendar} style={styles.metaIcon} />
+							<View style={styles.metaTextGroup}>
+								<Text style={styles.metaLabel}>기록 날짜</Text>
+								<Text style={styles.metaValue}>{recordDate}</Text>
+							</View>
+						</TouchableOpacity>
+						<TouchableOpacity activeOpacity={0.8} onPress={() => setTimePickerVisible(true)} style={styles.metaCard}>
+							<View style={styles.metaTextGroup}>
+								<Text style={styles.metaLabel}>측정 시간</Text>
+								<Text style={styles.metaValue}>{recordTime}</Text>
+							</View>
 						</TouchableOpacity>
 					</View>
 
-					{selectedImageUri ? (
-						<View style={styles.imagePreviewContainer}>
-							<Image source={{ uri: selectedImageUri }} style={styles.previewImage} />
+					<View style={styles.card}>
+						<Text style={styles.cardLabel}>몸무게</Text>
+						<View style={styles.inputRow}>
+							<TextInput keyboardType="decimal-pad" onChangeText={setWeight} style={styles.inputValue} value={weight} />
+							<Text style={styles.inputUnit}>kg</Text>
+						</View>
+					</View>
+
+					<View style={styles.card}>
+						<Text style={styles.cardLabel}>체형 상태</Text>
+						<Text style={styles.cardHint}>육안으로 봤을 때 가장 가까운 상태를 골라요.</Text>
+						<View style={styles.chipRow}>
+							{bodyOptions.map((opt) => (
+								<TouchableOpacity
+									activeOpacity={0.8}
+									key={opt.key}
+									onPress={() => setBodyCondition(opt.key)}
+									style={[styles.chip, bodyCondition === opt.key && styles.chipActive]}
+								>
+									<Text style={[styles.chipText, bodyCondition === opt.key && styles.chipTextActive]}>{opt.label}</Text>
+								</TouchableOpacity>
+							))}
+						</View>
+					</View>
+
+					<View style={[styles.card, { backgroundColor: COLORS.cream, borderColor: COLORS.transparent }]}>
+						<Text style={styles.cardLabel}>컨디션 체크</Text>
+						<View style={styles.radioGroup}>
+							{appetiteOptions.map((opt) => {
+								const active = appetite === opt.key;
+								return (
+									<TouchableOpacity activeOpacity={0.8} key={opt.key} onPress={() => setAppetite(opt.key)} style={styles.radioOption}>
+										<View style={[styles.radioCircle, active && styles.radioCircleActive]}>
+											{active && <AppIcon color={COLORS.background} name="checkmark" size={14} />}
+										</View>
+										<Text style={styles.radioLabel}>{opt.label}</Text>
+									</TouchableOpacity>
+								);
+							})}
+						</View>
+					</View>
+
+					<View style={styles.card}>
+						<View style={styles.memoHeader}>
+							<Text style={styles.cardLabel}>메모</Text>
 							<TouchableOpacity
-								activeOpacity={0.8}
-								onPress={() => setSelectedImageUri(null)}
-								style={styles.removeImageButton}
+								accessibilityLabel="사진 추가"
+								accessibilityRole="button"
+								activeOpacity={0.7}
+								onPress={handlePickImage}
+								style={styles.photoButton}
 							>
-								<AppIcon color={COLORS.background} name="close" size={14} />
+								<AppIcon color={COLORS.primary} name="camera" size={16} />
+								<Text style={styles.photoButtonText}>사진</Text>
 							</TouchableOpacity>
 						</View>
-					) : null}
 
-					<TextInput
-						multiline
-						scrollEnabled={false}
-						onChangeText={setMemo}
-						placeholder="식사 후 같은 시간대에 측정했어요."
-						placeholderTextColor={COLORS.gray500}
-						style={styles.memoInput}
-						value={memo}
-					/>
+						{selectedImageUri ? (
+							<View style={styles.imagePreviewContainer}>
+								<Image source={{ uri: selectedImageUri }} style={styles.previewImage} />
+								<TouchableOpacity
+									activeOpacity={0.8}
+									onPress={() => setSelectedImageUri(null)}
+									style={styles.removeImageButton}
+								>
+									<AppIcon color={COLORS.background} name="close" size={14} />
+								</TouchableOpacity>
+							</View>
+						) : null}
+
+						<TextInput
+							multiline
+							scrollEnabled={false}
+							onChangeText={setMemo}
+							placeholder="식사 후 같은 시간대에 측정했어요."
+							placeholderTextColor={COLORS.gray500}
+							style={styles.memoInput}
+							value={memo}
+						/>
+					</View>
+				</ScrollView>
+
+				<View style={styles.bottomBar}>
+					<AppButton onPress={handleSaveRecord} title="체중 기록 저장" />
 				</View>
-			</ScrollView>
-
-			<View style={styles.bottomBar}>
-				<AppButton onPress={handleSaveRecord} title="체중 기록 저장" />
-			</View>
-		</AppScreen>
+			</AppScreen>
+			<DatePickerSheet
+				onClose={() => setDatePickerVisible(false)}
+				onSelect={(date) => setRecordedAt(date)}
+				title="기록 날짜 선택"
+				value={recordedAt}
+				visible={datePickerVisible}
+			/>
+			<TimePickerSheet
+				onClose={() => setTimePickerVisible(false)}
+				onSelect={({ hour, minute }) => {
+					const updated = new Date(recordedAt);
+					updated.setHours(hour, minute, 0, 0);
+					setRecordedAt(updated);
+				}}
+				title="측정 시간 선택"
+				value={{ hour: recordedAt.getHours(), minute: recordedAt.getMinutes() }}
+				visible={timePickerVisible}
+			/>
+		</>
 	);
 }
 

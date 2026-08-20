@@ -3,7 +3,7 @@ import { Href, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-import { AppButton, AppIcon } from '@/src/components/common';
+import { AppButton, AppIcon, DatePickerSheet } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { AppModal } from '@/src/components/modal';
 import { AppScreen, TopHeader } from '@/src/components/layout';
@@ -36,7 +36,8 @@ const parseNumericValue = (value: string) => {
 
 export function MedicalExpenseRecordScreen() {
 	const router = useRouter();
-	const [recordedAt] = useState(() => new Date());
+	const [recordedAt, setRecordedAt] = useState(() => new Date());
+	const [datePickerVisible, setDatePickerVisible] = useState(false);
 	const [amount, setAmount] = useState('72,000');
 	const [hospitalName, setHospitalName] = useState('??동물병원');
 	const [receiptImageUri, setReceiptImageUri] = useState<string | null>(null);
@@ -192,13 +193,13 @@ export function MedicalExpenseRecordScreen() {
 				</View>
 
 				<View style={styles.rowTwoCards}>
-					<View style={styles.metaCard}>
+					<TouchableOpacity activeOpacity={0.8} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
 						<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.calendar} style={styles.metaIcon} />
 						<View style={styles.metaTextGroup}>
 							<Text style={styles.metaLabel}>이용 날짜</Text>
 							<Text style={styles.metaValue}>{recordDate}</Text>
 						</View>
-					</View>
+					</TouchableOpacity>
 					<View style={styles.metaCard}>
 						<AppIcon color={COLORS.gold} name="card-outline" size={22} />
 						<View style={styles.metaTextGroup}>
@@ -248,6 +249,13 @@ export function MedicalExpenseRecordScreen() {
 			<View style={styles.bottomBar}>
 				<AppButton onPress={handleSaveRecord} style={{ backgroundColor: COLORS.gold }} title="의료비 기록 저장" />
 			</View>
+			<DatePickerSheet
+				onClose={() => setDatePickerVisible(false)}
+				onSelect={(date) => setRecordedAt(date)}
+				title="이용 날짜 선택"
+				value={recordedAt}
+				visible={datePickerVisible}
+			/>
 
 			<AppModal
 				onClose={() => setIsAddModalVisible(false)}

@@ -53,4 +53,5 @@ export const COLORS = {
   gray600: '#666666',
   gray800: '#404040',
   black: '#1A1A1A',
+  transparent: 'transparent',
 } as const;
