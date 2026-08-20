@@ -1,23 +1,15 @@
-import { BlurView } from 'expo-blur';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 type AiSummaryCardProps = {
-	onGenerate: () => void;
+	isGenerating?: boolean;
+	onGenerate?: () => void;
 	summary?: string;
 };
 
-export const PLACEHOLDER_SUMMARY =
-	'아리(말티즈, 11세 7개월)는 이번 진료에서 퇴행성 관절염으로 진단되었습니다.\n\n' +
-	'주요 소견으로는 앞다리 파행, 관절 촉진 시 통증 반응, X-ray상 관절 간격 협소가 확인되었습니다. 11세 고령견에서 자주 나타나는 상태로 완치보다는 지속적인 통증 관리가 핵심입니다. \n\n' +
-	'처방된 카미녹스(소염진통제)는 염증과 통증을 줄이고, 가리유니(글루코사민)는 연골 보호를 돕습니다. 두 약 모두 식후 복용이 중요합니다. \n\n' +
-	'생활 관리로는 미끄러운 바닥을 피하고, 짧은 산책과 수중 재활을 병행하는 것이 효과적입니다. 4주 후 재방문 시 약물 반응을 확인할 예정이며, 증상 악화나 식욕 저하 시 즉시 내원하는 것을 권장합니다.';
-
-export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
-	const isLocked = !summary;
-	const content = summary ?? PLACEHOLDER_SUMMARY;
+export function AiSummaryCard({ isGenerating = false, onGenerate, summary }: AiSummaryCardProps) {
 
 	return (
 		<View style={styles.wrap}>
@@ -38,33 +30,9 @@ export function AiSummaryCard({ onGenerate, summary }: AiSummaryCardProps) {
 			<View style={styles.divider} />
 
 			<View style={styles.summaryBox}>
-				<Text style={styles.summaryTextNormal}>{content}</Text>
-				{isLocked ? (
-					<BlurView
-						experimentalBlurMethod="dimezisBlurView"
-						intensity={20}
-						style={StyleSheet.absoluteFill}
-						tint="light"
-					/>
-				) : null}
+				<Text style={styles.summaryTextNormal}>{summary ?? (isGenerating ? 'AI 요약을 생성하고 있어요.' : 'AI 요약이 준비되면 이곳에서 확인할 수 있어요.')}</Text>
 			</View>
-
-			{isLocked ? (
-				<>
-					<Text style={styles.hintText}>버튼을 눌러 AI 요약을 확인하세요</Text>
-					<AppButton
-						leftIcon={
-							<Image
-								resizeMode="contain"
-								source={require('@/assets/images/dashboard/AISummary.png')}
-								style={styles.iconImageWhite}
-							/>
-						}
-						onPress={onGenerate}
-						title="AI 요약 생성하기"
-					/>
-				</>
-			) : null}
+			{!summary && onGenerate ? <AppButton loading={isGenerating} onPress={onGenerate} title="AI 요약 생성하기" /> : null}
 		</View>
 	);
 }
@@ -73,7 +41,6 @@ const styles = StyleSheet.create({
 	wrap: { gap: SPACING.lg },
 	headerRow: { alignItems: 'center', flexDirection: 'row', gap: SPACING.md },
 	iconImage: { height: 16, width: 16 },
-	iconImageWhite: { height: 16, width: 16, tintColor: COLORS.background },
 	iconBadge: {
 		alignItems: 'center',
 		backgroundColor: COLORS.primarySoft,
@@ -95,7 +62,7 @@ const styles = StyleSheet.create({
 		borderColor: COLORS.summarycontainerborder,
 		borderRadius: RADIUS.md,
 		borderWidth: 1,
-		overflow: 'hidden', // 테두리 라운딩 곡면을 따라 블러가 꽉 차도록 설정
+		overflow: 'hidden',
 		padding: SPACING.xl,
 		position: 'relative',
 	},
@@ -104,5 +71,4 @@ const styles = StyleSheet.create({
 		color: COLORS.gray800,
 		lineHeight: 22,
 	},
-	hintText: { ...TYPOGRAPHY.small, color: COLORS.gray500, textAlign: 'center' },
 });

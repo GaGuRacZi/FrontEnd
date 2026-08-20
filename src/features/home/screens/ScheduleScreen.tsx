@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -13,34 +13,33 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
-import { BrandLogoButton } from '@/src/components/common/BrandLogoButton';
 import { ScreenLayout } from '@/src/components/layout';
 import { COLORS, SIZE, SPACING } from '@/src/constants';
 import { useScheduleTodoStore } from '../ScheduleTodoStore';
-import type { ScheduleTodo } from '../ScheduleTodoStore';
-import type { TodoCategory } from '../types';
+import { formatTodoApiDate } from '../services/todoApi';
 import {
-  CATEGORY_META,
   DAYS_KO,
-  PROTECTED_TAGS,
   RECOMMENDED_TAGS,
-  STATIC_MODAL_TAGS,
-  STATIC_TAG_CONFIG,
   TAG_COLOR_PAIRS,
-  getTagCategory,
   getTagColorPair,
   getTagCfg,
 } from '../utils/scheduleConfig';
 import {
   buildCalendarWeeks,
   formatDate,
-  formatFullDate,
-  generateRoutineTodos,
   getDayOfWeekKo,
   getDaysInMonth,
   getRoutineDatesInMonth,
+  type RoutineType,
 } from '../utils/scheduleHelpers';
 import { styles } from './ScheduleScreen.styles';
+
+function parseTodoDate(value: string | undefined, fallback: Date) {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return fallback;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.valueOf()) ? fallback : date;
+}
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
@@ -53,7 +52,20 @@ export function ScheduleScreen() {
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState(today.getDate());
   const [selectedTag, setSelectedTag] = useState<string>('전체');
-  const { todos, customTags, setTodos, setCustomTags } = useScheduleTodoStore();
+  const {
+    createScheduleTodos,
+    createTag,
+    customTags,
+    deleteTag,
+    deleteScheduleTodo,
+    getDayProgress,
+    getScheduleTodoDetail,
+    getTodosForDate,
+    loadCalendarMonth,
+    loadTodosForDate,
+    toggleTodo,
+    updateScheduleTodo,
+  } = useScheduleTodoStore();
 
   // ── 모달 visible
   const [addVisible, setAddVisible] = useState(false);
@@ -63,7 +75,7 @@ export function ScheduleScreen() {
   const [routinePickerVisible, setRoutinePickerVisible] = useState(false);
 
   // ── 루틴
-  const [routineType, setRoutineType] = useState<'매일' | '특정요일' | '매월'>('특정요일');
+  const [routineType, setRoutineType] = useState<RoutineType>('특정요일');
   const [routineDays, setRoutineDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [routineStart, setRoutineStart] = useState<Date>(
     new Date(today.getFullYear(), today.getMonth(), today.getDate()),
@@ -80,9 +92,12 @@ export function ScheduleScreen() {
   // ── 할일 추가 입력
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [newTag, setNewTag] = useState<string>('복약');
+  const [newTag, setNewTag] = useState('');
   const [newTimeHour, setNewTimeHour] = useState(20);
   const [newTimeMinute, setNewTimeMinute] = useState(0);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
 
   // ── 태그 모달 입력
   const [newTagName, setNewTagName] = useState('');
@@ -108,28 +123,26 @@ export function ScheduleScreen() {
   const amPm = newTimeHour < 12 ? '오전' : '오후';
 
   // ── 동적 태그 목록
-  const allFilterTags: string[] = ['전체', '복약', '병원', '산책', ...customTags.map((ct) => ct.name)];
-  const allModalTags: string[] = ['복약', '병원', '산책', ...customTags.map((ct) => ct.name)];
+  const allFilterTags = ['전체', ...customTags.map((ct) => ct.name)];
+  const allModalTags = customTags.map((ct) => ct.name);
   const tabBarHeight = SIZE.tabBarHeight + Math.max(0, insets.bottom - SPACING.xl);
   const fabBottom = tabBarHeight + SIZE.tabBarHeight - SPACING.jumbo;
   const sheetPaddingBottom = Math.max(SPACING.jumbo, insets.bottom + SPACING.xxl);
   const tallSheetPaddingBottom = Math.max(SPACING.jumbo + 16, sheetPaddingBottom);
+  const selectedDate = formatTodoApiDate(new Date(viewYear, viewMonth, selectedDay));
 
-  // ── 캘린더 데이터 (연·월 포함 필터링)
-  const dayTodos = todos.filter((t) => t.day === selectedDay && t.month === viewMonth && t.year === viewYear);
+  useEffect(() => {
+    void loadTodosForDate(selectedDate).catch(() => undefined);
+  }, [loadTodosForDate, selectedDate]);
+
+  useEffect(() => {
+    void loadCalendarMonth(viewYear, viewMonth + 1).catch(() => undefined);
+  }, [loadCalendarMonth, viewMonth, viewYear]);
+
+  const dayTodos = getTodosForDate(selectedDate);
   const filtered = selectedTag === '전체' ? dayTodos : dayTodos.filter((t) => t.tag === selectedTag);
   const doneCount = dayTodos.filter((t) => t.status === 'done').length;
   const totalCount = dayTodos.length;
-
-  const dayTodoProgress = new Map<number, { done: number; total: number }>();
-  todos
-    .filter((t) => t.month === viewMonth && t.year === viewYear)
-    .forEach((t) => {
-      const progress = dayTodoProgress.get(t.day) ?? { done: 0, total: 0 };
-      progress.total += 1;
-      if (t.status === 'done') progress.done += 1;
-      dayTodoProgress.set(t.day, progress);
-    });
 
   const weeks = buildCalendarWeeks(viewYear, viewMonth);
   const isToday = (d: number) =>
@@ -183,80 +196,164 @@ export function ScheduleScreen() {
     openSheet(routinePickerSheetY, setRoutinePickerVisible);
   };
 
-  // ── 할일 토글
   const handleToggle = (id: string) => {
-    setTodos((prev) => prev.map((t) => t.id === id ? { ...t, status: t.status === 'done' ? 'pending' : 'done' } : t));
+    void toggleTodo(id, selectedDate).catch(() => undefined);
   };
 
-  // ── 할일 추가 (루틴 설정 적용 → 해당하는 모든 날짜에 생성)
-  const handleAdd = () => {
-    if (!newTitle.trim()) return;
-    const cat: TodoCategory = getTagCategory(newTag);
-
-    const base: Omit<ScheduleTodo, 'id' | 'day' | 'month' | 'year'> = {
-      title: newTitle.trim(),
-      description: newDesc.trim() || undefined,
-      timeLabel: formattedTime,
-      status: 'pending',
-      category: cat,
-      tag: newTag,
-    };
-
-    const newTodos = generateRoutineTodos(base, routineType, routineDays, routineStart, routineEnd);
-
-    // 루틴 날짜가 없으면 (기간이 비어있는 경우) 선택된 날 하나만 추가
-    if (newTodos.length === 0) {
-      newTodos.push({ ...base, id: `st-${Date.now()}`, day: selectedDay, month: viewMonth, year: viewYear });
-    }
-
-    setTodos((prev) => [...prev, ...newTodos]);
-    setNewTitle('');
-    setNewDesc('');
+  const closeAddSheet = () => {
+    setEditingTodoId(null);
     closeSheet(addSheetY, setAddVisible);
   };
 
-  // ── 태그 저장
+  const openAddSheet = () => {
+    setEditingTodoId(null);
+    setFormError(null);
+    setNewTitle('');
+    setNewDesc('');
+    setNewTag(customTags[0]?.name ?? '');
+    openSheet(addSheetY, setAddVisible);
+  };
+
+  const handleEditTodo = (todoId: string) => {
+    if (isSaving) return;
+    void (async () => {
+      setIsSaving(true);
+      try {
+        const detail = await getScheduleTodoDetail(todoId);
+        const time = detail.timeLabel.match(/^(\d{1,2}):(\d{2})$/);
+        setEditingTodoId(todoId);
+        setFormError(null);
+        setNewTitle(detail.title);
+        setNewDesc(detail.description ?? '');
+        setNewTag(detail.tag);
+        setNewTimeHour(time ? Number(time[1]) : 20);
+        setNewTimeMinute(time ? Number(time[2]) : 0);
+        setRoutineType('특정요일');
+        setRoutineDays(detail.week === undefined ? [0] : [detail.week]);
+        const startDate = parseTodoDate(detail.startDate, today);
+        setRoutineStart(startDate);
+        setRoutineEnd(parseTodoDate(detail.endDate, startDate));
+        setRoutineViewYear(startDate.getFullYear());
+        setRoutineViewMonth(startDate.getMonth());
+        openSheet(addSheetY, setAddVisible);
+      } catch {
+        Alert.alert('할 일을 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
+      } finally {
+        setIsSaving(false);
+      }
+    })();
+  };
+
+  const handleDeleteTodo = (todoId: string) => {
+    if (isSaving) return;
+    void (async () => {
+      setIsSaving(true);
+      try {
+        await deleteScheduleTodo(todoId, selectedDate);
+        await loadCalendarMonth(viewYear, viewMonth + 1);
+      } catch {
+        Alert.alert('할 일을 삭제하지 못했어요', '잠시 후 다시 시도해주세요.');
+      } finally {
+        setIsSaving(false);
+      }
+    })();
+  };
+
+  const handleTodoLongPress = (todoId: string, title: string) => {
+    Alert.alert('할 일을 관리할까요?', title, [
+      { style: 'cancel', text: '취소' },
+      { onPress: () => handleEditTodo(todoId), text: '수정' },
+      { onPress: () => handleDeleteTodo(todoId), style: 'destructive', text: '삭제' },
+    ]);
+  };
+
+  const handleAdd = () => {
+    if (customTags.length === 0) {
+      openSheet(tagSheetY, setTagModalVisible);
+      return;
+    }
+
+    if (!newTitle.trim() || isSaving) return;
+
+    void (async () => {
+      setIsSaving(true);
+      setFormError(null);
+      try {
+        const input = {
+          description: newDesc.trim() || undefined,
+          endDate: routineEnd,
+          routineDays,
+          routineType,
+          startDate: routineStart,
+          tag: newTag || customTags[0].name,
+          timeLabel: formattedTime,
+          title: newTitle,
+        };
+        if (editingTodoId) await updateScheduleTodo(editingTodoId, input);
+        else await createScheduleTodos(input);
+        await Promise.all([
+          loadTodosForDate(selectedDate),
+          loadCalendarMonth(viewYear, viewMonth + 1),
+        ]);
+        setNewTitle('');
+        setNewDesc('');
+        closeAddSheet();
+      } catch {
+        setFormError('할 일을 저장하지 못했어요. 다시 시도해주세요.');
+      } finally {
+        setIsSaving(false);
+      }
+    })();
+  };
+
   const handleSaveTag = () => {
     const name = newTagName.trim();
-    if (!name) return;
-    if (PROTECTED_TAGS.includes(name) || customTags.some((ct) => ct.name === name)) return;
-    setCustomTags((prev) => [...prev, { id: `ct-${Date.now()}`, name, colorIdx: selectedColorIdx }]);
-    setNewTagName('');
-    setSelectedColorIdx(0);
-    closeSheet(tagSheetY, setTagModalVisible);
+    if (!name || isSaving) return;
+    if (customTags.some((ct) => ct.name === name)) return;
+    void (async () => {
+      setIsSaving(true);
+      setFormError(null);
+      try {
+        const tag = await createTag(name, selectedColorIdx);
+        setNewTag(tag.name);
+        setNewTagName('');
+        setSelectedColorIdx(0);
+        closeSheet(tagSheetY, setTagModalVisible);
+      } catch {
+        setFormError('태그를 저장하지 못했어요. 다시 시도해주세요.');
+      } finally {
+        setIsSaving(false);
+      }
+    })();
   };
 
   const handleDeleteCustomTag = (tagId: string) => {
     const ct = customTags.find((c) => c.id === tagId);
     if (!ct) return;
-    setCustomTags((prev) => prev.filter((c) => c.id !== tagId));
-    setTodos((prev) => prev.filter((t) => t.tag !== ct.name));
-    if (selectedTag === ct.name) setSelectedTag('전체');
+    void (async () => {
+      try {
+        await deleteTag(tagId);
+        if (selectedTag === ct.name) setSelectedTag('전체');
+        if (newTag === ct.name) setNewTag('');
+      } catch {
+        setFormError('태그를 삭제하지 못했어요. 다시 시도해주세요.');
+      }
+    })();
   };
 
   return (
     <>
       <ScreenLayout
         headerFullWidth
-        leftContent={<BrandLogoButton />}
-        rightContent={
-          <Pressable accessibilityLabel="알림" hitSlop={8} onPress={() => router.push('/notifications')} style={styles.bellBtn}>
-            <AppIcon color={COLORS.gray600} name="notifications-outline" size={22} />
-          </Pressable>
-        }
+        headerVariant="auth"
+        leftAccessibilityLabel="홈으로 돌아가기"
+        onLeftPress={() => router.back()}
+        onRightPress={() => router.push('/notifications')}
+        rightIcon="notifications-outline"
+        rightAccessibilityLabel="알림 열기"
+        title="오늘의 할 일"
       >
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={styles.scroll}>
-          {/* ── 서브 헤더 */}
-          <View style={styles.subHeader}>
-            <Pressable hitSlop={8} onPress={() => router.back()} style={styles.backBtn}>
-              <AppIcon color={COLORS.black} name="chevron-back" size={22} />
-            </Pressable>
-            <View style={styles.titleBlock}>
-              <Text style={styles.pageTitle}>오늘의 할 일</Text>
-              <Text style={styles.pageDate}>{formatFullDate(today)}</Text>
-            </View>
-          </View>
-
           {/* ── 캘린더 카드 */}
           <View style={styles.calendarCard}>
             <View style={styles.calMonthRow}>
@@ -278,13 +375,13 @@ export function ScheduleScreen() {
                     if (d === null) return <View key={`e-${wi}-${di}`} style={styles.calCell} />;
                     const todayCell = isToday(d);
                     const isSelected = d === selectedDay;
-                    const progress = dayTodoProgress.get(d);
+                    const progress = getDayProgress(formatTodoApiDate(new Date(viewYear, viewMonth, d)));
                     const dotColor = progress
-                      ? progress.done === 0
+                      ? progress.completed === 0
                         ? COLORS.danger
-                        : progress.done === progress.total
+                        : progress.completed === progress.total
                           ? COLORS.success
-                          : COLORS.starWarm
+                          : COLORS.purple
                       : null;
                     const isSat = di === 5;
                     const isSun = di === 6;
@@ -341,13 +438,15 @@ export function ScheduleScreen() {
             <View style={styles.taskList}>
               {filtered.map((todo) => {
                 const isDone = todo.status === 'done';
-                const meta = CATEGORY_META[todo.category];
                 const tagCfg = getTagCfg(todo.tag, customTags);
                 return (
-                  <View key={todo.id} style={styles.taskCard}>
-                    <View style={[styles.taskIconWrap, { backgroundColor: meta.tint }]}>
-                      <Image source={meta.icon} style={{ height: meta.iconSize, resizeMode: 'contain', width: meta.iconSize }} />
-                    </View>
+                  <Pressable
+                    delayLongPress={350}
+                    key={todo.id}
+                    onLongPress={() => handleTodoLongPress(todo.id, todo.title)}
+                    style={styles.taskCard}
+                  >
+                    <View style={[styles.taskTagDot, { backgroundColor: tagCfg.bg }]} />
                     <View style={styles.taskBody}>
                       <Text style={[styles.taskTitle, isDone && styles.taskTitleDone]}>{todo.title}</Text>
                       {todo.description ? <Text numberOfLines={1} style={styles.taskDesc}>{todo.description}</Text> : null}
@@ -359,7 +458,7 @@ export function ScheduleScreen() {
                     <Pressable onPress={() => handleToggle(todo.id)} style={[styles.checkbox, isDone && styles.checkboxDone]}>
                       {isDone ? <AppIcon color={COLORS.background} name="checkmark" size={13} /> : null}
                     </Pressable>
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -367,19 +466,19 @@ export function ScheduleScreen() {
         </ScrollView>
 
         {/* FAB */}
-        <Pressable accessibilityLabel="할일 추가" onPress={() => openSheet(addSheetY, setAddVisible)} style={[styles.fab, { bottom: fabBottom }]}>
+        <Pressable accessibilityLabel="할일 추가" onPress={openAddSheet} style={[styles.fab, { bottom: fabBottom }]}>
           <AppIcon color={COLORS.background} name="add" size={30} />
         </Pressable>
       </ScreenLayout>
 
       {/* ── 할일 추가 모달 */}
-      <Modal animationType="none" onRequestClose={() => closeSheet(addSheetY, setAddVisible)} statusBarTranslucent transparent visible={addVisible}>
-        <Pressable onPress={() => closeSheet(addSheetY, setAddVisible)} style={styles.overlay}>
+      <Modal animationType="none" onRequestClose={closeAddSheet} statusBarTranslucent transparent visible={addVisible}>
+        <Pressable onPress={closeAddSheet} style={styles.overlay}>
           <Animated.View onStartShouldSetResponder={() => true} style={[styles.sheet, { paddingBottom: sheetPaddingBottom, transform: [{ translateY: addSheetY }] }]}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>할일 추가</Text>
-              <Pressable hitSlop={8} onPress={() => closeSheet(addSheetY, setAddVisible)} style={styles.closeCircleBtn}>
+              <Text style={styles.sheetTitle}>{editingTodoId ? '할 일 수정' : '할 일 추가'}</Text>
+              <Pressable hitSlop={8} onPress={closeAddSheet} style={styles.closeCircleBtn}>
                 <AppIcon color={COLORS.gray600} name="close" size={18} />
               </Pressable>
             </View>
@@ -453,8 +552,9 @@ export function ScheduleScreen() {
               </View>
             </View>
 
-            <Pressable onPress={handleAdd} style={styles.submitBtn}>
-              <Text style={styles.submitBtnText}>추가하기</Text>
+            {formError ? <Text accessibilityLiveRegion="polite" style={styles.formError}>{formError}</Text> : null}
+            <Pressable disabled={isSaving} onPress={handleAdd} style={[styles.submitBtn, isSaving && styles.submitBtnDisabled]}>
+              <Text style={styles.submitBtnText}>{editingTodoId ? '수정하기' : '추가하기'}</Text>
             </Pressable>
           </Animated.View>
         </Pressable>
@@ -520,14 +620,6 @@ export function ScheduleScreen() {
             <View style={styles.inputGroup}>
               <Text style={styles.tagSectionLabel}>현재 태그</Text>
               <View style={styles.tagSelectRow}>
-                {STATIC_MODAL_TAGS.map((tag) => {
-                  const cfg = STATIC_TAG_CONFIG[tag];
-                  return (
-                    <View key={tag} style={[styles.tagChipWithX, { backgroundColor: cfg.bg }]}>
-                      <Text style={[styles.tagChipText, { color: cfg.color }]}>{tag}</Text>
-                    </View>
-                  );
-                })}
                 {customTags.map((ct) => {
                   const cfg = getTagColorPair(ct.colorIdx);
                   return (
@@ -587,10 +679,11 @@ export function ScheduleScreen() {
               <Pressable onPress={() => closeSheet(tagSheetY, setTagModalVisible)} style={styles.deleteBtn}>
                 <Text style={styles.deleteBtnText}>취소</Text>
               </Pressable>
-              <Pressable onPress={handleSaveTag} style={styles.saveBtn}>
+              <Pressable disabled={isSaving} onPress={handleSaveTag} style={[styles.saveBtn, isSaving && styles.submitBtnDisabled]}>
                 <Text style={styles.saveBtnText}>저장하기</Text>
               </Pressable>
             </View>
+            {formError ? <Text accessibilityLiveRegion="polite" style={styles.formError}>{formError}</Text> : null}
           </Animated.View>
         </Pressable>
       </Modal>
@@ -611,14 +704,14 @@ export function ScheduleScreen() {
             </View>
 
             <View style={styles.routineCalCard}>
-              <View style={styles.calMonthRow}>
-                <Text style={styles.calMonthText}>{routineViewYear}년 {routineViewMonth + 1}월</Text>
-                <View style={styles.calArrowGroup}>
-                  <Pressable hitSlop={12} onPress={prevRoutineMonth}><AppIcon color={COLORS.gray500} name="chevron-back" size={16} /></Pressable>
-                  <Pressable hitSlop={12} onPress={nextRoutineMonth}><AppIcon color={COLORS.gray500} name="chevron-forward" size={16} /></Pressable>
+              <View style={[styles.calMonthRow, styles.modalCalMonthRow]}>
+                <Text style={[styles.calMonthText, styles.modalCalMonthText]}>{routineViewYear}년 {routineViewMonth + 1}월</Text>
+                <View style={[styles.calArrowGroup, styles.modalCalArrowGroup]}>
+                  <Pressable hitSlop={6} onPress={prevRoutineMonth} style={styles.modalCalArrowBtn}><AppIcon color={COLORS.gray500} name="chevron-back" size={24} /></Pressable>
+                  <Pressable hitSlop={6} onPress={nextRoutineMonth} style={styles.modalCalArrowBtn}><AppIcon color={COLORS.gray500} name="chevron-forward" size={24} /></Pressable>
                 </View>
               </View>
-              <View style={styles.calWeekRow}>
+              <View style={[styles.calWeekRow, styles.modalCalWeekRow]}>
                 {DAYS_KO.map((d, i) => (
                   <Text key={d} style={[styles.calWeekDay, i === 5 && styles.calWeekDaySat, i === 6 && styles.calWeekDaySun]}>{d}</Text>
                 ))}
@@ -659,7 +752,7 @@ export function ScheduleScreen() {
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>간편 설정</Text>
               <View style={styles.routineTypeRow}>
-                {(['매일', '특정요일', '매월'] as const).map((type) => {
+                {(['매일', '특정요일'] as const).map((type) => {
                   const active = routineType === type;
                   return (
                     <Pressable key={type} onPress={() => setRoutineType(type)} style={[styles.routineTypeChip, active && styles.routineTypeChipActive]}>
@@ -732,14 +825,14 @@ export function ScheduleScreen() {
               </Pressable>
             </View>
             <View style={styles.pickerCalCard}>
-              <View style={styles.calMonthRow}>
-                <Text style={styles.calMonthText}>{pickerYear}년 {pickerMonth + 1}월</Text>
-                <View style={styles.calArrowGroup}>
-                  <Pressable hitSlop={12} onPress={prevPickerMonth}><AppIcon color={COLORS.gray500} name="chevron-back" size={16} /></Pressable>
-                  <Pressable hitSlop={12} onPress={nextPickerMonth}><AppIcon color={COLORS.gray500} name="chevron-forward" size={16} /></Pressable>
+              <View style={[styles.calMonthRow, styles.modalCalMonthRow]}>
+                <Text style={[styles.calMonthText, styles.modalCalMonthText]}>{pickerYear}년 {pickerMonth + 1}월</Text>
+                <View style={[styles.calArrowGroup, styles.modalCalArrowGroup]}>
+                  <Pressable hitSlop={6} onPress={prevPickerMonth} style={styles.modalCalArrowBtn}><AppIcon color={COLORS.gray500} name="chevron-back" size={24} /></Pressable>
+                  <Pressable hitSlop={6} onPress={nextPickerMonth} style={styles.modalCalArrowBtn}><AppIcon color={COLORS.gray500} name="chevron-forward" size={24} /></Pressable>
                 </View>
               </View>
-              <View style={styles.calWeekRow}>
+              <View style={[styles.calWeekRow, styles.modalCalWeekRow]}>
                 {DAYS_KO.map((d, i) => (
                   <Text key={d} style={[styles.calWeekDay, i === 5 && styles.calWeekDaySat, i === 6 && styles.calWeekDaySun]}>{d}</Text>
                 ))}

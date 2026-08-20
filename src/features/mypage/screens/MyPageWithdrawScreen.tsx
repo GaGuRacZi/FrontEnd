@@ -1,32 +1,48 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, AppIcon, EmptyState, LoadingView } from '@/src/components/common';
-import { AppCheckbox, AppInput } from '@/src/components/form';
+import { AppCheckbox } from '@/src/components/form';
 import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { MyPageCard, MyPageHeader } from '../components';
 import { useMyPageStore } from '../MyPageStore';
+import { getRemoteWithdrawalPreview } from '../services/mypageApi';
 
 export function MyPageWithdrawScreen() {
   const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const { withdrawAccount } = useAccountLifecycle();
-  const { verifyCurrentUserPassword } = useAuthSession();
-  const { isReady, profile, subscription } = useMyPageStore();
+  const { isReady, profile } = useMyPageStore();
   const [checked, setChecked] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [reauthenticated, setReauthenticated] = useState(false);
-  const [verificationValue, setVerificationValue] = useState('');
-  const [verificationError, setVerificationError] = useState<string>();
-  const [verifying, setVerifying] = useState(false);
-  const verifyingRef = useRef(false);
   const [withdrawError, setWithdrawError] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof getRemoteWithdrawalPreview>> | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+  const [previewRequest, setPreviewRequest] = useState(0);
+
+  useEffect(() => {
+    if (!isReady || !profile) return;
+
+    let active = true;
+    setPreview(null);
+    setPreviewError(false);
+    void getRemoteWithdrawalPreview()
+      .then((nextPreview) => {
+        if (active) setPreview(nextPreview);
+      })
+      .catch(() => {
+        if (active) setPreviewError(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isReady, previewRequest, profile]);
   if (!isReady) {
     return (
       <MyPageHeader title="탈퇴 확인">
@@ -35,7 +51,7 @@ export function MyPageWithdrawScreen() {
     );
   }
 
-  if (!profile || !subscription) {
+  if (!profile) {
     return (
       <MyPageHeader title="탈퇴 확인">
         <EmptyState title="계정 정보를 찾지 못했어요." />
@@ -43,80 +59,56 @@ export function MyPageWithdrawScreen() {
     );
   }
 
-  const requiresSubscriptionAction =
-    subscription.currentPlanId !== 'baby-jelly' && subscription.pendingType !== 'cancel';
-  const usesKakao = profile.loginConnections.some((connection) => connection.method === 'kakao');
-  if (usesKakao) {
+  if (previewError) {
     return (
       <MyPageHeader title="탈퇴 확인">
         <EmptyState
-          description="현재 카카오 계정으로는 본인 확인을 진행할 수 없어 탈퇴를 지원하지 않아요."
-          title="카카오 계정 탈퇴는 지원하지 않아요"
+          actionLabel="다시 시도"
+          description="잠시 후 다시 시도해주세요."
+          onActionPress={() => setPreviewRequest((current) => current + 1)}
+          title="탈퇴 정보를 불러오지 못했어요"
         />
       </MyPageHeader>
     );
   }
 
-  const canWithdraw = isReady && checked && !requiresSubscriptionAction && !withdrawing;
-  const loginMethodLabel = '비밀번호 확인';
-  const modalBusy = verifying || withdrawing;
+  if (!preview) {
+    return (
+      <MyPageHeader title="탈퇴 확인">
+        <LoadingView label="탈퇴 정보를 확인하고 있어요." />
+      </MyPageHeader>
+    );
+  }
+
+  const hasWithdrawalRestriction = preview.subscribing || preview.hasOngoingMarketTrade;
+  const canWithdraw = checked && !hasWithdrawalRestriction && !withdrawing;
+  const modalBusy = withdrawing;
 
   const resetVerification = () => {
-    setReauthenticated(false);
-    setVerificationValue('');
-    setVerificationError(undefined);
     setWithdrawError(false);
   };
 
   const closeModal = () => {
-    if (verifyingRef.current || withdrawing) return;
+    if (withdrawing) return;
     setModalVisible(false);
     resetVerification();
   };
 
   const submit = () => {
     if (!isReady) return;
-    if (requiresSubscriptionAction) {
-      showAlert('구독 해지가 먼저 필요해요', '내 요금제에서 구독 해지를 예약한 뒤 탈퇴할 수 있어요.');
+    if (preview.subscribing) {
+      showAlert('구독을 먼저 확인해주세요', '이용 중인 구독을 정리한 뒤 탈퇴할 수 있어요.');
+      return;
+    }
+    if (preview.hasOngoingMarketTrade) {
+      showAlert('진행 중인 거래가 있어요', '진행 중인 장터 거래를 마친 뒤 탈퇴할 수 있어요.');
       return;
     }
     resetVerification();
     setModalVisible(true);
   };
 
-  const confirmIdentity = async () => {
-    if (verifyingRef.current || withdrawing) return;
-    if (!verificationValue) return;
-
-    verifyingRef.current = true;
-    setVerifying(true);
-    setVerificationError(undefined);
-
-    try {
-      const result = await verifyCurrentUserPassword(verificationValue);
-
-      if (result === 'verified') {
-        setVerificationValue('');
-        setReauthenticated(true);
-        return;
-      }
-
-      setVerificationError(
-        result === 'missing'
-          ? '이 계정의 비밀번호 확인 정보를 찾지 못했어요.'
-          : '비밀번호가 일치하지 않아요.',
-      );
-    } catch {
-      setVerificationError('비밀번호를 확인하지 못했어요. 잠시 후 다시 시도해주세요.');
-    } finally {
-      verifyingRef.current = false;
-      setVerifying(false);
-    }
-  };
-
   const confirmWithdraw = () => {
-    if (!reauthenticated) return;
-
     navigateOnce(async () => {
       if (withdrawing) return;
       setWithdrawError(false);
@@ -153,25 +145,16 @@ export function MyPageWithdrawScreen() {
             <View style={styles.checkText}>
               <Text style={styles.checkTitle}>구독 상태를 확인했어요</Text>
               <Text style={styles.checkDescription}>
-                구독 중이면 해지 예약 후 탈퇴할 수 있어요.
+                이용 중인 구독이 있으면 정리한 뒤 탈퇴할 수 있어요.
               </Text>
             </View>
           </View>
           <View style={styles.checkItem}>
             <AppIcon color={COLORS.primary} name="checkmark-circle" size={22} />
             <View style={styles.checkText}>
-              <Text style={styles.checkTitle}>전송 완료 채팅은 보존될 수 있어요</Text>
+              <Text style={styles.checkTitle}>안내를 확인한 뒤 탈퇴해요</Text>
               <Text style={styles.checkDescription}>
-                남은 참여자에게는 탈퇴한 사용자로 표시돼요.
-              </Text>
-            </View>
-          </View>
-          <View style={styles.checkItem}>
-            <AppIcon color={COLORS.primary} name="checkmark-circle" size={22} />
-            <View style={styles.checkText}>
-              <Text style={styles.checkTitle}>{loginMethodLabel} 후 탈퇴해요</Text>
-              <Text style={styles.checkDescription}>
-                본인 확인 후 계정 삭제를 진행해요.
+                탈퇴 후에는 계정 데이터를 되돌릴 수 없어요.
               </Text>
             </View>
           </View>
@@ -188,7 +171,13 @@ export function MyPageWithdrawScreen() {
         <AppButton
           disabled={!canWithdraw}
           onPress={submit}
-          title={requiresSubscriptionAction ? '구독 해지 예약이 필요해요' : '탈퇴하기'}
+          title={
+            preview.subscribing
+              ? '구독 확인이 필요해요'
+              : preview.hasOngoingMarketTrade
+                ? '진행 중인 거래가 있어요'
+                : '탈퇴하기'
+          }
           variant="danger"
         />
       </ScrollView>
@@ -198,16 +187,11 @@ export function MyPageWithdrawScreen() {
         onClose={closeModal}
         primaryAction={{
           disabled:
-            modalBusy || (!withdrawError && !reauthenticated && !verificationValue),
-          label: withdrawError
-            ? '다시 시도'
-            : reauthenticated
-              ? '탈퇴하기'
-              : '확인',
+            modalBusy,
+          label: withdrawError ? '다시 시도' : '탈퇴하기',
           loading: modalBusy,
-          onPress:
-            withdrawError || reauthenticated ? confirmWithdraw : () => void confirmIdentity(),
-          variant: withdrawError || reauthenticated ? 'danger' : 'primary',
+          onPress: confirmWithdraw,
+          variant: 'danger',
         }}
         secondaryAction={{
           disabled: modalBusy,
@@ -217,37 +201,16 @@ export function MyPageWithdrawScreen() {
         title={
           withdrawError
             ? '탈퇴를 완료하지 못했어요'
-            : reauthenticated
-              ? '정말 탈퇴할까요?'
-              : '비밀번호를 확인해주세요'
+            : '정말 탈퇴할까요?'
         }
         variant="center"
         visible={modalVisible}
       >
-        {withdrawError || reauthenticated ? (
-          <Text style={[styles.modalDescription, withdrawError && styles.modalError]}>
-            {withdrawError
-              ? '계정 정보를 모두 삭제하지 못했어요.\n잠시 후 다시 시도해주세요.'
-              : '탈퇴 후에는 현재 계정 데이터를 되돌릴 수 없어요.'}
-          </Text>
-        ) : (
-          <AppInput
-            autoCapitalize="none"
-            autoComplete="current-password"
-            error={verificationError}
-            label="비밀번호"
-            onChangeText={(value) => {
-              setVerificationValue(value);
-              if (verificationError) setVerificationError(undefined);
-            }}
-            onSubmitEditing={() => void confirmIdentity()}
-            placeholder="비밀번호를 입력해주세요"
-            returnKeyType="done"
-            secureTextEntry
-            textContentType="password"
-            value={verificationValue}
-          />
-        )}
+        <Text style={[styles.modalDescription, withdrawError && styles.modalError]}>
+          {withdrawError
+            ? '계정 정보를 모두 삭제하지 못했어요.\n잠시 후 다시 시도해주세요.'
+            : '탈퇴 후에는 현재 계정 데이터를 되돌릴 수 없어요.'}
+        </Text>
       </AppModal>
     </MyPageHeader>
   );

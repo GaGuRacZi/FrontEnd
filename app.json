@@ -32,7 +32,8 @@
       ],
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "package": "com.gaguraczi.paw",
       "googleServicesFile": "./google-services.json",
@@ -68,6 +69,13 @@
           "photosPermission": "프로필, 반려동물, 문서 또는 게시물에 사진을 첨부하려면 사진 접근 권한이 필요합니다.",
           "cameraPermission": "처방전 사진을 촬영하려면 카메라 권한이 필요합니다.",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "진료 내용을 녹음하려면 마이크 권한이 필요합니다.",
+          "recordAudioAndroid": true
         }
       ],
       [

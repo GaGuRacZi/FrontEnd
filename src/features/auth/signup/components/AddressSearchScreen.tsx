@@ -9,7 +9,7 @@ import { searchRemoteRegions, type RegionSearchResult } from '@/src/services/loc
 
 type AddressSearchScreenProps = {
   onBack: () => void;
-  onSelect: (address: string) => void;
+  onSelect: (region: RegionSearchResult) => void;
 };
 
 export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenProps) {
@@ -120,7 +120,7 @@ export function AddressSearchScreen({ onBack, onSelect }: AddressSearchScreenPro
                 accessibilityLabel={`${region.name} 선택`}
                 accessibilityRole="button"
                 key={region.code}
-                onPress={() => onSelect(region.name)}
+                onPress={() => onSelect(region)}
                 style={({ pressed }) => [styles.result, pressed && styles.pressed]}
               >
                 <Text style={styles.resultName}>{region.name}</Text>

@@ -1,4 +1,4 @@
-export type InquiryType = 'account' | 'billing' | 'community' | 'other' | 'service';
+export type InquiryType = 'account' | 'billing' | 'community' | 'other' | 'pet';
 export type InquiryStatus = 'answered' | 'waiting';
 
 export type Notice = {
@@ -40,4 +40,4 @@ export type StoredSupportState = {
   inquiries: Inquiry[];
 };
 
-export type SupportStatus = 'error' | 'loading' | 'ready';
+export type SupportStatus = 'loading' | 'ready';

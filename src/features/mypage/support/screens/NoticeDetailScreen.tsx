@@ -1,7 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { EmptyState } from '@/src/components/common';
+import { EmptyState, LoadingView } from '@/src/components/common';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import { SupportBadge } from '../components/SupportBadge';
@@ -12,8 +13,25 @@ import { formatSupportDate } from '../supportValidation';
 export function NoticeDetailScreen() {
   const params = useLocalSearchParams<{ noticeId?: string | string[] }>();
   const noticeId = Array.isArray(params.noticeId) ? params.noticeId[0] : params.noticeId;
-  const { getNotice } = useSupportStore();
+  const { getNotice, loadNotice } = useSupportStore();
   const notice = noticeId ? getNotice(noticeId) : undefined;
+  const [loading, setLoading] = useState(Boolean(noticeId));
+
+  useEffect(() => {
+    if (!noticeId) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    void loadNotice(noticeId).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadNotice, noticeId]);
 
   return (
     <SupportScreen
@@ -21,7 +39,7 @@ export function NoticeDetailScreen() {
       loadingLabel="공지사항을 불러오고 있어요."
       title="공지사항"
     >
-      {notice ? (
+      {notice?.body ? (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.card}>
             <View style={styles.badges}>
@@ -38,6 +56,8 @@ export function NoticeDetailScreen() {
             </Text>
           </View>
         </ScrollView>
+      ) : loading ? (
+        <LoadingView label="공지사항을 불러오고 있어요." />
       ) : (
         <View style={styles.empty}>
           <EmptyState

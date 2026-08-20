@@ -705,6 +705,9 @@ export function CommunityPostDetailScreen({
           : selectedPost?.kind === 'market'
             ? '장터 목록으로 돌아가기'
             : '커뮤니티로 돌아가기';
+  const selectedMarketPhotoKey = selectedPost?.kind === 'market'
+    ? getCommunityImageUris(selectedPost.images, selectedPost.photoUris).join('|')
+    : '';
   const selectedMarketImageCount = selectedPost?.kind === 'market'
     ? Math.max(
         1,
@@ -770,23 +773,26 @@ export function CommunityPostDetailScreen({
 
   useEffect(() => {
     setImageIndex(0);
-  }, [postId]);
+  }, [postId, selectedMarketPhotoKey]);
 
   useEffect(() => {
     setImageIndex((current) => Math.min(current, selectedMarketImageCount - 1));
   }, [selectedMarketImageCount]);
 
-  useEffect(() => {
-    if (!isReady) return;
-    let active = true;
-    setPostLoadError(false);
-    void loadPostDetail(postId).then((result) => {
-      if (active && !result.ok) setPostLoadError(true);
-    });
-    return () => {
-      active = false;
-    };
-  }, [isReady, loadPostDetail, postId, postKind]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!isReady) return undefined;
+
+      let active = true;
+      setPostLoadError(false);
+      void loadPostDetail(postId).then((result) => {
+        if (active && !result.ok) setPostLoadError(true);
+      });
+      return () => {
+        active = false;
+      };
+    }, [isReady, loadPostDetail, postId]),
+  );
 
   useEffect(() => {
     if (!talkPostId) return;

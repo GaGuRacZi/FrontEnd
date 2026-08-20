@@ -1,4 +1,4 @@
-﻿export const HEALTH_SUMMARY_IMAGES = {
+export const HEALTH_SUMMARY_IMAGES = {
     icons: {
         calendar: require('@/assets/images/health-summary/calendar.png'),
         pin: require('@/assets/images/health-summary/pin.png'),

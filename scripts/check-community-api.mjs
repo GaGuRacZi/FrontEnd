@@ -143,6 +143,16 @@ const imageUpdate = communityApi.createRemotePostData(
 );
 assert.equal(imageUpdate.data.thumbnailIndex, 1);
 assert.deepEqual(imageUpdate.data.keepPhotoUrls, ['https://cdn.example.com/saved.jpg']);
+assert.equal(
+  communityApi.createRemotePostData({
+    ...imageUpdatePost,
+    images: [
+      { assetId: 'saved-photo', url: 'https://cdn.example.com/saved.jpg' },
+      { assetId: 'new-photo', localUri: 'file:///new.jpg' },
+    ],
+  }, [{ code: 'HEALTH_CONSULT', name: '건강상담', postType: 'COMMUNICATION', sortOrder: 1 }], true).data.thumbnailUrl,
+  'https://cdn.example.com/saved.jpg',
+);
 assert.deepEqual(
   communityApi.createRemotePostData({
     ...imageUpdatePost,

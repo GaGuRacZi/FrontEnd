@@ -1,12 +1,9 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { ScreenLayout } from '@/src/components/layout';
-import { MedicationSaveConfirmModal, MedicationSearchModal } from '@/src/components/modal';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import type { DiagnosisMedication, DiagnosisMedicationTiming } from '@/src/features/dashboard/types';
-import { mapMedicationEntries, type MedicationEntry } from '@/src/types/medication';
 
 import { useMedicationStore } from '../MedicationStore';
 
@@ -20,30 +17,11 @@ const TIMING_CHIP_LABELS: Record<DiagnosisMedicationTiming, string> = {
 const ALL_TIMINGS: DiagnosisMedicationTiming[] = ['morning', 'lunch', 'dinner', 'bedtime'];
 
 export function MedicationListScreen() {
-  const { medications, addMedications } = useMedicationStore();
-  const [searchModalVisible, setSearchModalVisible] = useState(false);
-  const [saveConfirmVisible, setSaveConfirmVisible] = useState(false);
-
-  const handleAddMedications = (selectedEntries: MedicationEntry[]) => {
-    addMedications(mapMedicationEntries(selectedEntries, 'med-list'));
-    setSearchModalVisible(false);
-    setSaveConfirmVisible(true);
-  };
+  const { medications } = useMedicationStore();
 
   return (
     <ScreenLayout
       headerVariant="auth"
-      rightContent={
-        <Pressable
-          accessibilityLabel="약물 추가"
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={() => setSearchModalVisible(true)}
-          style={styles.editButton}
-        >
-          <AppIcon color={COLORS.gray600} name="add" size={24} />
-        </Pressable>
-      }
       title="복용 약물 목록"
     >
       <ScrollView
@@ -77,7 +55,7 @@ export function MedicationListScreen() {
         {medications.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>
-              {'아직 등록된 약물이 없어요.\n우측 상단 버튼으로 추가해보세요.'}
+            {'등록된 처방 약물이 없어요.\n진료 요약에서 약물을 추가해보세요.'}
             </Text>
           </View>
         ) : (
@@ -92,18 +70,6 @@ export function MedicationListScreen() {
           </View>
         )}
       </ScrollView>
-
-      <MedicationSearchModal
-        onClose={() => setSearchModalVisible(false)}
-        onSubmit={handleAddMedications}
-        visible={searchModalVisible}
-      />
-
-      <MedicationSaveConfirmModal
-        onConfirm={() => setSaveConfirmVisible(false)}
-        onDismiss={() => setSaveConfirmVisible(false)}
-        visible={saveConfirmVisible}
-      />
     </ScreenLayout>
   );
 }
@@ -194,13 +160,6 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xxxl,
     paddingHorizontal: LAYOUT.screenPaddingHorizontal,
     paddingTop: SPACING.xxl,
-  },
-
-  editButton: {
-    alignItems: 'center',
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
   },
 
   // ─── 배너 ───────────────────────────────────────────────

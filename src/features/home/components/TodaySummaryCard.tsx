@@ -1,20 +1,14 @@
-import { Image, ImageSourcePropType, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-import type { TodoCategory, TodoSummaryItem } from '../types';
+import type { TodoSummaryItem } from '../types';
 
 type TodaySummaryCardProps = {
   onPressMore: () => void;
   onToggleTodo: (todoId: string) => void;
   todos: readonly TodoSummaryItem[];
-};
-
-const CATEGORY_META: Record<TodoCategory, { icon: ImageSourcePropType; iconSize: number; tint: string }> = {
-  medication: { icon: require('../../../../assets/images/home/pill.png'), iconSize: 20, tint: COLORS.primarySoft },
-  hospital: { icon: require('../../../../assets/images/home/diagnosis.png'), iconSize: 24, tint: COLORS.yellow },
-  walk: { icon: require('../../../../assets/images/home/walk.png'), iconSize: 18, tint: COLORS.greenSoft }, 
 };
 
 export function TodaySummaryCard({ onPressMore, onToggleTodo, todos }: TodaySummaryCardProps) {
@@ -39,9 +33,9 @@ export function TodaySummaryCard({ onPressMore, onToggleTodo, todos }: TodaySumm
         showsVerticalScrollIndicator={false}
         style={styles.list}
       >
+        {todos.length === 0 ? <Text style={styles.emptyText}>오늘 등록된 할 일이 없어요.</Text> : null}
         {todos.map((todo) => {
           const isDone = todo.status === 'done';
-          const meta = CATEGORY_META[todo.category];
 
           return (
             <Pressable
@@ -52,13 +46,7 @@ export function TodaySummaryCard({ onPressMore, onToggleTodo, todos }: TodaySumm
               onPress={() => onToggleTodo(todo.id)}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             >
-              <View style={[styles.iconContainer, { backgroundColor: meta.tint }]}>
-                  <Image
-                    accessibilityIgnoresInvertColors
-                    source={meta.icon}
-                    style={[styles.categoryIcon, { height: meta.iconSize, width: meta.iconSize }]}
-                  />
-              </View>
+              <View style={[styles.tagDot, { backgroundColor: todo.tagColor ?? COLORS.gray500 }]} />
 
               <View style={styles.textGroup}>
                 <Text style={[styles.title, isDone && styles.titleDone]}>{todo.title}</Text>
@@ -97,6 +85,7 @@ const styles = StyleSheet.create({
   headerActionLabel: { ...TYPOGRAPHY.label, color: COLORS.gray600 },
   list: { maxHeight: 300 },
   listContent: { gap: SPACING.md },
+  emptyText: { ...TYPOGRAPHY.body2, color: COLORS.gray500, paddingVertical: SPACING.lg, textAlign: 'center' },
   row: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -104,14 +93,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   pressed: { opacity: 0.65 },
-  iconContainer: {
-    alignItems: 'center',
-    borderRadius: RADIUS.round,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  categoryIcon: { resizeMode: 'contain' },
+  tagDot: { borderRadius: RADIUS.round, height: 12, width: 12 },
   textGroup: { flex: 1, gap: 2 },
   title: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
   titleDone: { color: COLORS.gray500, textDecorationLine: 'line-through' },

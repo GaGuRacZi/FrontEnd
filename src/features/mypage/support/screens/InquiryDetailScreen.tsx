@@ -1,7 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppIcon, EmptyState } from '@/src/components/common';
+import { AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import { SupportBadge } from '../components/SupportBadge';
@@ -12,8 +13,25 @@ import { formatSupportDate, getInquiryTypeLabel } from '../supportValidation';
 export function InquiryDetailScreen() {
   const params = useLocalSearchParams<{ inquiryId?: string | string[] }>();
   const inquiryId = Array.isArray(params.inquiryId) ? params.inquiryId[0] : params.inquiryId;
-  const { getInquiry } = useSupportStore();
+  const { getInquiry, loadInquiry } = useSupportStore();
   const inquiry = inquiryId ? getInquiry(inquiryId) : undefined;
+  const [loading, setLoading] = useState(Boolean(inquiryId));
+
+  useEffect(() => {
+    if (!inquiryId) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    void loadInquiry(inquiryId).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [inquiryId, loadInquiry]);
 
   return (
     <SupportScreen
@@ -67,11 +85,6 @@ export function InquiryDetailScreen() {
               <Text selectable style={styles.body}>
                 {inquiry.answer}
               </Text>
-              {inquiry.answeredAt ? (
-                <Text style={styles.answerDate}>
-                  답변일 {formatSupportDate(inquiry.answeredAt)}
-                </Text>
-              ) : null}
             </View>
           ) : (
             <View style={styles.waitingCard}>
@@ -85,6 +98,8 @@ export function InquiryDetailScreen() {
             </View>
           )}
         </ScrollView>
+      ) : loading ? (
+        <LoadingView label="문의 내용을 불러오고 있어요." />
       ) : (
         <View style={styles.empty}>
           <EmptyState
@@ -165,11 +180,6 @@ const styles = StyleSheet.create({
     height: 34,
     justifyContent: 'center',
     width: 34,
-  },
-  answerDate: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.gray500,
-    marginTop: SPACING.xxl,
   },
   waitingCard: {
     alignItems: 'center',

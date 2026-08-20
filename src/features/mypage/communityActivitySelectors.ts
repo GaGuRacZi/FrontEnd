@@ -38,6 +38,7 @@ export function getCommunityActivityKey(
 }
 
 type CommunityPostsInput = {
+  postIds?: ReadonlySet<string>;
   posts: readonly CommunityPost[];
   userId: string | null;
 };
@@ -46,12 +47,14 @@ type SavedPostsInput = {
   isBookmarked: (postId: string) => boolean;
   isReacted: (postId: string, kind: 'like') => boolean;
   posts: readonly CommunityPost[];
+  postIds?: ReadonlySet<string>;
   userId: string | null;
   viewerId: string;
 };
 
 type CommentedPostsInput = {
   comments: readonly CommunityComment[];
+  postIds?: ReadonlySet<string>;
   posts: readonly CommunityPost[];
   userId: string | null;
 };
@@ -84,6 +87,7 @@ function toPostActivityItem(post: CommunityPost): MarketActivityItem | TalkActiv
 }
 
 export function selectAuthoredActivityItems({
+  postIds,
   posts,
   userId,
 }: CommunityPostsInput): CommunityActivityItem[] {
@@ -91,7 +95,7 @@ export function selectAuthoredActivityItems({
 
   return [
     ...posts
-      .filter((post) => post.author.userId === userId)
+      .filter((post) => postIds ? postIds.has(post.id) : post.author.userId === userId)
       .map(toPostActivityItem),
   ].sort(compareNewest);
 }
@@ -99,6 +103,7 @@ export function selectAuthoredActivityItems({
 export function selectSavedActivityItems({
   isBookmarked,
   isReacted,
+  postIds,
   posts,
   userId,
   viewerId,
@@ -107,9 +112,11 @@ export function selectSavedActivityItems({
 
   return posts
     .filter((post) =>
-      post.kind === 'talk'
-        ? isReacted(post.id, 'like')
-        : isBookmarked(post.id),
+      postIds
+        ? postIds.has(post.id)
+        : post.kind === 'talk'
+          ? isReacted(post.id, 'like')
+          : isBookmarked(post.id),
     )
     .map(toPostActivityItem)
     .sort(compareNewest);
@@ -117,6 +124,7 @@ export function selectSavedActivityItems({
 
 export function selectCommentedActivityItems({
   comments,
+  postIds,
   posts,
   userId,
 }: CommentedPostsInput): CommentedActivityItem[] {
@@ -146,7 +154,12 @@ export function selectCommentedActivityItems({
   });
 
   return posts
-    .filter((post): post is TalkPost => post.kind === 'talk' && commentSummaries.has(post.id))
+    .filter(
+      (post): post is TalkPost =>
+        post.kind === 'talk' &&
+        commentSummaries.has(post.id) &&
+        (!postIds || postIds.has(post.id)),
+    )
     .map((post): CommentedActivityItem => {
       const { count, latest: latestComment } = commentSummaries.get(post.id)!;
       return {

@@ -11,22 +11,31 @@ import {
 
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import type { RemoteUserProfile } from '@/src/features/auth/services/kakaoAuthContract';
-import { getRemoteUserLocation } from '@/src/services/locationApi';
+import { getPushToken, hasPushPermission } from '@/src/services/pushNotifications';
 
 import {
-  getCheckoutPaymentMethod,
   getLocalCalendarDate,
   getNextBillingDate,
   getPlan,
   getPlanRank,
   getUpgradePaymentAmount,
-  normalizePaymentMethods,
+  PLAN_DEFINITIONS,
 } from './mypageData';
-import { mergeRemoteUserProfile } from './mypageMappers';
 import {
-  getRemoteUserProfile,
-  updateRemoteUserProfile,
-} from './services/profileApi';
+  disablePushNotifications,
+  mergeRemoteMyPageProfile,
+  mergeRemoteUserProfile,
+} from './mypageMappers';
+import {
+  deleteRemoteProfileImage,
+  getRemoteMyPageHome,
+  getRemoteMyPageProfile,
+  getRemoteNotificationSettings,
+  registerRemotePushToken,
+  updateRemoteMyPageRegion,
+  updateRemoteNotificationSettings,
+} from './services/mypageApi';
+import { updateRemoteUserProfile } from './services/profileApi';
 import { mypageRepository } from './services/mypageRepository';
 import {
   flushQueuedProfileImageRemovals,
@@ -36,7 +45,6 @@ import {
 import type {
   NotificationSettings,
   PaymentHistoryItem,
-  PaymentMethod,
   PaymentStatus,
   PlanId,
   StoredMyPageState,
@@ -48,7 +56,7 @@ type MutationResult =
   | { ok: true }
   | {
       ok: false;
-      reason: 'error' | 'invalid' | 'not-ready' | 'not-supported' | 'payment-method-required';
+      reason: 'error' | 'invalid' | 'not-ready' | 'not-supported';
     };
 
 export type StoredProfileStatus = 'missing' | 'recoverable' | 'valid';
@@ -61,7 +69,6 @@ type MyPageStoreContextValue = {
   isReady: boolean;
   notificationSettings: NotificationSettings | null;
   paymentHistory: PaymentHistoryItem[];
-  paymentMethods: PaymentMethod[];
   profile: UserProfile | null;
   registerRemoteProfile: (
     profile: RemoteUserProfile,
@@ -72,13 +79,11 @@ type MyPageStoreContextValue = {
   subscription: SubscriptionState | null;
   switchPlan: (planId: PlanId, paymentStatus?: PaymentStatus) => Promise<MutationResult>;
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<MutationResult>;
-  updatePaymentMethods: (methods: PaymentMethod[]) => Promise<MutationResult>;
   updateProfile: (profile: UserProfile) => Promise<MutationResult>;
 };
 
 const MyPageStoreContext = createContext<MyPageStoreContextValue | null>(null);
 
-const EMPTY_PAYMENT_METHODS: PaymentMethod[] = [];
 const EMPTY_PAYMENT_HISTORY: PaymentHistoryItem[] = [];
 
 function createPaymentHistoryItem(
@@ -95,10 +100,14 @@ function createPaymentHistoryItem(
     amount,
     date,
     id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    methodLabel: '간편페이',
     status,
     title: isDifferencePayment ? `${paidPlan.name} 차액 결제` : `${paidPlan.name} 결제`,
   };
+}
+
+function getRemotePlanId(plan: string, displayName: string): PlanId | null {
+  if (plan === 'BASIC') return 'little-jelly';
+  return PLAN_DEFINITIONS.find(({ name }) => name === displayName)?.id ?? null;
 }
 
 export function MyPageProvider({ children }: PropsWithChildren) {
@@ -158,41 +167,59 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       };
     }
 
-    mypageRepository
-      .loadState(currentUserId)
-      .then((loadedState) => {
+    const pushPermission = hasPushPermission();
+    void pushPermission
+      .then(async (hasPermission) => {
+        if (!hasPermission) {
+          await registerRemotePushToken(null);
+          return;
+        }
+
+        const pushToken = await getPushToken();
+        if (pushToken) await registerRemotePushToken(pushToken);
+      })
+      .catch(() => undefined);
+
+    Promise.all([
+      mypageRepository.loadState(currentUserId),
+      getRemoteMyPageHome().catch(() => null),
+      getRemoteMyPageProfile(),
+      getRemoteNotificationSettings().catch(() => null),
+      pushPermission,
+    ])
+      .then(async ([loadedState, remoteHome, remoteProfile, remoteNotificationSettings, hasNotificationPermission]) => {
         if (!active || activeUserRef.current !== currentUserId) return;
+        const resolvedNotificationSettings =
+          remoteNotificationSettings ?? loadedState.notificationSettings;
+        const notificationSettings = hasNotificationPermission
+          ? resolvedNotificationSettings
+          : disablePushNotifications(resolvedNotificationSettings);
+        if (!hasNotificationPermission) {
+          await updateRemoteNotificationSettings(notificationSettings).catch(() => undefined);
+        }
+        if (!active || activeUserRef.current !== currentUserId) return;
+
+        const initialState = {
+          ...loadedState,
+          notificationSettings,
+          profile: mergeRemoteMyPageProfile(loadedState.profile, remoteProfile),
+          subscription: {
+            ...loadedState.subscription,
+            currentPlanId:
+              remoteHome === null
+                ? loadedState.subscription.currentPlanId
+                : remoteHome.subscription.active
+                  ? getRemotePlanId(
+                      remoteHome.subscription.plan,
+                      remoteHome.subscription.displayName,
+                    ) ?? loadedState.subscription.currentPlanId
+                  : 'baby-jelly',
+          },
+        };
         readyUserRef.current = currentUserId;
-        applyState(loadedState);
-
-        void Promise.all([
-          getRemoteUserProfile(),
-          getRemoteUserLocation().catch(() => null),
-        ])
-          .then(([remoteProfile, remoteLocation]) => {
-            void enqueueMutation(async () => {
-              if (
-                !active ||
-                activeUserRef.current !== currentUserId ||
-                stateRef.current !== loadedState
-              ) {
-                return;
-              }
-
-              const nextState = {
-                ...loadedState,
-                profile: {
-                  ...mergeRemoteUserProfile(loadedState.profile, remoteProfile),
-                  location:
-                    remoteLocation?.regionName.trim() ||
-                    remoteProfile.regionName ||
-                    loadedState.profile.location,
-                },
-              };
-              await persist(currentUserId, nextState);
-            }).catch(() => undefined);
-          })
-          .catch(() => undefined);
+        await mypageRepository.saveState(currentUserId, initialState);
+        if (!active || activeUserRef.current !== currentUserId) return;
+        applyState(initialState);
       })
       .catch(() => {
         if (!active || activeUserRef.current !== currentUserId) return;
@@ -205,7 +232,7 @@ export function MyPageProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applyState, currentUserId, enqueueMutation, loadRequest, persist, sessionReady]);
+  }, [applyState, currentUserId, loadRequest, sessionReady]);
 
   const reloadMyPage = useCallback(() => {
     setLoadRequest((current) => current + 1);
@@ -224,13 +251,10 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           const nextState = await updater(stateRef.current);
           await persist(userId, nextState);
           return { ok: true };
-        } catch (error) {
+        } catch {
           return {
             ok: false,
-            reason:
-              error instanceof Error && error.message === 'payment-method-required'
-                ? 'payment-method-required'
-                : 'error',
+            reason: 'error',
           };
         }
       });
@@ -279,10 +303,12 @@ export function MyPageProvider({ children }: PropsWithChildren) {
           updatedAt: new Date().toISOString(),
         };
         try {
-          if (previousUri && !nextProfile.profileImageUri) {
-            return { ok: false, reason: 'not-supported' };
+          if (
+            nextProfile.regionCode &&
+            nextProfile.regionCode !== current.profile.regionCode
+          ) {
+            await updateRemoteMyPageRegion(nextProfile.regionCode);
           }
-
           const remoteProfile = await updateRemoteUserProfile({
             imageUri:
               previousUri !== nextProfile.profileImageUri
@@ -292,9 +318,18 @@ export function MyPageProvider({ children }: PropsWithChildren) {
             name: nextProfile.name,
             nickname: nextProfile.nickname,
           });
+          if (previousUri && !nextProfile.profileImageUri) {
+            await deleteRemoteProfileImage();
+          }
+          const mergedProfile = mergeRemoteUserProfile(nextProfile, remoteProfile);
           const remoteNextState = {
             ...current,
-            profile: mergeRemoteUserProfile(nextProfile, remoteProfile),
+            profile: {
+              ...mergedProfile,
+              profileImageUri:
+                nextProfile.profileImageUri === null ? null : mergedProfile.profileImageUri,
+              regionCode: nextProfile.regionCode,
+            },
           };
           await persist(
             userId,
@@ -320,20 +355,22 @@ export function MyPageProvider({ children }: PropsWithChildren) {
 
   const updateNotificationSettings = useCallback(
     (settings: Partial<NotificationSettings>) =>
-      mutateState((current) => ({
-        ...current,
-        notificationSettings: { ...current.notificationSettings, ...settings },
-      })),
-    [mutateState],
-  );
+      enqueueMutation(async (): Promise<MutationResult> => {
+        const userId = currentUserId;
+        const current = stateRef.current;
+        if (!userId || readyUserRef.current !== userId || !current) {
+          return { ok: false, reason: 'not-ready' };
+        }
 
-  const updatePaymentMethods = useCallback(
-    (methods: PaymentMethod[]) =>
-      mutateState((current) => ({
-        ...current,
-        paymentMethods: normalizePaymentMethods(methods),
-      })),
-    [mutateState],
+        try {
+          const notificationSettings = await updateRemoteNotificationSettings(settings);
+          await persist(userId, { ...current, notificationSettings });
+          return { ok: true };
+        } catch {
+          return { ok: false, reason: 'error' };
+        }
+      }),
+    [currentUserId, enqueueMutation, persist],
   );
 
   const switchPlan = useCallback(
@@ -344,9 +381,6 @@ export function MyPageProvider({ children }: PropsWithChildren) {
         if (nextRank === currentRank) return current;
 
         const isUpgrade = nextRank > currentRank;
-        if (isUpgrade && !getCheckoutPaymentMethod(current.paymentMethods)) {
-          throw new Error('payment-method-required');
-        }
         const paymentHistoryItem = isUpgrade
           ? createPaymentHistoryItem(
               current.subscription.currentPlanId,
@@ -429,7 +463,6 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       isReady: storeReady,
       notificationSettings: visibleState?.notificationSettings ?? null,
       paymentHistory: visibleState?.paymentHistory ?? EMPTY_PAYMENT_HISTORY,
-      paymentMethods: visibleState?.paymentMethods ?? EMPTY_PAYMENT_METHODS,
       profile: visibleState?.profile ?? null,
       registerRemoteProfile,
       reloadMyPage,
@@ -437,7 +470,6 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       subscription: visibleState?.subscription ?? null,
       switchPlan,
       updateNotificationSettings,
-      updatePaymentMethods,
       updateProfile,
     }),
     [
@@ -451,7 +483,6 @@ export function MyPageProvider({ children }: PropsWithChildren) {
       storeReady,
       switchPlan,
       updateNotificationSettings,
-      updatePaymentMethods,
       updateProfile,
       visibleState,
     ],

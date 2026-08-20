@@ -11,10 +11,7 @@ import { KeyboardAwareScrollView } from '@/src/components/layout/KeyboardAwareSc
 import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { AddressSearchScreen } from '@/src/features/auth/signup/components/AddressSearchScreen';
-import {
-  geocodeAddress,
-  getBestCurrentPosition,
-} from '@/src/features/auth/signup/services/locationService';
+import { getBestCurrentPosition } from '@/src/features/auth/signup/services/locationService';
 import { TERM_IDS, useTerms } from '@/src/features/auth/terms';
 import { TermDetailScreen } from '@/src/features/auth/terms/screens/TermDetailScreen';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
@@ -39,7 +36,7 @@ const NICKNAME_PATTERN = /^[a-zA-Z0-9가-힣]+$/;
 
 type ProfileDraft = Pick<
   UserProfile,
-  'introduction' | 'location' | 'name' | 'nickname' | 'profileImageUri'
+  'introduction' | 'location' | 'name' | 'nickname' | 'profileImageUri' | 'regionCode'
 >;
 
 function createDraft(profile: UserProfile): ProfileDraft {
@@ -49,6 +46,7 @@ function createDraft(profile: UserProfile): ProfileDraft {
     name: profile.name,
     nickname: profile.nickname,
     profileImageUri: profile.profileImageUri,
+    regionCode: profile.regionCode,
   };
 }
 
@@ -80,6 +78,7 @@ export function MyPageProfileScreen() {
       baseDraft &&
       (draft.introduction !== baseDraft.introduction ||
         draft.location !== baseDraft.location ||
+        draft.regionCode !== baseDraft.regionCode ||
         draft.name !== baseDraft.name ||
         draft.nickname !== baseDraft.nickname ||
         draft.profileImageUri !== baseDraft.profileImageUri),
@@ -226,38 +225,13 @@ export function MyPageProfileScreen() {
     return (
       <AddressSearchScreen
         onBack={() => setAddressSearchVisible(false)}
-        onSelect={(address) => {
+        onSelect={(region) => {
           setAddressSearchVisible(false);
-          void (async () => {
-            const isActiveRequest = startLocationRequest();
-            setLocating(true);
-            try {
-              const location = (await geocodeAddress(address)).find(
-                ({ latitude, longitude }) => Number.isFinite(latitude) && Number.isFinite(longitude),
-              );
-              if (!isActiveRequest()) return;
-              if (!location) throw new Error('location-not-found');
-              const certified = await certifyRemoteUserLocation(
-                location.latitude,
-                location.longitude,
-              );
-              if (!isActiveRequest() || !certified.regionName.trim()) {
-                if (isActiveRequest()) {
-                  showAlert('지역을 설정하지 못했어요', '다시 검색하거나 현재 위치를 사용해주세요.');
-                }
-                return;
-              }
-              setDraft((current) =>
-                current ? { ...current, location: certified.regionName } : current,
-              );
-            } catch {
-              if (isActiveRequest()) {
-                showAlert('지역을 설정하지 못했어요', '다시 검색하거나 현재 위치를 사용해주세요.');
-              }
-            } finally {
-              if (isActiveRequest()) setLocating(false);
-            }
-          })();
+          setDraft((current) =>
+            current
+              ? { ...current, location: region.name, regionCode: region.code }
+              : current,
+          );
         }}
       />
     );
@@ -359,7 +333,13 @@ export function MyPageProfileScreen() {
       }
 
       setDraft((current) =>
-        current ? { ...current, location: regionName } : current,
+        current
+          ? {
+              ...current,
+              location: regionName,
+              regionCode: certified.regionCode,
+            }
+          : current,
       );
     } catch {
       if (isActiveRequest()) {
@@ -403,15 +383,11 @@ export function MyPageProfileScreen() {
           name: draft.name,
           nickname: draft.nickname,
           profileImageUri: draft.profileImageUri,
+          regionCode: draft.regionCode,
         });
 
         if (!result.ok) {
-          showAlert(
-            '저장하지 못했어요',
-            result.reason === 'not-supported'
-              ? '등록된 프로필 사진은 새 사진으로 변경할 수 있어요.'
-              : '잠시 후 다시 시도해주세요.',
-          );
+          showAlert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
           throw new Error('PROFILE_UPDATE_FAILED');
         }
 
@@ -473,10 +449,6 @@ export function MyPageProfileScreen() {
                 accessibilityRole="button"
                 disabled={!draft.profileImageUri}
                 onPress={() => {
-                  if (draft.profileImageUri === committedImageUriRef.current) {
-                    showAlert('사진을 삭제할 수 없어요', '등록된 사진은 새 사진으로 변경할 수 있어요.');
-                    return;
-                  }
                   const uri = draftImageUriRef.current;
                   draftImageUriRef.current = null;
                   void removeDraftOnlyImage(uri);

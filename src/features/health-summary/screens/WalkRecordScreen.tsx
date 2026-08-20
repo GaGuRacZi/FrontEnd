@@ -3,22 +3,54 @@ import React, { useRef, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { AppButton, AppIcon, DatePickerSheet, TimePickerSheet } from '@/src/components/common';
+import { AppInput } from '@/src/components/form';
+import { AppModal } from '@/src/components/modal';
 import { AppScreen, TopHeader } from '@/src/components/layout';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { MOCK_WALK_RECORDS } from '../mock';
+import { usePetStore } from '@/src/features/pet/PetStore';
+
+import { useHealthSummaryStore } from '../HealthSummaryStore';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { WalkIntensity, WalkRecord } from '../types';
+
+const WEATHER_OPTIONS = ['맑음', '구름', '비', '눈', '바람'] as const;
+
+function parseTemperature(value: string) {
+	const normalized = value.replace(',', '.').replace(/[^0-9.-]/g, '');
+	const decimalIndex = normalized.indexOf('.');
+	const withoutExtraDecimals =
+		decimalIndex === -1
+			? normalized
+			: `${normalized.slice(0, decimalIndex + 1)}${normalized.slice(decimalIndex + 1).replace(/\./g, '')}`;
+	return withoutExtraDecimals.slice(0, 5);
+}
+
+function isTemperature(value: string) {
+	const temperature = Number(value);
+	return value.trim() !== '' && Number.isFinite(temperature) && temperature >= -50 && temperature <= 60;
+}
 
 export function WalkRecordScreen() {
 	const router = useRouter();
 	const isSaving = useRef(false);
-	const params = useLocalSearchParams<{ date?: string; startTime?: string; duration?: string }>();
+	const { selectedPet } = usePetStore();
+	const { addWalkRecord, deleteWalkRecord, walkRecords } = useHealthSummaryStore();
+	const params = useLocalSearchParams<{ date?: string; duration?: string; recordId?: string; startTime?: string }>();
+	const existingRecord = params.recordId ? walkRecords.find(({ id }) => id === params.recordId) : undefined;
+	const [isEditing, setIsEditing] = useState(!existingRecord);
 
-	const [intensity, setIntensity] = useState<WalkIntensity>('moderate');
-	const [urination, setUrination] = useState(true);
-	const [defecation, setDefecation] = useState(true);
-	const [specialNote, setSpecialNote] = useState(false);
+	const [intensity, setIntensity] = useState<WalkIntensity>(existingRecord?.intensity ?? 'moderate');
+	const [urination, setUrination] = useState(existingRecord?.excrement.urination ?? true);
+	const [defecation, setDefecation] = useState(existingRecord?.excrement.defecation ?? true);
+	const [specialNote, setSpecialNote] = useState(existingRecord?.excrement.specialNote ?? false);
 	const [datePickerVisible, setDatePickerVisible] = useState(false);
+	const [weatherModalVisible, setWeatherModalVisible] = useState(false);
+	const [weatherText, setWeatherText] = useState<string | null>(existingRecord?.weatherText ?? null);
+	const [temperatureText, setTemperatureText] = useState(
+		existingRecord?.temperatureText?.replace(/[^0-9.-]/g, '') ?? '',
+	);
+	const [weatherDraft, setWeatherDraft] = useState<string | null>(null);
+	const [temperatureDraft, setTemperatureDraft] = useState('');
 
 	const pad2Walk = (n: number) => String(n).padStart(2, '0');
 	const formatWalkDate = (date: Date) =>
@@ -30,7 +62,7 @@ export function WalkRecordScreen() {
 		return isNaN(parsed.getTime()) ? new Date() : parsed;
 	};
 
-	const [recordedAt, setRecordedAt] = useState<Date>(() => parseParamDate(params.date));
+	const [recordedAt, setRecordedAt] = useState<Date>(() => parseParamDate(existingRecord?.date ?? params.date));
 	const displayDate = formatWalkDate(recordedAt);
 
 	const parseTimeStr = (timeStr?: string, fallbackH = 18, fallbackM = 20): { hour: number; minute: number } => {
@@ -45,14 +77,15 @@ export function WalkRecordScreen() {
 		return numericOnly ? Number(numericOnly) : 45;
 	};
 
-	const initialDuration = parseDurationMinutes(params.duration || '45');
-	const initialStart = parseTimeStr(params.startTime);
+	const initialDuration = existingRecord?.durationMinutes ?? parseDurationMinutes(params.duration || '45');
+	const initialStart = parseTimeStr(existingRecord?.startTime ?? params.startTime);
 	const initialEndTotal = initialStart.hour * 60 + initialStart.minute + initialDuration;
 
 	const [startHour, setStartHour] = useState(initialStart.hour);
 	const [startMinute, setStartMinute] = useState(initialStart.minute);
-	const [endHour, setEndHour] = useState(Math.floor(initialEndTotal / 60) % 24);
-	const [endMinute, setEndMinute] = useState(initialEndTotal % 60);
+	const existingEnd = parseTimeStr(existingRecord?.endTime, Math.floor(initialEndTotal / 60) % 24, initialEndTotal % 60);
+	const [endHour, setEndHour] = useState(existingEnd.hour);
+	const [endMinute, setEndMinute] = useState(existingEnd.minute);
 	const [timePickerTarget, setTimePickerTarget] = useState<'start' | 'end'>('start');
 	const [timePickerVisible, setTimePickerVisible] = useState(false);
 
@@ -79,31 +112,67 @@ export function WalkRecordScreen() {
 
 	const handleSaveRecord = () => {
 		if (isSaving.current) return;
+		if (!selectedPet) {
+			Alert.alert('반려동물 선택 필요', '산책을 기록할 반려동물을 먼저 선택해주세요.');
+			return;
+		}
 		if (totalMinutes === 0) {
 			Alert.alert('입력 오류', '시작 시간과 종료 시간이 같아요. 올바른 시간을 입력해주세요.');
 			return;
 		}
+		if (!weatherText || !isTemperature(temperatureText)) {
+			Alert.alert('날씨를 확인해주세요', '날씨와 기온을 입력해주세요.');
+			return;
+		}
 		isSaving.current = true;
 		const newRecord: WalkRecord = {
-			id: String(Date.now()),
+			id: existingRecord?.id ?? String(Date.now()),
+			petId: existingRecord?.petId ?? selectedPet.id,
 			date: displayDate,
-			dayLabel: '오늘 산책',
+			dayLabel: existingRecord?.dayLabel ?? '오늘 산책',
 			startTime: startTimeStr,
 			endTime: endTimeStr,
 			durationMinutes: totalMinutes,
-			distanceKm: 1.8,
+			distanceKm: existingRecord?.distanceKm ?? 0,
 			intensity,
-			weatherText: '맑음',
-			temperatureText: '24°C',
+			weatherText,
+			temperatureText: `${temperatureText}°C`,
+			routePoints: existingRecord?.routePoints,
 			excrement: { urination, defecation, specialNote },
 		};
 
-		MOCK_WALK_RECORDS.unshift(newRecord);
+		addWalkRecord(newRecord);
 
 		router.replace({
 			pathname: '/health-summary',
 			params: { tab: 'walk' },
 		} as Href);
+	};
+
+	const handleDeleteRecord = () => {
+		if (!existingRecord) return;
+		Alert.alert('산책 기록을 삭제할까요?', '삭제한 기록은 되돌릴 수 없어요.', [
+			{ style: 'cancel', text: '취소' },
+			{
+				style: 'destructive',
+				text: '삭제',
+				onPress: () => {
+					deleteWalkRecord(existingRecord.id);
+					router.replace({ pathname: '/health-summary', params: { tab: 'walk' } } as Href);
+				},
+			},
+		]);
+	};
+
+	const weatherLabel = weatherText && isTemperature(temperatureText)
+		? `${weatherText} · ${temperatureText}°C`
+		: '날씨를 등록해주세요';
+
+	const openWeatherModal = () => {
+		if (!isEditing) return;
+		setWeatherDraft(weatherText);
+		setTemperatureDraft(temperatureText);
+		setWeatherModalVisible(true);
 	};
 
 	return (
@@ -113,19 +182,19 @@ export function WalkRecordScreen() {
 
 				<ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 					<View style={styles.rowTwoCards}>
-						<TouchableOpacity activeOpacity={0.8} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
+						<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={() => setDatePickerVisible(true)} style={styles.metaCard}>
 							<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.calendar} style={styles.metaIcon} />
 							<View style={styles.metaTextGroup}>
 								<Text style={styles.metaLabel}>산책 날짜</Text>
 								<Text style={styles.metaValue}>{displayDate}</Text>
 							</View>
 						</TouchableOpacity>
-						<View style={styles.metaCard}>
+						<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={openWeatherModal} style={styles.metaCard}>
 							<View style={styles.metaTextGroup}>
 								<Text style={styles.metaLabel}>날씨</Text>
-								<Text style={styles.metaValue}>맑음 · 24°C</Text>
+								<Text style={[styles.metaValue, (!weatherText || !isTemperature(temperatureText)) && styles.placeholderText]}>{weatherLabel}</Text>
 							</View>
-						</View>
+						</TouchableOpacity>
 					</View>
 
 					<View style={styles.card}>
@@ -133,6 +202,7 @@ export function WalkRecordScreen() {
 						<View style={styles.timeGrid}>
 							<TouchableOpacity
 								activeOpacity={0.8}
+								disabled={!isEditing}
 								onPress={() => { setTimePickerTarget('start'); setTimePickerVisible(true); }}
 								style={styles.timeCol}
 							>
@@ -141,6 +211,7 @@ export function WalkRecordScreen() {
 							</TouchableOpacity>
 							<TouchableOpacity
 								activeOpacity={0.8}
+								disabled={!isEditing}
 								onPress={() => { setTimePickerTarget('end'); setTimePickerVisible(true); }}
 								style={styles.timeCol}
 							>
@@ -154,24 +225,24 @@ export function WalkRecordScreen() {
 						</View>
 					</View>
 
-	                <View style={styles.card}>
-	                    <View style={styles.courseRow}>
-	                        <View style={styles.courseLeft}>
-	                            <View style={styles.courseBadge}>
-	                                <Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.pin} style={styles.courseBadgeIcon} />
-	                            </View>
-	                            <View>
-	                                <Text style={styles.cardLabel}>산책 코스</Text>
-	                                <Text style={styles.distanceValue}>거리 <Text style={styles.distanceHighlight}>1.8km</Text></Text>
-	                            </View>
-	                        </View>
-	                        <View style={styles.mapThumbWrapper}>
-	                            <View style={styles.mapPinOverlay}>
-	                                <Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.pin} style={styles.pinIcon} />
-	                            </View>
-	                        </View>
-	                    </View>
-	                </View>
+					<View style={styles.card}>
+						<View style={styles.courseRow}>
+							<View style={styles.courseLeft}>
+								<View style={styles.courseBadge}>
+									<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.pin} style={styles.courseBadgeIcon} />
+								</View>
+								<View>
+									<Text style={styles.cardLabel}>산책 코스</Text>
+									<Text style={styles.distanceValue}>거리 <Text style={styles.distanceHighlight}>기록 전</Text></Text>
+								</View>
+							</View>
+							<View style={styles.mapThumbWrapper}>
+								<View style={styles.mapPinOverlay}>
+									<Image resizeMode="contain" source={HEALTH_SUMMARY_IMAGES.icons.pin} style={styles.pinIcon} />
+								</View>
+							</View>
+						</View>
+					</View>
 
 					<View style={[styles.card, styles.intensityCard]}>
 						<Text style={styles.cardLabel}>산책 강도</Text>
@@ -179,6 +250,7 @@ export function WalkRecordScreen() {
 							{intensityOptions.map((opt) => (
 								<TouchableOpacity
 									activeOpacity={0.8}
+									disabled={!isEditing}
 									key={opt.key}
 									onPress={() => setIntensity(opt.key)}
 									style={[styles.chip, intensity === opt.key && styles.chipActive]}
@@ -191,19 +263,19 @@ export function WalkRecordScreen() {
 
 					<View style={styles.card}>
 						<View style={styles.checkRow}>
-							<TouchableOpacity activeOpacity={0.8} onPress={() => setUrination(!urination)} style={styles.checkOption}>
+							<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={() => setUrination(!urination)} style={styles.checkOption}>
 								<View style={[styles.checkCircle, urination && styles.checkCircleActive]}>
 									{urination && <AppIcon color={COLORS.background} name="checkmark" size={14} />}
 								</View>
 								<Text style={styles.checkLabel}>소변</Text>
 							</TouchableOpacity>
-							<TouchableOpacity activeOpacity={0.8} onPress={() => setDefecation(!defecation)} style={styles.checkOption}>
+							<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={() => setDefecation(!defecation)} style={styles.checkOption}>
 								<View style={[styles.checkCircle, defecation && styles.checkCircleActive]}>
 									{defecation && <AppIcon color={COLORS.background} name="checkmark" size={14} />}
 								</View>
 								<Text style={styles.checkLabel}>대변</Text>
 							</TouchableOpacity>
-							<TouchableOpacity activeOpacity={0.8} onPress={() => setSpecialNote(!specialNote)} style={styles.checkOption}>
+							<TouchableOpacity activeOpacity={0.8} disabled={!isEditing} onPress={() => setSpecialNote(!specialNote)} style={styles.checkOption}>
 								<View style={[styles.checkCircle, specialNote && styles.checkCircleActive]}>
 									{specialNote && <AppIcon color={COLORS.background} name="checkmark" size={14} />}
 								</View>
@@ -214,7 +286,14 @@ export function WalkRecordScreen() {
 				</ScrollView>
 
 				<View style={styles.bottomBar}>
-					<AppButton onPress={handleSaveRecord} style={{ backgroundColor: COLORS.success }} title="산책 기록 저장" />
+					{existingRecord && !isEditing ? (
+						<View style={styles.actionRow}>
+							<AppButton onPress={() => setIsEditing(true)} style={styles.actionButton} title="수정" variant="success" />
+							<AppButton onPress={handleDeleteRecord} style={styles.actionButton} title="삭제" variant="danger" />
+						</View>
+					) : (
+						<AppButton onPress={handleSaveRecord} style={{ backgroundColor: COLORS.success }} title={existingRecord ? '저장하기' : '산책 기록 저장'} />
+					)}
 				</View>
 			</AppScreen>
 			<DatePickerSheet
@@ -242,6 +321,51 @@ export function WalkRecordScreen() {
 				}
 				visible={timePickerVisible}
 			/>
+			<AppModal
+				onClose={() => setWeatherModalVisible(false)}
+				primaryAction={{
+					disabled: !weatherDraft || !isTemperature(temperatureDraft),
+					label: '확인',
+					onPress: () => {
+						setWeatherText(weatherDraft);
+						setTemperatureText(temperatureDraft);
+						setWeatherModalVisible(false);
+					},
+				}}
+				secondaryAction={{
+					label: '취소',
+					onPress: () => setWeatherModalVisible(false),
+				}}
+				title="날씨 등록"
+				variant="center"
+				visible={weatherModalVisible}
+			>
+				<View style={styles.weatherModalContent}>
+					<Text style={styles.weatherModalLabel}>날씨</Text>
+					<View style={styles.weatherOptions}>
+						{WEATHER_OPTIONS.map((option) => (
+							<TouchableOpacity
+								activeOpacity={0.8}
+								key={option}
+								onPress={() => setWeatherDraft(option)}
+								style={[styles.weatherOption, weatherDraft === option && styles.weatherOptionActive]}
+							>
+								<Text style={[styles.weatherOptionText, weatherDraft === option && styles.weatherOptionTextActive]}>{option}</Text>
+							</TouchableOpacity>
+						))}
+					</View>
+					<AppInput
+						inputMode="decimal"
+						keyboardType="decimal-pad"
+						label="기온"
+						maxLength={5}
+						onChangeText={(value) => setTemperatureDraft(parseTemperature(value))}
+						placeholder="예: 24"
+						rightElement={<Text style={styles.temperatureUnit}>°C</Text>}
+						value={temperatureDraft}
+					/>
+				</View>
+			</AppModal>
 		</>
 	);
 }
@@ -254,6 +378,7 @@ const styles = StyleSheet.create({
 	metaTextGroup: { flex: 1, gap: 2, justifyContent: 'center' },
 	metaLabel: { ...TYPOGRAPHY.small, color: COLORS.gray500 },
 	metaValue: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
+	placeholderText: { color: COLORS.gray500, fontFamily: TYPOGRAPHY.body2.fontFamily, fontSize: 13 },
 	card: { backgroundColor: COLORS.background, borderColor: COLORS.gray200, borderRadius: RADIUS.lg, borderWidth: 1, padding: SPACING.xxl },
 	intensityCard: { backgroundColor: COLORS.successSoft, borderColor: 'transparent' },
 	cardLabel: { ...TYPOGRAPHY.body1, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
@@ -281,4 +406,14 @@ const styles = StyleSheet.create({
 	checkCircleActive: { backgroundColor: COLORS.success, borderColor: COLORS.success },
 	checkLabel: { ...TYPOGRAPHY.body2, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
 	bottomBar: { paddingTop: SPACING.md, paddingBottom: SPACING.md },
+	actionRow: { flexDirection: 'row', gap: SPACING.md },
+	actionButton: { flex: 1 },
+	weatherModalContent: { gap: SPACING.lg, paddingVertical: SPACING.sm },
+	weatherModalLabel: { ...TYPOGRAPHY.body2, color: COLORS.black, fontFamily: TYPOGRAPHY.button.fontFamily },
+	weatherOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+	weatherOption: { borderColor: COLORS.gray200, borderRadius: RADIUS.round, borderWidth: 1, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
+	weatherOptionActive: { backgroundColor: COLORS.success, borderColor: COLORS.success },
+	weatherOptionText: { ...TYPOGRAPHY.caption, color: COLORS.gray600 },
+	weatherOptionTextActive: { color: COLORS.background, fontFamily: TYPOGRAPHY.button.fontFamily },
+	temperatureUnit: { ...TYPOGRAPHY.body2, color: COLORS.gray600 },
 });

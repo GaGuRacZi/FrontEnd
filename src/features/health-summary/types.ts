@@ -1,10 +1,11 @@
-﻿export type HealthTabType = 'weight' | 'walk' | 'medical';
+export type HealthTabType = 'weight' | 'walk' | 'medical';
 
 export type BodyCondition = 'lean' | 'ideal' | 'overweight';
 export type AppetiteCondition = 'low' | 'normal' | 'high';
 
 export interface WeightRecord {
     id: string;
+    petId: string;
     date: string;
     time: string;
     weight: number;
@@ -20,6 +21,7 @@ export type WalkIntensity = 'relaxed' | 'moderate' | 'active';
 
 export interface WalkRecord {
     id: string;
+    petId: string;
     date: string;
     dayLabel: string;
     startTime: string;
@@ -29,7 +31,7 @@ export interface WalkRecord {
     intensity: WalkIntensity;
     weatherText?: string;
     temperatureText?: string;
-    routePoints?: Array<{ latitude: number; longitude: number }>;
+    routePoints?: { latitude: number; longitude: number }[];
     excrement: {
         urination: boolean;
         defecation: boolean;
@@ -45,6 +47,7 @@ export interface MedicalExpenseItem {
 
 export interface MedicalExpenseRecord {
     id: string;
+    petId: string;
     date: string;
     hospitalName: string;
     totalCost: number;

@@ -1,4 +1,4 @@
-const MIME_BY_EXTENSION: Record<string, string> = {
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   avif: 'image/avif',
   bmp: 'image/bmp',
   gif: 'image/gif',
@@ -12,7 +12,13 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   webp: 'image/webp',
 };
 
-type MultipartImageFile = {
+const AUDIO_MIME_BY_EXTENSION: Record<string, string> = {
+  aac: 'audio/aac',
+  m4a: 'audio/mp4',
+  mp3: 'audio/mpeg',
+};
+
+type MultipartFile = {
   name: string;
   type: string;
   uri: string;
@@ -24,7 +30,7 @@ type MultipartJsonPart = {
 };
 
 type NativeMultipartFormData = {
-  append(name: string, value: MultipartImageFile | MultipartJsonPart): void;
+  append(name: string, value: MultipartFile | MultipartJsonPart): void;
 };
 
 export function getFileExtension(uri: string) {
@@ -32,19 +38,18 @@ export function getFileExtension(uri: string) {
   return match?.[1]?.toLowerCase() || 'jpg';
 }
 
-export function getMultipartImageFile(uri: string): MultipartImageFile {
-  if (!uri.trim()) throw new Error('invalid-image-uri');
+function getMultipartFile(
+  uri: string,
+  mimeByExtension: Record<string, string>,
+  normalizeExtension: (extension: string) => string,
+): MultipartFile {
+  if (!uri.trim()) throw new Error('invalid-file-uri');
 
   const sourceExtension = /\.([a-zA-Z0-9]+)(?:[?#]|$)/.exec(uri)?.[1]?.toLowerCase();
-  if (!sourceExtension) throw new Error('unsupported-image-format');
-  const extension =
-    sourceExtension === 'jpeg'
-      ? 'jpg'
-      : sourceExtension === 'tif'
-        ? 'tiff'
-        : sourceExtension;
-  const type = MIME_BY_EXTENSION[extension];
-  if (!type) throw new Error('unsupported-image-format');
+  if (!sourceExtension) throw new Error('unsupported-file-format');
+  const extension = normalizeExtension(sourceExtension);
+  const type = mimeByExtension[extension];
+  if (!type) throw new Error('unsupported-file-format');
 
   const sourceName = uri.split(/[\\/]/).pop()?.split(/[?#]/, 1)[0] ?? '';
   const baseName = sourceName
@@ -58,12 +63,26 @@ export function getMultipartImageFile(uri: string): MultipartImageFile {
   };
 }
 
+export function getMultipartImageFile(uri: string) {
+  return getMultipartFile(uri, IMAGE_MIME_BY_EXTENSION, (extension) => (
+    extension === 'jpeg' ? 'jpg' : extension === 'tif' ? 'tiff' : extension
+  ));
+}
+
 function getNativeMultipartFormData(formData: FormData) {
   return formData as unknown as NativeMultipartFormData;
 }
 
 export function appendMultipartImage(formData: FormData, fieldName: string, uri: string) {
   getNativeMultipartFormData(formData).append(fieldName, getMultipartImageFile(uri));
+}
+
+export function appendMultipartAudio(formData: FormData, fieldName: string, uri: string) {
+  getNativeMultipartFormData(formData).append(fieldName, getMultipartFile(
+    uri,
+    AUDIO_MIME_BY_EXTENSION,
+    (extension) => extension,
+  ));
 }
 
 export function appendMultipartJson(formData: FormData, data: unknown) {

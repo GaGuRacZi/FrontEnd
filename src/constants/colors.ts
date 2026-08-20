@@ -11,6 +11,7 @@ export const COLORS = {
   starWarm: '#FF8A5C',
 
   pink: '#FFDFF9',
+  purple: '#927DBB',
   bloodbackground: '#FFEFEF',
   green: '#4CAF7D',
   greenSoft: 'rgba(76, 175, 125, 0.14)',

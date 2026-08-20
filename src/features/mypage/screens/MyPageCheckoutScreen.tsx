@@ -6,12 +6,10 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppButton, AppIcon, EmptyState } from '@/src/components/common';
 import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
-import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
-import { MyPageCard, MyPageHeader, MyPageRow } from '../components';
+import { MyPageCard, MyPageHeader } from '../components';
 import {
   PLAN_DEFINITIONS,
-  getCheckoutPaymentMethod,
   getPlan,
   getPlanRank,
   getUpgradePaymentAmount,
@@ -34,13 +32,11 @@ function formatWon(amount: number) {
 
 export function MyPageCheckoutScreen() {
   const router = useRouter();
-  const navigateOnce = useNavigationLock();
   const showAlert = useAppAlert();
   const { planId } = useLocalSearchParams();
-  const { paymentMethods, subscription, switchPlan } = useMyPageStore();
+  const { subscription, switchPlan } = useMyPageStore();
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [paymentGuideVisible, setPaymentGuideVisible] = useState(false);
   const [resultVisible, setResultVisible] = useState(false);
   const [submittedUpgradeStatus, setSubmittedUpgradeStatus] =
     useState<PaymentStatus | null>(null);
@@ -59,7 +55,6 @@ export function MyPageCheckoutScreen() {
 
   const selectedPlan = getPlan(planId);
   const currentPlan = getPlan(subscription?.currentPlanId ?? 'baby-jelly');
-  const defaultMethod = getCheckoutPaymentMethod(paymentMethods);
   const selectedRank = getPlanRank(selectedPlan.id);
   const currentRank = getPlanRank(currentPlan.id);
   const isSamePlan = selectedPlan.id === currentPlan.id;
@@ -76,8 +71,6 @@ export function MyPageCheckoutScreen() {
       : isCancel
         ? '해지 예약하기'
         : '변경 예약하기';
-  const paymentLabel = defaultMethod?.label ?? '결제 수단 등록';
-  const paymentMeta = defaultMethod?.last4 ?? '연결된 결제 수단이 없어요';
   const resultTitle =
     resultIsUpgrade && resultPaymentStatus === 'failed'
       ? '결제에 실패했어요'
@@ -90,7 +83,7 @@ export function MyPageCheckoutScreen() {
             : '요금제 변경을 예약했어요';
   const resultDescription =
     resultIsUpgrade && resultPaymentStatus === 'failed'
-      ? '결제 수단을 확인한 뒤 다시 시도해주세요.'
+      ? '결제를 완료하지 못했어요. 잠시 후 다시 시도해주세요.'
       : resultIsUpgrade && resultPaymentStatus === 'canceled'
         ? '결제가 진행되지 않았어요. 다시 결제할 수 있어요.'
         : resultIsUpgrade
@@ -114,11 +107,6 @@ export function MyPageCheckoutScreen() {
   const submit = () => {
     if (submittingRef.current || isSamePlan) return;
 
-    if (isUpgrade && !defaultMethod) {
-      setPaymentGuideVisible(true);
-      return;
-    }
-
     submittingRef.current = true;
     void (async () => {
       setSubmitting(true);
@@ -126,11 +114,7 @@ export function MyPageCheckoutScreen() {
         const result = await switchPlan(selectedPlan.id, paymentStatus);
 
         if (!result.ok) {
-          if (result.reason === 'payment-method-required') {
-            setPaymentGuideVisible(true);
-          } else {
-            showAlert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
-          }
+          showAlert('처리하지 못했어요', '잠시 후 다시 시도해주세요.');
           return;
         }
 
@@ -154,15 +138,6 @@ export function MyPageCheckoutScreen() {
           <Text style={styles.planPrice}>{selectedPlan.priceLabel}</Text>
         </View>
 
-        <MyPageCard title="결제 정보">
-          <MyPageRow
-            description={paymentMeta}
-            iconName="wallet-outline"
-            onPress={() => navigateOnce(() => router.push('/mypage/payment-methods'))}
-            title={paymentLabel}
-          />
-        </MyPageCard>
-
         <MyPageCard title="결제 요약">
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>현재 요금제</Text>
@@ -185,7 +160,7 @@ export function MyPageCheckoutScreen() {
           <Text style={styles.noticeText}>
             {checkoutNotice}
             {'\n'}
-            결제하기 전 요금제와 결제 수단을 다시 확인해주세요.
+            요금제와 결제 금액을 확인해주세요.
           </Text>
         </View>
 
@@ -193,31 +168,9 @@ export function MyPageCheckoutScreen() {
           disabled={isSamePlan || submitting}
           loading={submitting}
           onPress={submit}
-          title={isUpgrade && !defaultMethod ? '결제 수단 등록하기' : buttonTitle}
+          title={buttonTitle}
         />
       </ScrollView>
-
-      <AppModal
-        onClose={() => setPaymentGuideVisible(false)}
-        primaryAction={{
-          label: '결제 수단 관리',
-          onPress: () => {
-            setPaymentGuideVisible(false);
-            navigateOnce(() => router.push('/mypage/payment-methods'));
-          },
-        }}
-        secondaryAction={{
-          label: '취소',
-          onPress: () => setPaymentGuideVisible(false),
-        }}
-        title="결제 수단이 필요해요"
-        variant="center"
-        visible={paymentGuideVisible}
-      >
-        <Text style={styles.modalDescription}>
-          요금제를 결제하려면{'\n'}간편결제 수단을 먼저 연결해주세요.
-        </Text>
-      </AppModal>
 
       <AppModal
         closeOnBackdropPress={false}
@@ -318,11 +271,6 @@ const styles = StyleSheet.create({
   resultContent: {
     alignItems: 'center',
     gap: SPACING.xl,
-  },
-  modalDescription: {
-    ...TYPOGRAPHY.body2,
-    color: COLORS.gray600,
-    textAlign: 'center',
   },
   resultIcon: {
     alignItems: 'center',

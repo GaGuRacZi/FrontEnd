@@ -42,8 +42,8 @@ export function MonthlyHealthSummaryCard({ metrics, onPressMore }: MonthlyHealth
         {metrics.map((metric) => (
           <View key={metric.id} style={styles.metricColumn}>
             <Text style={styles.metricLabel}>{metric.label}</Text>
-            <Text style={styles.metricValue}>{metric.valueLabel}</Text>
-            <Text style={[styles.metricChange, { color: METRIC_COLOR_META[metric.id] ?? COLORS.gray600 }]}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.metricValue}>{metric.valueLabel}</Text>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.metricChange, { color: METRIC_COLOR_META[metric.id] ?? COLORS.gray600 }]}>
               {metric.changeLabel}
             </Text>
           </View>
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   moreLabel: { ...TYPOGRAPHY.label, color: COLORS.gray600 },
   pressed: { opacity: 0.65 },
   metricRow: { flexDirection: 'row' },
-  metricColumn: { alignItems: 'center', flex: 1, gap: SPACING.xs },
+  metricColumn: { alignItems: 'center', flex: 1, gap: SPACING.xs, minWidth: 0 },
   metricLabel: { ...TYPOGRAPHY.small, color: COLORS.gray600 },
   metricValue: {
     ...TYPOGRAPHY.title3,

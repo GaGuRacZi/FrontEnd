@@ -31,7 +31,7 @@ export function InquiryListScreen() {
               무엇을 도와드릴까요?
             </Text>
             <Text style={styles.introDescription}>
-              작성한 문의와 답변 상태를 이 기기에서 확인할 수 있어요.
+              작성한 문의와 답변 상태를 확인할 수 있어요.
             </Text>
           </View>
           <AppButton

@@ -1,13 +1,13 @@
 import type {
   NotificationSettings,
   PaymentHistoryItem,
-  PaymentMethod,
   StoredMyPageState,
   SubscriptionState,
   UserProfile,
 } from './types';
 import type { RemoteUserProfile } from '../auth/services/kakaoAuthContract';
 import type { AuthMethod } from '../auth/session/AuthSessionStore';
+import type { RemoteMyPageProfile } from './services/mypageApi';
 
 function nowIso() {
   return new Date().toISOString();
@@ -16,13 +16,41 @@ function nowIso() {
 export function createDefaultNotificationSettings(): NotificationSettings {
   return {
     aiAnalysis: true,
-    chat: true,
+    benefit: false,
+    chat: false,
     community: true,
-    doNotDisturbEnabled: false,
+    doNotDisturbEnabled: true,
     doNotDisturbEnd: '07:00',
     doNotDisturbStart: '22:00',
     healthAlert: true,
     schedule: true,
+  };
+}
+
+export function disablePushNotifications(
+  settings: NotificationSettings,
+): NotificationSettings {
+  if (
+    !settings.aiAnalysis &&
+    !settings.benefit &&
+    !settings.chat &&
+    !settings.community &&
+    !settings.doNotDisturbEnabled &&
+    !settings.healthAlert &&
+    !settings.schedule
+  ) {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    aiAnalysis: false,
+    benefit: false,
+    chat: false,
+    community: false,
+    doNotDisturbEnabled: false,
+    healthAlert: false,
+    schedule: false,
   };
 }
 
@@ -33,10 +61,6 @@ export function createDefaultSubscription(): SubscriptionState {
     pendingPlanId: null,
     pendingType: null,
   };
-}
-
-export function createDefaultPaymentMethods(): PaymentMethod[] {
-  return [];
 }
 
 export function createDefaultPaymentHistory(): PaymentHistoryItem[] {
@@ -51,6 +75,7 @@ export function createFallbackProfile(userId: string): UserProfile {
     id: userId,
     introduction: '',
     location: '',
+    regionCode: null,
     loginConnections: [{ email: '', method: 'local' }],
     name: '',
     nickname: 'PAW 보호자',
@@ -63,7 +88,6 @@ export function createDefaultMyPageState(userId: string): StoredMyPageState {
   return {
     notificationSettings: createDefaultNotificationSettings(),
     paymentHistory: createDefaultPaymentHistory(),
-    paymentMethods: createDefaultPaymentMethods(),
     profile: createFallbackProfile(userId),
     subscription: createDefaultSubscription(),
   };
@@ -85,10 +109,32 @@ export function mergeRemoteUserProfile(
     id: remote.uid,
     introduction: remote.intro,
     location: remote.regionName || current.location,
+    regionCode: current.regionCode,
     loginConnections: connections.length ? connections : [{ email: remote.email, method: method ?? 'local' }],
     name: remote.name,
     nickname: remote.nickname,
     profileImageUri: remote.profileUrl,
+    updatedAt: now,
+  };
+}
+
+export function mergeRemoteMyPageProfile(
+  current: UserProfile,
+  remote: RemoteMyPageProfile,
+): UserProfile {
+  const now = nowIso();
+
+  return {
+    ...current,
+    createdAt: current.createdAt || now,
+    id: remote.uid,
+    introduction: remote.intro,
+    location: remote.regionName || current.location,
+    loginConnections: remote.linkedAccounts,
+    name: remote.name,
+    nickname: remote.nickname,
+    profileImageUri: remote.profileUrl,
+    regionCode: remote.regionCode,
     updatedAt: now,
   };
 }

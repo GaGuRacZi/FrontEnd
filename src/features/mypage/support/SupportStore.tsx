@@ -14,17 +14,14 @@ import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 import {
   clearQueuedSupportImageRemovals,
   clearDraftInquiryImages,
-  commitDraftInquiryImages,
   flushQueuedSupportImageRemovals,
   persistDraftInquiryImage,
   queueSupportImageRemovals,
-  removeCommittedInquiryImages,
   removeDraftInquiryImage,
   removeUserInquiryImages,
 } from './services/supportImageStorage';
 import { supportRepository } from './services/supportRepository';
 import {
-  createInquiryFromDraft,
   createEmptyInquiryDraft,
   getInquiryDraftError,
   getRetainedInquiryImageAssetKeys,
@@ -53,14 +50,15 @@ type SupportStoreValue = {
   clearScreenSession: () => Promise<void>;
   deleteUserSupportData: (userId?: string) => Promise<void>;
   draft: InquiryDraft;
-  error: string | null;
   getInquiry: (inquiryId: string) => Inquiry | undefined;
   getNotice: (noticeId: string) => Notice | undefined;
   inquiries: Inquiry[];
+  loadInquiry: (inquiryId: string) => Promise<Inquiry | null>;
+  loadNotice: (noticeId: string) => Promise<Notice | null>;
   notices: Notice[];
-  reloadSupport: () => void;
   removeDraftImage: (assetId: string) => Promise<MutationResult>;
   saveDraft: () => Promise<MutationResult>;
+  searchNotices: (query: string) => Promise<Notice[]>;
   status: SupportStatus;
   submitInquiry: () => Promise<SubmitResult>;
   updateDraft: (patch: Partial<Pick<InquiryDraft, 'body' | 'type'>>) => void;
@@ -75,7 +73,6 @@ export function SupportProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<StoredSupportState | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [status, setStatus] = useState<SupportStatus>('loading');
-  const [error, setError] = useState<string | null>(null);
   const [loadRequest, setLoadRequest] = useState(0);
   const activeUserRef = useRef<string | null>(null);
   const loadGenerationRef = useRef(0);
@@ -106,7 +103,6 @@ export function SupportProvider({ children }: PropsWithChildren) {
     activeUserRef.current = currentUserId;
     applyState(null);
     setNotices([]);
-    setError(null);
 
     if (!currentUserId) {
       setStatus('ready');
@@ -118,18 +114,31 @@ export function SupportProvider({ children }: PropsWithChildren) {
     const userId = currentUserId;
     setStatus('loading');
 
-    Promise.all([
-      supportRepository.getNotices(),
-      supportRepository.loadState(userId),
-    ])
-      .then(([loadedNotices, loadedState]) => {
+    void supportRepository.getNotices()
+      .then((loadedNotices) => {
         if (
           !active ||
           activeUserRef.current !== userId ||
           loadGenerationRef.current !== generation
         ) return;
         setNotices(loadedNotices);
-        applyState(loadedState);
+      })
+      .catch(() => undefined);
+
+    Promise.allSettled([supportRepository.loadState(userId), supportRepository.getInquiries(userId)])
+      .then(([storedState, remoteInquiries]) => {
+        if (
+          !active ||
+          activeUserRef.current !== userId ||
+          loadGenerationRef.current !== generation
+        ) return;
+        const loadedState = storedState.status === 'fulfilled'
+          ? storedState.value
+          : { draft: createEmptyInquiryDraft(userId), inquiries: [] };
+        const inquiries = remoteInquiries.status === 'fulfilled'
+          ? remoteInquiries.value
+          : loadedState.inquiries;
+        applyState({ ...loadedState, inquiries });
         setStatus('ready');
         void enqueueMutation(async () => {
           if (!loadedState.draft.images.length) {
@@ -137,18 +146,9 @@ export function SupportProvider({ children }: PropsWithChildren) {
           }
           await flushQueuedSupportImageRemovals(
             userId,
-            getRetainedInquiryImageAssetKeys(loadedState),
+            getRetainedInquiryImageAssetKeys({ ...loadedState, inquiries }),
           ).catch(() => undefined);
         });
-      })
-      .catch(() => {
-        if (
-          !active ||
-          activeUserRef.current !== userId ||
-          loadGenerationRef.current !== generation
-        ) return;
-        setError('고객지원 정보를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
-        setStatus('error');
       });
 
     return () => {
@@ -184,10 +184,6 @@ export function SupportProvider({ children }: PropsWithChildren) {
     },
     [applyState, sessionGeneration],
   );
-
-  const reloadSupport = useCallback(() => {
-    setLoadRequest((current) => current + 1);
-  }, []);
 
   const updateDraft = useCallback(
     (patch: Partial<Pick<InquiryDraft, 'body' | 'type'>>) => {
@@ -371,26 +367,17 @@ export function SupportProvider({ children }: PropsWithChildren) {
           return { ok: false, reason: 'invalid' };
         }
 
-        const inquiryId = `inquiry-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        let committedImages: InquiryImage[] = [];
         try {
-          committedImages = await commitDraftInquiryImages(
-            userId,
-            inquiryId,
-            current.draft.images,
-          );
+          const inquiry = await supportRepository.submitInquiry(current.draft, userId);
           if (loadGenerationRef.current !== sessionGeneration) {
             throw new Error('inactive-support-session');
           }
-          const inquiry = createInquiryFromDraft(
-            current.draft,
-            inquiryId,
-            new Date().toISOString(),
-            committedImages,
-          );
           const nextState = {
             draft: createEmptyInquiryDraft(userId),
-            inquiries: [inquiry, ...current.inquiries],
+            inquiries: [
+              inquiry,
+              ...current.inquiries.filter(({ id }) => id !== inquiry.id),
+            ],
           };
           await queueSupportImageRemovals(userId, current.draft.images);
           if (loadGenerationRef.current !== sessionGeneration) {
@@ -406,19 +393,8 @@ export function SupportProvider({ children }: PropsWithChildren) {
             userId,
             getRetainedInquiryImageAssetKeys(nextState),
           ).catch(() => undefined);
-          return { inquiryId, ok: true };
+          return { inquiryId: inquiry.id, ok: true };
         } catch {
-          if (committedImages.length) {
-            try {
-              await queueSupportImageRemovals(userId, committedImages);
-              await flushQueuedSupportImageRemovals(
-                userId,
-                getRetainedInquiryImageAssetKeys(current),
-              );
-            } catch {
-              await removeCommittedInquiryImages(userId, inquiryId).catch(() => undefined);
-            }
-          }
           await flushQueuedSupportImageRemovals(
             userId,
             getRetainedInquiryImageAssetKeys(current),
@@ -513,20 +489,62 @@ export function SupportProvider({ children }: PropsWithChildren) {
     [visibleState?.inquiries],
   );
 
+  const loadInquiry = useCallback(
+    (inquiryId: string) =>
+      enqueueMutation(async () => {
+        const userId = currentUserId;
+        if (!userId || activeUserRef.current !== userId) return null;
+        const inquiry = await supportRepository.getInquiry(inquiryId, userId);
+        const current = stateRef.current;
+        if (!current || activeUserRef.current !== userId) return null;
+        applyState({
+          ...current,
+          inquiries: [
+            inquiry,
+            ...current.inquiries.filter(({ id }) => id !== inquiry.id),
+          ],
+        });
+        return inquiry;
+      }).catch(() => null),
+    [applyState, currentUserId, enqueueMutation],
+  );
+
+  const loadNotice = useCallback(
+    (noticeId: string) =>
+      enqueueMutation(async () => {
+        const notice = await supportRepository.getNotice(noticeId);
+        setNotices((current) => {
+          const previous = current.find(({ id }) => id === notice.id);
+          return [
+            { ...notice, isNew: previous?.isNew ?? notice.isNew },
+            ...current.filter(({ id }) => id !== notice.id),
+          ];
+        });
+        return notice;
+      }).catch(() => null),
+    [enqueueMutation],
+  );
+
+  const searchNotices = useCallback(
+    (query: string) => supportRepository.getNotices(query),
+    [],
+  );
+
   const value = useMemo<SupportStoreValue>(
     () => ({
       addDraftImages,
       clearScreenSession,
       deleteUserSupportData,
       draft,
-      error,
       getInquiry,
       getNotice,
       inquiries: visibleState?.inquiries ?? EMPTY_INQUIRIES,
+      loadInquiry,
+      loadNotice,
       notices: currentUserId ? notices : EMPTY_NOTICES,
-      reloadSupport,
       removeDraftImage,
       saveDraft,
+      searchNotices,
       status,
       submitInquiry,
       updateDraft,
@@ -537,13 +555,14 @@ export function SupportProvider({ children }: PropsWithChildren) {
       currentUserId,
       deleteUserSupportData,
       draft,
-      error,
       getInquiry,
       getNotice,
+      loadInquiry,
+      loadNotice,
       notices,
-      reloadSupport,
       removeDraftImage,
       saveDraft,
+      searchNotices,
       status,
       submitInquiry,
       updateDraft,

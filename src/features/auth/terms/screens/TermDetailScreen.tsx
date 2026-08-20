@@ -1,5 +1,5 @@
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/common/AppButton';
@@ -48,12 +48,14 @@ export function TermDetailScreen({
     getLatestConsentRecord,
     getTerm,
     hasCurrentConsent,
+    loadTerm,
     recordConsent,
     reload,
     status,
   } = useTerms();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+  const [detailError, setDetailError] = useState(false);
   const resolvedTermId =
     termIdOverride ?? (termIdParam && isTermId(termIdParam) ? termIdParam : undefined);
   const action = actionOverride ?? actionParam;
@@ -72,6 +74,22 @@ export function TermDetailScreen({
     action === 'acknowledge' && term?.id === TERM_IDS.communityPolicy;
   const communityPolicyAcknowledged =
     isCommunityPolicyAcknowledgement && hasCurrentConsent(TERM_IDS.communityPolicy);
+
+  useEffect(() => {
+    if (status !== 'ready' || !term || term.body) {
+      setDetailError(false);
+      return;
+    }
+
+    let active = true;
+    void loadTerm(term.id).catch(() => {
+      if (active) setDetailError(true);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [loadTerm, status, term]);
 
   const close = () => {
     if (onConsentComplete) {
@@ -115,7 +133,7 @@ export function TermDetailScreen({
     <FormScreen
       contentContainerStyle={styles.content}
       footer={
-        isLocationConsent || isCommunityPolicyAcknowledgement ? (
+        (isLocationConsent || isCommunityPolicyAcknowledgement) && term?.body ? (
           <View style={styles.footer}>
             {saveError ? (
               <Text accessibilityLiveRegion="polite" style={styles.error}>
@@ -167,7 +185,20 @@ export function TermDetailScreen({
         <EmptyState title="약관을 찾을 수 없어요" />
       ) : null}
 
-      {status === 'ready' && term ? (
+      {status === 'ready' && term && !term.body ? (
+        detailError ? (
+          <EmptyState
+            actionLabel="다시 불러오기"
+            description="약관 내용을 불러오지 못했어요. 잠시 후 다시 시도해주세요."
+            onActionPress={() => void reload()}
+            title="약관 내용을 불러오지 못했어요"
+          />
+        ) : (
+          <LoadingView label="약관 내용을 불러오는 중이에요" />
+        )
+      ) : null}
+
+      {status === 'ready' && term?.body ? (
         <>
           <Text accessibilityRole="header" style={styles.title}>
             {term.title}
@@ -182,6 +213,8 @@ export function TermDetailScreen({
                 marketingConsentRecord?.agreed &&
                 marketingAgreedAt
                   ? `동의 버전 ${marketingConsentRecord.termVersion} · 동의일 ${marketingAgreedAt}`
+                  : hasCurrentMarketingConsent
+                    ? '현재 동의했어요.'
                   : marketingConsentRecord?.agreed && marketingAgreedAt
                     ? `이전 동의 버전 ${marketingConsentRecord.termVersion} · 동의일 ${marketingAgreedAt} · 현재 약관은 재동의가 필요해요.`
                     : '현재 동의하지 않았어요.'}

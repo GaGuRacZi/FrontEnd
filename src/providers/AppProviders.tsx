@@ -16,11 +16,9 @@ import { TermsProvider } from '@/src/features/auth/terms';
 import { ChatDataBridge } from '@/src/features/chat/ChatDataBridge';
 import { ChatProvider } from '@/src/features/chat/ChatStore';
 import { CommunityProvider } from '@/src/features/community/CommunityStore';
-import {
-  MyPageProvider,
-  useMyPageStore,
-} from '@/src/features/mypage/MyPageStore';
+import { MyPageProvider } from '@/src/features/mypage/MyPageStore';
 import { SupportProvider } from '@/src/features/mypage/support';
+import { HealthSummaryProvider } from '@/src/features/health-summary/HealthSummaryStore';
 import { MedicationProvider } from '@/src/features/home/MedicationStore';
 import { ScheduleTodoProvider } from '@/src/features/home/ScheduleTodoStore';
 import { PetProvider } from '@/src/features/pet/PetStore';
@@ -29,7 +27,6 @@ import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 function AccountDataGuard({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const { clearSession, currentUserId, isReady } = useAuthSession();
-  const { hasStoredUserProfileData } = useMyPageStore();
   const { logOut, resumePendingWithdrawal } = useAccountLifecycle();
   const [checkedUserId, setCheckedUserId] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
@@ -54,16 +51,6 @@ function AccountDataGuard({ children }: PropsWithChildren) {
       const resumedWithdrawal = await resumePendingWithdrawal();
       if (!active || resumedWithdrawal) return;
 
-      const profileStatus = await hasStoredUserProfileData(userId);
-      if (!active) return;
-
-      if (profileStatus === 'missing') {
-        await clearSession(userId);
-        return;
-      }
-      if (profileStatus !== 'valid') {
-        throw new Error('account-profile-invalid');
-      }
       setCheckedUserId(userId);
     })().catch(() => {
       if (active) setHasError(true);
@@ -73,9 +60,7 @@ function AccountDataGuard({ children }: PropsWithChildren) {
       active = false;
     };
   }, [
-    clearSession,
     currentUserId,
-    hasStoredUserProfileData,
     isReady,
     request,
     resumePendingWithdrawal,
@@ -151,22 +136,24 @@ function SessionProviders({ children }: PropsWithChildren) {
   return (
     <TermsProvider scope="session" userId={termsUserId}>
       <ScheduleTodoProvider>
-      <MedicationProvider>
       <PetProvider>
-        <MyPageProvider>
-          <SupportProvider>
-            <CommunityProvider>
-              <ChatProvider>
-                <AccountDataGuard>
-                  <ChatDataBridge />
-                  {children}
-                </AccountDataGuard>
-              </ChatProvider>
-            </CommunityProvider>
-          </SupportProvider>
-        </MyPageProvider>
+        <MedicationProvider>
+          <HealthSummaryProvider>
+            <MyPageProvider>
+              <SupportProvider>
+                <CommunityProvider>
+                  <ChatProvider>
+                    <AccountDataGuard>
+                      <ChatDataBridge />
+                      {children}
+                    </AccountDataGuard>
+                  </ChatProvider>
+                </CommunityProvider>
+              </SupportProvider>
+            </MyPageProvider>
+          </HealthSummaryProvider>
+        </MedicationProvider>
       </PetProvider>
-      </MedicationProvider>
       </ScheduleTodoProvider>
     </TermsProvider>
   );

@@ -20,7 +20,7 @@ const validInquiry = {
   id: 'inquiry-valid',
   images: [],
   status: 'waiting',
-  type: 'service',
+  type: 'pet',
   userId,
 };
 const fallback = { draft: createEmptyInquiryDraft(userId), inquiries: [] };
@@ -35,7 +35,7 @@ const normalized = normalizeStoredSupportState(
         { assetId: 'image-3', localUri: 'file:///draft/3.jpg' },
         { assetId: 'image-4', localUri: 'file:///draft/4.jpg' },
       ],
-      type: 'service',
+      type: 'pet',
       updatedAt: '2026-08-14T09:00:00+09:00',
       userId,
     },
@@ -89,14 +89,14 @@ assert.equal(
 const emptyDraft = createEmptyInquiryDraft(userId);
 assert.equal(getInquiryDraftError(emptyDraft), '문의 유형을 선택해주세요.');
 assert.equal(
-  getInquiryDraftError({ ...emptyDraft, type: 'service' }),
+  getInquiryDraftError({ ...emptyDraft, type: 'pet' }),
   '문의 내용을 입력해주세요.',
 );
 
 const validDraft = {
   ...emptyDraft,
   body: '  문의 내용입니다.  ',
-  type: 'service',
+  type: 'pet',
 };
 const inquiry = createInquiryFromDraft(
   validDraft,

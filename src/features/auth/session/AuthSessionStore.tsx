@@ -41,6 +41,7 @@ type AuthSessionContextValue = {
   activateRemoteSession: (session: RemoteAuthSession) => Promise<void>;
   clearSession: (expectedUserId: string) => Promise<void>;
   currentUserId: string | null;
+  discardStoredSession: () => Promise<void>;
   isReady: boolean;
   pendingRemoteSignupUserId: string | null;
   pendingRemoteSignupMethod: AuthMethod | null;
@@ -517,6 +518,42 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
     [enqueueSessionMutation],
   );
 
+  const discardStoredSession = useCallback(
+    () =>
+      enqueueSessionMutation(async () => {
+        const [storedUserId, storedPendingRemoteSignup] = await Promise.all([
+          AsyncStorage.getItem(SESSION_STORAGE_KEY),
+          AsyncStorage.getItem(PENDING_REMOTE_SIGNUP_STORAGE_KEY),
+        ]);
+        const userId =
+          parseSessionUserId(storedUserId) ?? parsePendingRemoteSignup(storedPendingRemoteSignup)?.uid;
+
+        if (userId) {
+          await clearPersistedSession(userId);
+        } else {
+          await Promise.all([
+            clearTokens(),
+            AsyncStorage.multiRemove([
+              SESSION_STORAGE_KEY,
+              SESSION_CLEAR_STORAGE_KEY,
+              PENDING_REMOTE_SIGNUP_STORAGE_KEY,
+            ]),
+          ]);
+        }
+
+        pendingSessionClearUserIdRef.current = null;
+        currentUserIdRef.current = null;
+        pendingRemoteSignupUserIdRef.current = null;
+        pendingRemoteSignupMethodRef.current = null;
+        setCurrentUserIdState(null);
+        setPendingRemoteSignupUserIdState(null);
+        setPendingRemoteSignupMethodState(null);
+        setSessionLoadError(false);
+        setIsReady(true);
+      }),
+    [enqueueSessionMutation],
+  );
+
   useEffect(
     () =>
       subscribeToTokenInvalidation(() => {
@@ -547,6 +584,7 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
       activateRemoteSession,
       clearSession,
       currentUserId,
+      discardStoredSession,
       isReady,
       pendingRemoteSignupUserId,
       pendingRemoteSignupMethod,
@@ -561,6 +599,7 @@ export function AuthSessionProvider({ children }: PropsWithChildren) {
       activateRemoteSession,
       clearSession,
       currentUserId,
+      discardStoredSession,
       isReady,
       pendingRemoteSignupUserId,
       pendingRemoteSignupMethod,

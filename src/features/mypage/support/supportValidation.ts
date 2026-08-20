@@ -19,9 +19,9 @@ const SUPPORT_BADGE_LABELS: Record<SupportBadgeKind, string> = {
 };
 
 export const INQUIRY_TYPE_OPTIONS: readonly { label: string; value: InquiryType }[] = [
-  { label: '서비스 이용', value: 'service' },
   { label: '계정', value: 'account' },
   { label: '결제·구독', value: 'billing' },
+  { label: '반려동물', value: 'pet' },
   { label: '커뮤니티', value: 'community' },
   { label: '기타', value: 'other' },
 ];

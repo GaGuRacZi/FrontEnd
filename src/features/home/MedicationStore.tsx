@@ -1,33 +1,138 @@
 import type { PropsWithChildren } from 'react';
-import { createContext, useCallback, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
-import type { DiagnosisMedication } from '@/src/features/dashboard/types';
+import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import {
+  getRemoteVisitDetail,
+  getRemoteVisits,
+  type RemotePrescription,
+  type RemoteVisit,
+} from '@/src/features/dashboard/services/visitApi';
+import type { DiagnosisMedication, DiagnosisMedicationTiming } from '@/src/features/dashboard/types';
+import { usePetStore } from '@/src/features/pet/PetStore';
 
 type MedicationStoreContextValue = {
+  clearScreenSession: () => Promise<void>;
+  hasLoadError: boolean;
+  isReady: boolean;
   medications: DiagnosisMedication[];
-  addMedications: (entries: DiagnosisMedication[]) => void;
-  removeMedication: (id: string) => void;
+  reloadMedications: () => void;
+  visits: RemoteVisit[];
 };
 
 const MedicationStoreContext = createContext<MedicationStoreContextValue | null>(null);
 
-export function MedicationProvider({ children }: PropsWithChildren) {
-  const [medications, setMedications] = useState<DiagnosisMedication[]>([]);
+const FREQUENCY_LABEL = {
+  AS_NEEDED: '필요 시',
+  ONCE_DAILY: '하루 1회',
+  THREE_TIMES: '하루 3회',
+  TWICE_DAILY: '하루 2회',
+} as const;
 
-  const addMedications = useCallback((entries: DiagnosisMedication[]) => {
-    setMedications((current) => {
-      const existingIds = new Set(current.map((medication) => medication.id));
-      const additions = entries.filter((medication) => !existingIds.has(medication.id));
-      return additions.length > 0 ? [...current, ...additions] : current;
-    });
+const MEAL_TIMING_LABEL = {
+  AFTER_MEAL: '식후',
+  ANYTIME: '무관',
+  BEFORE_MEAL: '식전',
+  BETWEEN_MEALS: '식간',
+} as const;
+
+const TAKE_TIME: Record<string, DiagnosisMedicationTiming> = {
+  BEDTIME: 'bedtime',
+  EVENING: 'dinner',
+  LUNCH: 'lunch',
+  MORNING: 'morning',
+};
+
+export function mapRemotePrescriptionToMedication(
+  prescription: RemotePrescription,
+  id = prescription.id,
+): DiagnosisMedication {
+  const dose = prescription.dosageAmount === null
+    ? prescription.dosageUnit ?? '정'
+    : `${prescription.dosageAmount}${prescription.dosageUnit ?? '정'}씩`;
+  return {
+    description: prescription.nameEn ?? undefined,
+    doseLabel: dose,
+    dosageLabel: prescription.ingredient ?? prescription.nameEn ?? '',
+    frequencyLabel: FREQUENCY_LABEL[prescription.frequency],
+    id,
+    mealTimingLabel: MEAL_TIMING_LABEL[prescription.mealTiming],
+    name: prescription.nameKo,
+    timings: prescription.takeTimes.map((time) => TAKE_TIME[time]),
+    warningNote: prescription.caution ?? undefined,
+  };
+}
+
+export function MedicationProvider({ children }: PropsWithChildren) {
+  const { currentUserId, isReady: sessionReady } = useAuthSession();
+  const { selectedPet } = usePetStore();
+  const [isReady, setIsReady] = useState(false);
+  const [medications, setMedications] = useState<DiagnosisMedication[]>([]);
+  const [visits, setVisits] = useState<RemoteVisit[]>([]);
+  const [hasLoadError, setHasLoadError] = useState(false);
+  const [request, setRequest] = useState(0);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+
+    let active = true;
+    setIsReady(false);
+    setHasLoadError(false);
+    setMedications([]);
+    setVisits([]);
+
+    if (!currentUserId || !selectedPet) {
+      setIsReady(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    void getRemoteVisits(selectedPet.id)
+      .then(async (nextVisits) => {
+        const details = await Promise.allSettled(
+          nextVisits
+            .filter((visit) => visit.status === 'READY')
+            .map((visit) => getRemoteVisitDetail(visit.id)),
+        );
+        if (!active) return;
+        setVisits(nextVisits);
+        setMedications(details.flatMap((result) => (
+          result.status === 'fulfilled'
+            ? result.value.prescriptions.map((prescription) => mapRemotePrescriptionToMedication(
+                prescription,
+                `${result.value.id}:${prescription.id}`,
+              ))
+            : []
+        )));
+      })
+      .catch(() => {
+        if (active) setHasLoadError(true);
+      })
+      .finally(() => {
+        if (active) setIsReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentUserId, request, selectedPet, sessionReady]);
+
+  const clearScreenSession = useCallback(async () => {
+    setMedications([]);
+    setVisits([]);
+    setHasLoadError(false);
+    setIsReady(false);
   }, []);
 
-  const removeMedication = useCallback((id: string) => {
-    setMedications((prev) => prev.filter((m) => m.id !== id));
+  const reloadMedications = useCallback(() => {
+    setRequest((current) => current + 1);
   }, []);
 
   return (
-    <MedicationStoreContext.Provider value={{ medications, addMedications, removeMedication }}>
+    <MedicationStoreContext.Provider
+      value={{ clearScreenSession, hasLoadError, isReady, medications, reloadMedications, visits }}
+    >
       {children}
     </MedicationStoreContext.Provider>
   );

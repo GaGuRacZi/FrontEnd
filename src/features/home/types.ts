@@ -17,6 +17,7 @@ export type TodoSummaryItem = {
     timeLabel: string;      // "08:00"
     status: TodoStatus;
     category: TodoCategory;
+    tagColor?: string;
 };
 
 export type RecentDiagnosis = {
@@ -41,17 +42,21 @@ export type MonthlyHealthMetric = {
   valueLabel: string;  // "3.4kg"
 };
 
-export type NotificationCategory = 'ai' | 'community' | 'schedule';
+export type NotificationCategory = 'ai' | 'community' | 'emergency' | 'schedule';
 export type NotificationFilterValue = 'all' | NotificationCategory;
 
+export type NotificationTarget =
+  | { id: string; type: 'map' | 'post' | 'todo' | 'visit' }
+  | null;
+
 export type NotificationItem = {
-  actionLabel: string;
   category: NotificationCategory;
   categoryLabel: string;
   dateGroupLabel: string;
   description: string;
   id: string;
   isRead: boolean;
+  target: NotificationTarget;
   timeLabel: string;
   title: string;
 };

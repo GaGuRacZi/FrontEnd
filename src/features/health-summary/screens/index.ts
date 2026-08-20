@@ -1,4 +1,4 @@
-﻿export * from './HealthSummaryScreen';
+export * from './HealthSummaryScreen';
 export * from './WeightRecordScreen';
 export * from './WalkTrackingScreen';
 export * from './WalkRecordScreen';

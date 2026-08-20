@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppIcon, EmptyState } from '@/src/components/common';
+import { AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
@@ -19,16 +19,41 @@ import {
 export function NoticeListScreen() {
   const router = useRouter();
   const navigateOnce = useNavigationLock();
-  const { notices } = useSupportStore();
+  const { notices, searchNotices } = useSupportStore();
   const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<typeof notices | null>(null);
+  const [searching, setSearching] = useState(false);
   const normalizedQuery = normalizeSupportSearch(query);
-  const filteredNotices = useMemo(
-    () =>
-      normalizedQuery
-        ? notices.filter(({ title }) => normalizeSupportSearch(title).includes(normalizedQuery))
-        : notices,
-    [normalizedQuery, notices],
-  );
+
+  useEffect(() => {
+    if (!normalizedQuery) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+
+    let active = true;
+    const timeoutId = setTimeout(() => {
+      setSearching(true);
+      void searchNotices(query).then(
+        (results) => {
+          if (active) setSearchResults(results);
+        },
+        () => {
+          if (active) setSearchResults([]);
+        },
+      ).finally(() => {
+        if (active) setSearching(false);
+      });
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [normalizedQuery, query, searchNotices]);
+
+  const filteredNotices = normalizedQuery ? searchResults ?? [] : notices;
 
   return (
     <SupportScreen loadingLabel="공지사항을 불러오고 있어요." title="공지사항">
@@ -57,7 +82,9 @@ export function NoticeListScreen() {
           value={query}
         />
 
-        {filteredNotices.length ? (
+        {searching ? (
+          <LoadingView label="공지사항을 검색하고 있어요." />
+        ) : filteredNotices.length ? (
           <View accessibilityRole="list" style={styles.list}>
             {filteredNotices.map((notice) => {
               const date = formatSupportDate(notice.createdAt);

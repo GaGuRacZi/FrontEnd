@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-import { appendMultipartJson } from '../src/utils/file.ts';
+import { appendMultipartAudio, appendMultipartJson } from '../src/utils/file.ts';
 
 function loadModule(path, dependencies) {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: {
+      jsx: ts.JsxEmit.React,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
   }).outputText;
   const module = { exports: {} };
   new Function('module', 'exports', 'require', compiled)(module, module.exports, (id) => {
@@ -66,6 +70,16 @@ assert.equal(petValidation.getBirthDateError(formatDate(yesterday)), undefined);
 const multipartParts = [];
 appendMultipartJson({ append: (...part) => multipartParts.push(part) }, { petName: '초코' });
 assert.deepEqual(multipartParts, [['data', { string: '{"petName":"초코"}', type: 'application/json' }]]);
+const audioParts = [];
+appendMultipartAudio(
+  { append: (...part) => audioParts.push(part) },
+  'audio',
+  'file:///cache/visit.m4a',
+);
+assert.deepEqual(audioParts, [[
+  'audio',
+  { name: 'visit.m4a', type: 'audio/mp4', uri: 'file:///cache/visit.m4a' },
+]]);
 assert.deepEqual(
   petApi.parseRemoteBreedEnvelope({
     code: 'BREED_SEARCH_200',
@@ -105,6 +119,190 @@ assert.deepEqual(
   [{ code: '1111000000', dongPreview: ['청운효자동'], name: '서울특별시 종로구' }],
 );
 
+const locationService = loadModule('../src/features/auth/signup/services/locationService.ts', {
+  'expo-location': {
+    reverseGeocodeAsync: async () => [
+      { city: '서울특별시', district: '종로구', region: '서울특별시' },
+    ],
+  },
+  'react-native': { Platform: { OS: 'android' } },
+});
+assert.equal(
+  await locationService.getRegionFromCoordinates(37.5665, 126.978),
+  '서울특별시 종로구',
+);
+
+const mypageApi = loadModule('../src/features/mypage/services/mypageApi.ts', {
+  '@/src/services/apiClient': { apiRequest: async () => undefined },
+});
+assert.deepEqual(
+  mypageApi.parseRemoteMyPageProfileEnvelope({
+    code: 'MYPAGE_PROFILE_200',
+    isSuccess: true,
+    message: 'ok',
+    result: {
+      email: 'USER@example.com',
+      intro: '소개',
+      isNew: false,
+      linkedAccounts: [{ linkedAt: '2026-08-20T09:00:00', socialType: 'KAKAO' }],
+      name: '보호자',
+      nickname: '젤리',
+      profileUrl: null,
+      regionCode: '11680',
+      regionName: '강남구',
+      uid: 'user-id',
+    },
+  }),
+  {
+    email: 'user@example.com',
+    intro: '소개',
+    isNew: false,
+    linkedAccounts: [{ email: 'user@example.com', method: 'kakao' }],
+    name: '보호자',
+    nickname: '젤리',
+    profileUrl: null,
+    regionCode: '11680',
+    regionName: '강남구',
+    uid: 'user-id',
+  },
+);
+assert.deepEqual(
+  mypageApi.parseRemoteNotificationSettingsEnvelope({
+    code: 'MYPAGE_NOTI_200',
+    isSuccess: true,
+    message: 'ok',
+    result: {
+      aiAnalysisAlarm: true,
+      benefitAlarm: false,
+      chatAlarm: false,
+      communityAlarm: true,
+      dndEnabled: true,
+      dndEnd: '07:00:00',
+      dndStart: '22:00:00',
+      healthAlarm: true,
+      todoAlarm: true,
+    },
+  }, 'MYPAGE_NOTI_200'),
+  {
+    aiAnalysis: true,
+    benefit: false,
+    chat: false,
+    community: true,
+    doNotDisturbEnabled: true,
+    doNotDisturbEnd: '07:00',
+    doNotDisturbStart: '22:00',
+    healthAlert: true,
+    schedule: true,
+  },
+);
+assert.deepEqual(
+  mypageApi.parseRemoteMyPageHomeEnvelope({
+    code: 'MYPAGE_HOME_200',
+    isSuccess: true,
+    message: 'ok',
+    result: { subscribe: { active: true, displayName: '꼬마 젤리', plan: 'BASIC' } },
+  }),
+  { subscription: { active: true, displayName: '꼬마 젤리', plan: 'BASIC' } },
+);
+
+const mypageMutationRequests = [];
+const mypageMutations = loadModule('../src/features/mypage/services/mypageApi.ts', {
+  '@/src/services/apiClient': {
+    apiRequest: async (path, options) => {
+      mypageMutationRequests.push([path, options]);
+      return {
+        code: {
+          '/mypage/profile/image': 'MYPAGE_PROFILE_IMAGE_DELETE_200',
+          '/mypage/region': 'MYPAGE_REGION_UPDATE_200',
+          '/mypage/withdrawal': 'MYPAGE_WITHDRAWAL_200',
+          '/users/me/push-token': 'USER_PUSH_TOKEN_200',
+        }[path],
+        isSuccess: true,
+        message: 'ok',
+        result: null,
+      };
+    },
+  },
+});
+await mypageMutations.updateRemoteMyPageRegion('11680');
+await mypageMutations.registerRemotePushToken(null);
+await mypageMutations.deleteRemoteProfileImage();
+await mypageMutations.deleteRemoteAccount();
+assert.deepEqual(mypageMutationRequests, [
+  ['/mypage/region', { json: { regionCode: '11680' }, method: 'PATCH' }],
+  ['/users/me/push-token', { json: { pushToken: '' }, method: 'PUT' }],
+  ['/mypage/profile/image', { method: 'DELETE' }],
+  ['/mypage/withdrawal', { method: 'DELETE' }],
+]);
+
+const activityRequests = [];
+const activityApi = loadModule('../src/features/mypage/services/mypageActivityApi.ts', {
+  '@/src/services/apiClient': {
+    apiRequest: async (path) => {
+      activityRequests.push(path);
+      return path.includes('cursor=next')
+        ? {
+            code: 'MYPAGE_COMMUNITY_POSTS_200',
+            isSuccess: true,
+            message: 'ok',
+            result: { content: [{ postId: 2 }], hasNext: false, nextCursor: null, size: 50 },
+          }
+        : {
+            code: 'MYPAGE_COMMUNITY_POSTS_200',
+            isSuccess: true,
+            message: 'ok',
+            result: { content: [{ postId: 1 }], hasNext: true, nextCursor: 'next', size: 50 },
+          };
+    },
+  },
+});
+assert.deepEqual(await activityApi.getRemoteMyPageActivityPostIds('authored'), ['1', '2']);
+assert.deepEqual(activityRequests, [
+  '/mypage/community/posts?size=50',
+  '/mypage/community/posts?size=50&cursor=next',
+]);
+
+const supportModule = loadModule('../src/features/mypage/support/services/supportRepository.ts', {
+  '@react-native-async-storage/async-storage': { default: {} },
+  '@/src/services/apiClient': {
+    apiRequest: async () => ({
+      code: 'MYPAGE_INQUIRY_LIST_200',
+      isSuccess: true,
+      message: 'ok',
+      result: {
+        content: [{
+          answer: null,
+          attachmentUrls: [],
+          content: '문의 내용',
+          createdAt: '2026-08-20T09:00:00+09:00',
+          inquiryId: 1,
+          inquiryType: 'PET',
+          status: 'RECEIVED',
+        }],
+        hasNext: false,
+        nextCursor: null,
+        size: 50,
+      },
+    }),
+  },
+  '@/src/utils/file': { appendMultipartImage: () => undefined, appendMultipartJson: () => undefined },
+  '../supportValidation': {
+    createEmptyInquiryDraft: () => ({}),
+    normalizeStoredSupportState: () => ({}),
+  },
+});
+assert.deepEqual(await supportModule.supportRepository.getInquiries('user-id'), [{
+  answer: null,
+  answeredAt: null,
+  body: '문의 내용',
+  createdAt: '2026-08-20T09:00:00+09:00',
+  id: '1',
+  images: [],
+  status: 'waiting',
+  type: 'pet',
+  userId: 'user-id',
+}]);
+
 const termsApi = loadModule('../src/features/auth/terms/TermsRepository.ts', {
   '@/src/services/apiClient': { apiRequest: async () => undefined },
   './types': {
@@ -126,6 +324,35 @@ assert.deepEqual(
     result: [{ effectiveAt: '2025-01-01', required: true, title: '서비스 이용약관', type: 'TERMS_OF_SERVICE', version: '1.0' }],
   }),
   ['TERMS_OF_SERVICE'],
+);
+assert.deepEqual(
+  termsApi.parseTermsListDefinitionsEnvelope({
+    code: 'TERMS_LIST_200',
+    isSuccess: true,
+    message: 'ok',
+    result: [
+      {
+        effectiveAt: '2025-01-01',
+        required: true,
+        title: '서비스 이용약관',
+        type: 'TERMS_OF_SERVICE',
+        version: '1.0',
+      },
+    ],
+  }),
+  [
+    {
+      body: '',
+      effectiveDate: '2025-01-01',
+      id: 'service-terms',
+      kind: 'service',
+      required: true,
+      scope: 'signup',
+      status: 'active',
+      title: '서비스 이용약관',
+      version: '1.0',
+    },
+  ],
 );
 assert.deepEqual(
   termsApi.parseTermDetailEnvelope({
@@ -153,6 +380,15 @@ assert.deepEqual(
     version: '1.0',
   },
 );
+assert.deepEqual(
+  termsApi.parseMyPageTermsEnvelope({
+    code: 'MYPAGE_TERMS_200',
+    isSuccess: true,
+    message: 'ok',
+    result: [{ agreed: true, type: 'MARKETING_PUSH', version: '1.0' }],
+  }),
+  [{ agreed: true, id: 'marketing-communications', version: '1.0' }],
+);
 assert.throws(() =>
   termsApi.parseTermDetailEnvelope({
     code: 'TERMS_DETAIL_200',
@@ -167,4 +403,30 @@ assert.throws(() =>
       version: '1.0',
     },
   }),
+);
+
+const mypageMappers = loadModule('../src/features/mypage/mypageMappers.ts', {});
+const enabledNotificationSettings = {
+  aiAnalysis: true,
+  benefit: true,
+  chat: true,
+  community: true,
+  doNotDisturbEnabled: true,
+  doNotDisturbEnd: '07:00',
+  doNotDisturbStart: '22:00',
+  healthAlert: true,
+  schedule: true,
+};
+assert.deepEqual(
+  mypageMappers.disablePushNotifications(enabledNotificationSettings),
+  {
+    ...enabledNotificationSettings,
+    aiAnalysis: false,
+    benefit: false,
+    chat: false,
+    community: false,
+    doNotDisturbEnabled: false,
+    healthAlert: false,
+    schedule: false,
+  },
 );
