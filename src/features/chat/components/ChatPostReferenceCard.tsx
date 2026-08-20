@@ -12,7 +12,6 @@ type ChatPostReferenceCardProps = {
 
 const KIND_LABELS = {
   market: '장터',
-  review: '리뷰',
   talk: '소통',
 } as const;
 

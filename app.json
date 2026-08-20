@@ -31,7 +31,8 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "permissions": [
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.CAMERA"
       ],
       "package": "com.gaguraczi.paw",
       "googleServicesFile": "./google-services.json",
@@ -65,7 +66,7 @@
         "expo-image-picker",
         {
           "photosPermission": "프로필, 반려동물, 문서 또는 게시물에 사진을 첨부하려면 사진 접근 권한이 필요합니다.",
-          "cameraPermission": false,
+          "cameraPermission": "처방전 사진을 촬영하려면 카메라 권한이 필요합니다.",
           "microphonePermission": false
         }
       ],

@@ -1,5 +1,3 @@
-import type { SignupData } from '@/src/features/auth/signup/SignupContext';
-
 import type {
   NotificationSettings,
   PaymentHistoryItem,
@@ -8,6 +6,8 @@ import type {
   SubscriptionState,
   UserProfile,
 } from './types';
+import type { RemoteUserProfile } from '../auth/services/kakaoAuthContract';
+import type { AuthMethod } from '../auth/session/AuthSessionStore';
 
 function nowIso() {
   return new Date().toISOString();
@@ -43,28 +43,6 @@ export function createDefaultPaymentHistory(): PaymentHistoryItem[] {
   return [];
 }
 
-export function signupDataToProfile(data: SignupData, userId: string): UserProfile {
-  const now = nowIso();
-  const nickname = data.nickname.trim() || data.name.trim() || 'PAW 보호자';
-
-  return {
-    createdAt: now,
-    id: userId,
-    introduction: data.introduction.trim(),
-    location: data.region.trim(),
-    loginConnections: [
-      {
-        email: data.email.trim().toLowerCase(),
-        method: data.method,
-      },
-    ],
-    name: data.name.trim(),
-    nickname,
-    profileImageUri: data.profileImageUri,
-    updatedAt: now,
-  };
-}
-
 export function createFallbackProfile(userId: string): UserProfile {
   const now = nowIso();
 
@@ -88,5 +66,29 @@ export function createDefaultMyPageState(userId: string): StoredMyPageState {
     paymentMethods: createDefaultPaymentMethods(),
     profile: createFallbackProfile(userId),
     subscription: createDefaultSubscription(),
+  };
+}
+
+export function mergeRemoteUserProfile(
+  current: UserProfile,
+  remote: RemoteUserProfile,
+  method?: AuthMethod,
+): UserProfile {
+  const connections = method && !current.loginConnections.some(({ method: currentMethod }) => currentMethod === method)
+    ? [...current.loginConnections, { email: remote.email, method }]
+    : current.loginConnections;
+  const now = nowIso();
+
+  return {
+    ...current,
+    createdAt: current.createdAt || now,
+    id: remote.uid,
+    introduction: remote.intro,
+    location: remote.regionName || current.location,
+    loginConnections: connections.length ? connections : [{ email: remote.email, method: method ?? 'local' }],
+    name: remote.name,
+    nickname: remote.nickname,
+    profileImageUri: remote.profileUrl,
+    updatedAt: now,
   };
 }

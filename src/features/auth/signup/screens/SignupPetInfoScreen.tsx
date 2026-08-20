@@ -18,6 +18,7 @@ import {
   formatBirthDate,
   formatBirthDateValue,
   getBirthDateError,
+  getLatestBirthDate,
   getRequiredError,
   getWeightError,
   hasValidSignupPetInfo,
@@ -36,7 +37,7 @@ export function SignupPetInfoScreen() {
   const [birthDateError, setBirthDateError] = useState<string>();
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [pendingBirthDate, setPendingBirthDate] = useState(
-    () => parseBirthDate(data.birthDate) ?? new Date(),
+    () => parseBirthDate(data.birthDate) ?? getLatestBirthDate(),
   );
   const [weightError, setWeightError] = useState<string>();
 
@@ -54,12 +55,16 @@ export function SignupPetInfoScreen() {
   };
 
   const openCalendar = () => {
-    const initialDate = parseBirthDate(data.birthDate) ?? new Date();
+    const latestBirthDate = getLatestBirthDate();
+    const storedBirthDate = parseBirthDate(data.birthDate);
+    const initialDate = storedBirthDate && storedBirthDate <= latestBirthDate
+      ? storedBirthDate
+      : latestBirthDate;
 
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         display: 'calendar',
-        maximumDate: new Date(),
+        maximumDate: latestBirthDate,
         mode: 'date',
         onChange: handleAndroidDateChange,
         value: initialDate,
@@ -198,7 +203,7 @@ export function SignupPetInfoScreen() {
             accentColor={COLORS.primary}
             display="inline"
             locale="ko-KR"
-            maximumDate={new Date()}
+            maximumDate={getLatestBirthDate()}
             mode="date"
             onChange={(_, date) => date && setPendingBirthDate(date)}
             themeVariant="light"

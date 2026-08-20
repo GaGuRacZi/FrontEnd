@@ -8,11 +8,6 @@ import { MOCK_EXPENSE_RECORDS } from '../mock';
 import { HEALTH_SUMMARY_IMAGES } from '../utils/images';
 import { MonthNavigator } from './MonthNavigator';
 
-const parseRecordDate = (value: string) => {
-	const [y, m, d] = value.split('.').map(Number);
-	return new Date(y, (m || 1) - 1, d || 1);
-};
-
 export function MedicalExpenseTab() {
 	const router = useRouter();
 	const [year, setYear] = useState(() => new Date().getFullYear());
@@ -23,21 +18,7 @@ export function MedicalExpenseTab() {
 		record.date.startsWith(formattedTargetMonth)
 	);
 
-	// 가장 최근 기록이 속한 달을 "이번 달"로 삼음 (실제 기기 날짜와 무관하게 동작)
-	const sortedExpenseDates = MOCK_EXPENSE_RECORDS
-		.map((record) => parseRecordDate(record.date))
-		.sort((a, b) => a.getTime() - b.getTime());
-	const anchorDate = sortedExpenseDates[sortedExpenseDates.length - 1] ?? new Date();
-	const anchorYear = anchorDate.getFullYear();
-	const anchorMonth = anchorDate.getMonth();
-
-	const monthlyExpenseTotal = MOCK_EXPENSE_RECORDS.reduce((sum, record) => {
-		const parsed = parseRecordDate(record.date);
-		if (parsed.getFullYear() === anchorYear && parsed.getMonth() === anchorMonth) {
-			return sum + record.totalCost;
-		}
-		return sum;
-	}, 0);
+	const monthlyExpenseTotal = filteredRecords.reduce((sum, record) => sum + record.totalCost, 0);
 
 	const allTimeExpenseTotal = MOCK_EXPENSE_RECORDS.reduce((sum, record) => sum + record.totalCost, 0);
 
@@ -68,8 +49,8 @@ export function MedicalExpenseTab() {
 
 			<MonthNavigator
 				month={month}
-				onNextMonth={() => setMonth(m => (m === 12 ? 1 : m + 1))}
-				onPrevMonth={() => setMonth(m => (m === 1 ? 12 : m - 1))}
+				onNextMonth={() => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); }}
+				onPrevMonth={() => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); }}
 				year={year}
 			/>
 

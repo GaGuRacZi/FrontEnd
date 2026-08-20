@@ -45,6 +45,7 @@ export const COLORS = {
   confettiYellow: 'rgba(255, 242, 198, 0.75)',
   disabledPrimary: '#D0D8E8',
 
+  pageBackground: '#F5F7FC',
   gray100: '#F7F7F7',
   gray200: '#F0F0F0',
   gray300: '#E3E3E3',
@@ -52,4 +53,5 @@ export const COLORS = {
   gray600: '#666666',
   gray800: '#404040',
   black: '#1A1A1A',
+  transparent: 'transparent',
 } as const;

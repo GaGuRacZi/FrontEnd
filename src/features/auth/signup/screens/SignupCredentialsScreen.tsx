@@ -1,11 +1,13 @@
 import { Redirect, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { AppIcon } from '@/src/components/common/AppIcon';
 import { AppInput } from '@/src/components/form/AppInput';
+import { useAppAlert } from '@/src/components/modal';
 import { COLORS, SPACING } from '@/src/constants';
 import { PasswordVisibilityButton } from '@/src/features/auth/components/PasswordVisibilityButton';
+import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
 
 import { EmailVerificationField } from '../components/EmailVerificationField';
 import { SignupScaffold } from '../components/SignupScaffold';
@@ -18,20 +20,54 @@ import {
 
 export function SignupCredentialsScreen() {
   const router = useRouter();
-  const { data, updateField } = useSignup();
+  const showAlert = useAppAlert();
+  const {
+    data,
+    flushSignupDraft,
+    updateField,
+  } = useSignup();
+  const {
+    pendingRemoteSignupMethod,
+    pendingRemoteSignupUserId,
+  } = useAuthSession();
   const [passwordError, setPasswordError] = useState<string>();
   const [passwordConfirmError, setPasswordConfirmError] = useState<string>();
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [passwordConfirmVisible, setPasswordConfirmVisible] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   if (data.method !== 'local') return <Redirect href="/signup/user-info" />;
+
+  const handleNext = async () => {
+    if (submittingRef.current) return;
+
+    if (pendingRemoteSignupUserId && pendingRemoteSignupMethod === 'local') {
+      router.push('/signup/user-info');
+      return;
+    }
+
+    submittingRef.current = true;
+    setSubmitting(true);
+
+    try {
+      await flushSignupDraft();
+      router.push('/signup/user-info');
+    } catch {
+      showAlert('회원가입 정보를 저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SignupScaffold
       bodyStyle={styles.body}
       currentStep={2}
-      nextDisabled={!hasValidSignupCredentials(data)}
-      onNext={() => router.push('/signup/user-info')}
+      nextDisabled={!hasValidSignupCredentials(data) || submitting}
+      nextLoading={submitting}
+      onNext={handleNext}
       title={'비밀번호를\n설정해주세요'}
     >
       <EmailVerificationField />

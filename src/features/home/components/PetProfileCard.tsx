@@ -1,6 +1,5 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import {AppIcon} from '@/src/components/common/AppIcon';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { PetAvatar } from '@/src/features/pet/components/PetAvatar';
 
@@ -91,4 +90,3 @@ export function PetProfileCard( { onPressAddDiagnosis, onPressDetail, pet, rawPe
         
     );
 }
-

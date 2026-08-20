@@ -9,6 +9,7 @@ const SIGNUP_TRANSACTION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type SignupTransaction = {
   createdAt: string;
+  createdPetId?: string;
   email: string;
   method: AuthMethod;
   schemaVersion: typeof SIGNUP_TRANSACTION_SCHEMA_VERSION;
@@ -43,6 +44,8 @@ function isSignupTransaction(value: unknown): value is SignupTransaction {
     transaction.schemaVersion === SIGNUP_TRANSACTION_SCHEMA_VERSION &&
     typeof transaction.createdAt === 'string' &&
     Number.isFinite(Date.parse(transaction.createdAt)) &&
+    (transaction.createdPetId === undefined ||
+      (typeof transaction.createdPetId === 'string' && Boolean(transaction.createdPetId.trim()))) &&
     typeof transaction.email === 'string' &&
     transaction.email === normalizeEmail(transaction.email) &&
     isAuthMethod(transaction.method) &&
@@ -128,6 +131,7 @@ export async function loadActiveSignupTransaction(
 export async function saveSignupTransaction(
   owner: SignupTransactionOwner,
   status: SignupTransaction['status'],
+  createdPetId?: string,
 ) {
   const normalizedOwner: SignupTransactionOwner = {
     ...owner,
@@ -138,9 +142,14 @@ export async function saveSignupTransaction(
     current && sameOwner(current, normalizedOwner)
       ? current.createdAt
       : new Date().toISOString();
+  const preservedPetId = current && sameOwner(current, normalizedOwner)
+    ? current.createdPetId
+    : undefined;
+  const nextCreatedPetId = createdPetId ?? preservedPetId;
   const transaction: SignupTransaction = {
     ...normalizedOwner,
     createdAt,
+    ...(nextCreatedPetId ? { createdPetId: nextCreatedPetId } : {}),
     schemaVersion: SIGNUP_TRANSACTION_SCHEMA_VERSION,
     status,
   };

@@ -12,12 +12,13 @@ import { AppModal, useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { AddressSearchScreen } from '@/src/features/auth/signup/components/AddressSearchScreen';
 import {
+  geocodeAddress,
   getBestCurrentPosition,
-  getRegionFromPosition,
 } from '@/src/features/auth/signup/services/locationService';
 import { TERM_IDS, useTerms } from '@/src/features/auth/terms';
 import { TermDetailScreen } from '@/src/features/auth/terms/screens/TermDetailScreen';
 import { useNavigationLock } from '@/src/hooks/useNavigationLock';
+import { certifyRemoteUserLocation } from '@/src/services/locationApi';
 import { formatCompactRegion } from '@/src/utils/location';
 
 import { MyPageHeader, ProfileAvatar } from '../components';
@@ -31,9 +32,10 @@ import {
 } from '../services/profileImageStorage';
 import type { UserProfile } from '../types';
 
-const MAX_NICKNAME_LENGTH = 12;
-const MAX_NAME_LENGTH = 20;
+const MAX_NICKNAME_LENGTH = 15;
+const MAX_NAME_LENGTH = 10;
 const MAX_INTRODUCTION_LENGTH = 30;
+const NICKNAME_PATTERN = /^[a-zA-Z0-9가-힣]+$/;
 
 type ProfileDraft = Pick<
   UserProfile,
@@ -58,6 +60,7 @@ export function MyPageProfileScreen() {
   const { isReady, profile, updateProfile } = useMyPageStore();
   const { getTerm, hasCurrentConsent, status: termsStatus } = useTerms();
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  const [baseDraft, setBaseDraft] = useState<ProfileDraft | null>(null);
   const [addressSearchVisible, setAddressSearchVisible] = useState(false);
   const [locationTermsVisible, setLocationTermsVisible] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -72,15 +75,26 @@ export function MyPageProfileScreen() {
   const profileIdRef = useRef<string | null>(null);
   const savingRef = useRef(false);
   const profileId = profile?.id;
+  const isDirty = Boolean(
+    draft &&
+      baseDraft &&
+      (draft.introduction !== baseDraft.introduction ||
+        draft.location !== baseDraft.location ||
+        draft.name !== baseDraft.name ||
+        draft.nickname !== baseDraft.nickname ||
+        draft.profileImageUri !== baseDraft.profileImageUri),
+  );
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || isDirty) return;
 
     profileIdRef.current = profile.id;
     committedImageUriRef.current = profile.profileImageUri;
     draftImageUriRef.current = profile.profileImageUri;
-    setDraft(createDraft(profile));
-  }, [profile]);
+    const nextDraft = createDraft(profile);
+    setBaseDraft(nextDraft);
+    setDraft(nextDraft);
+  }, [isDirty, profile]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -184,18 +198,13 @@ export function MyPageProfileScreen() {
 
     return {
       name: draft.name.trim() ? '' : '이름을 입력해주세요.',
-      nickname: draft.nickname.trim() ? '' : '닉네임을 입력해주세요.',
+      nickname: !draft.nickname.trim()
+        ? '닉네임을 입력해주세요.'
+        : NICKNAME_PATTERN.test(draft.nickname)
+          ? ''
+          : '닉네임은 한글, 영문, 숫자만 사용할 수 있어요.',
     };
   }, [draft]);
-  const isDirty = Boolean(
-    draft &&
-      profile &&
-      (draft.introduction !== profile.introduction ||
-        draft.location !== profile.location ||
-        draft.name !== profile.name ||
-        draft.nickname !== profile.nickname ||
-        draft.profileImageUri !== profile.profileImageUri),
-  );
   const canSave = Boolean(draft && !errors.name && !errors.nickname && !saving);
 
   usePreventRemove(isDirty || saving, ({ data }) => {
@@ -207,13 +216,48 @@ export function MyPageProfileScreen() {
     setPendingExitAction(data.action);
   });
 
+  const startLocationRequest = () => {
+    const requestId = locationRequestIdRef.current + 1;
+    locationRequestIdRef.current = requestId;
+    return () => mountedRef.current && locationRequestIdRef.current === requestId;
+  };
+
   if (addressSearchVisible && draft) {
     return (
       <AddressSearchScreen
         onBack={() => setAddressSearchVisible(false)}
         onSelect={(address) => {
-          setDraft((current) => (current ? { ...current, location: address } : current));
           setAddressSearchVisible(false);
+          void (async () => {
+            const isActiveRequest = startLocationRequest();
+            setLocating(true);
+            try {
+              const location = (await geocodeAddress(address)).find(
+                ({ latitude, longitude }) => Number.isFinite(latitude) && Number.isFinite(longitude),
+              );
+              if (!isActiveRequest()) return;
+              if (!location) throw new Error('location-not-found');
+              const certified = await certifyRemoteUserLocation(
+                location.latitude,
+                location.longitude,
+              );
+              if (!isActiveRequest() || !certified.regionName.trim()) {
+                if (isActiveRequest()) {
+                  showAlert('지역을 설정하지 못했어요', '다시 검색하거나 현재 위치를 사용해주세요.');
+                }
+                return;
+              }
+              setDraft((current) =>
+                current ? { ...current, location: certified.regionName } : current,
+              );
+            } catch {
+              if (isActiveRequest()) {
+                showAlert('지역을 설정하지 못했어요', '다시 검색하거나 현재 위치를 사용해주세요.');
+              }
+            } finally {
+              if (isActiveRequest()) setLocating(false);
+            }
+          })();
         }}
       />
     );
@@ -281,10 +325,7 @@ export function MyPageProfileScreen() {
 
   const requestCurrentLocation = async () => {
     if (locating) return;
-    const requestId = locationRequestIdRef.current + 1;
-    locationRequestIdRef.current = requestId;
-    const isActiveRequest = () =>
-      mountedRef.current && locationRequestIdRef.current === requestId;
+    const isActiveRequest = startLocationRequest();
     setLocating(true);
 
     try {
@@ -306,14 +347,20 @@ export function MyPageProfileScreen() {
         return;
       }
 
-      const region = await getRegionFromPosition(position);
+      const certified = await certifyRemoteUserLocation(
+        position.coords.latitude,
+        position.coords.longitude,
+      );
       if (!isActiveRequest()) return;
-      if (!region) {
-        showAlert('현재 위치를 주소로 바꾸지 못했어요', '지역 검색으로 직접 선택해주세요.');
+      const regionName = certified.regionName.trim();
+      if (!regionName) {
+        showAlert('현재 위치의 지역 정보를 찾지 못했어요', '지역 검색으로 직접 선택해주세요.');
         return;
       }
 
-      setDraft((current) => (current ? { ...current, location: region } : current));
+      setDraft((current) =>
+        current ? { ...current, location: regionName } : current,
+      );
     } catch {
       if (isActiveRequest()) {
         showAlert('현재 위치를 불러오지 못했어요', '잠시 후 다시 시도해주세요.');
@@ -359,7 +406,12 @@ export function MyPageProfileScreen() {
         });
 
         if (!result.ok) {
-          showAlert('저장하지 못했어요', '잠시 후 다시 시도해주세요.');
+          showAlert(
+            '저장하지 못했어요',
+            result.reason === 'not-supported'
+              ? '등록된 프로필 사진은 새 사진으로 변경할 수 있어요.'
+              : '잠시 후 다시 시도해주세요.',
+          );
           throw new Error('PROFILE_UPDATE_FAILED');
         }
 
@@ -421,6 +473,10 @@ export function MyPageProfileScreen() {
                 accessibilityRole="button"
                 disabled={!draft.profileImageUri}
                 onPress={() => {
+                  if (draft.profileImageUri === committedImageUriRef.current) {
+                    showAlert('사진을 삭제할 수 없어요', '등록된 사진은 새 사진으로 변경할 수 있어요.');
+                    return;
+                  }
                   const uri = draftImageUriRef.current;
                   draftImageUriRef.current = null;
                   void removeDraftOnlyImage(uri);
@@ -436,9 +492,6 @@ export function MyPageProfileScreen() {
               >
                 <Text style={styles.imageActionText}>사진 삭제</Text>
               </Pressable>
-              <View style={styles.linkedBadge}>
-                <Text style={styles.linkedText}>계정 연동</Text>
-              </View>
             </View>
           </View>
         </View>
@@ -609,20 +662,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xxl,
   },
   imageActionText: {
-    ...TYPOGRAPHY.smallButton,
-    color: COLORS.gray600,
-  },
-  linkedBadge: {
-    alignItems: 'center',
-    backgroundColor: COLORS.cream,
-    borderColor: COLORS.yellow,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    height: 32,
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.xxl,
-  },
-  linkedText: {
     ...TYPOGRAPHY.smallButton,
     color: COLORS.gray600,
   },

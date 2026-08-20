@@ -1,8 +1,12 @@
 require('@expo/env').load(__dirname, { silent: true });
 
 const kakaoAppKey = process.env.KAKAO_NATIVE_APP_KEY;
+const hasKakaoAppKey = /^[a-f0-9]{32}$/i.test(kakaoAppKey ?? '');
 
-if (!/^[a-f0-9]{32}$/i.test(kakaoAppKey ?? '')) {
+if (
+  !hasKakaoAppKey &&
+  !(process.env.EXPO_NO_DOTENV && !process.env.EAS_BUILD && !kakaoAppKey)
+) {
   throw new Error('KAKAO_NATIVE_APP_KEY must be a 32-character hexadecimal value.');
 }
 
@@ -25,7 +29,9 @@ module.exports = ({ config }) => {
     },
     plugins: [
       ...plugins,
-      ['@react-native-seoul/kakao-login', { kakaoAppKey }],
+      ...(hasKakaoAppKey
+        ? [['@react-native-seoul/kakao-login', { kakaoAppKey }]]
+        : []),
       [
         'expo-build-properties',
         {

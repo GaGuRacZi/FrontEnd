@@ -109,7 +109,7 @@ function normalizePostReference(value: unknown): ChatPostReferenceSnapshot | nul
     !postId ||
     !title ||
     !authorNickname ||
-    (value.kind !== 'market' && value.kind !== 'review' && value.kind !== 'talk')
+    (value.kind !== 'market' && value.kind !== 'talk')
   ) {
     return null;
   }

@@ -12,12 +12,27 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   webp: 'image/webp',
 };
 
+type MultipartImageFile = {
+  name: string;
+  type: string;
+  uri: string;
+};
+
+type MultipartJsonPart = {
+  string: string;
+  type: 'application/json';
+};
+
+type NativeMultipartFormData = {
+  append(name: string, value: MultipartImageFile | MultipartJsonPart): void;
+};
+
 export function getFileExtension(uri: string) {
   const match = /\.([a-zA-Z0-9]+)(?:[?#]|$)/.exec(uri);
   return match?.[1]?.toLowerCase() || 'jpg';
 }
 
-export function getMultipartImageFile(uri: string) {
+export function getMultipartImageFile(uri: string): MultipartImageFile {
   if (!uri.trim()) throw new Error('invalid-image-uri');
 
   const sourceExtension = /\.([a-zA-Z0-9]+)(?:[?#]|$)/.exec(uri)?.[1]?.toLowerCase();
@@ -41,4 +56,19 @@ export function getMultipartImageFile(uri: string) {
     type,
     uri,
   };
+}
+
+function getNativeMultipartFormData(formData: FormData) {
+  return formData as unknown as NativeMultipartFormData;
+}
+
+export function appendMultipartImage(formData: FormData, fieldName: string, uri: string) {
+  getNativeMultipartFormData(formData).append(fieldName, getMultipartImageFile(uri));
+}
+
+export function appendMultipartJson(formData: FormData, data: unknown) {
+  getNativeMultipartFormData(formData).append('data', {
+    string: JSON.stringify(data),
+    type: 'application/json',
+  });
 }

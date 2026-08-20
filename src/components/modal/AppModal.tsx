@@ -31,6 +31,7 @@ type ModalAction = {
 
 type AppModalProps = PropsWithChildren<{
   animateSheetOnly?: boolean;
+  avoidKeyboard?: boolean;
   closeOnBackdropPress?: boolean;
   contentContainerStyle?: StyleProp<ViewStyle>;
   initialHeight?: number;
@@ -46,6 +47,7 @@ type AppModalProps = PropsWithChildren<{
 }>;
 
 export function AppModal({
+  avoidKeyboard = true,
   children,
   closeOnBackdropPress = true,
   contentContainerStyle,
@@ -264,6 +266,7 @@ export function AppModal({
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          enabled={avoidKeyboard}
           pointerEvents="box-none"
           style={[
             styles.modalLayer,

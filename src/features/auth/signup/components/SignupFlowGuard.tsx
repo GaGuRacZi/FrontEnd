@@ -1,6 +1,7 @@
 import { Redirect, usePathname } from 'expo-router';
 import type { PropsWithChildren } from 'react';
 
+import { AuthSessionStateScreen } from '../../session/AuthSessionGuard';
 import { useAuthSession } from '../../session/AuthSessionStore';
 import { useTerms } from '../../terms';
 import { useSignup } from '../SignupContext';
@@ -20,21 +21,35 @@ const ROUTE_ORDER: Record<string, number> = {
 
 export function SignupFlowGuard({ children }: PropsWithChildren) {
   const pathname = usePathname();
-  const { currentUserId, pendingRemoteSignupUserId } = useAuthSession();
+  const {
+    currentUserId,
+    pendingRemoteSignupMethod,
+    pendingRemoteSignupUserId,
+  } = useAuthSession();
   const { committedSignupRecovery, data, signupCompleted } = useSignup();
   const { hasRequiredSignupConsents, status } = useTerms();
   const currentOrder = pathname.startsWith('/signup/terms/')
     ? ROUTE_ORDER['/signup/terms']
     : ROUTE_ORDER[pathname];
-  const nextRoute = getNextSignupRoute(data);
+  const nextRoute = getNextSignupRoute(
+    data,
+    data.method === 'local' && Boolean(pendingRemoteSignupUserId),
+  );
   const allowedRoute =
     nextRoute === '/signup/complete' && !signupCompleted ? '/signup/pet-info' : nextRoute;
   const allowedOrder = hasRequiredSignupConsents
     ? ROUTE_ORDER[allowedRoute]
     : ROUTE_ORDER['/signup/terms'];
 
-  if (pendingRemoteSignupUserId && data.method !== 'kakao') {
-    return <Redirect href={{ pathname: '/signup/terms', params: { method: 'kakao' } }} />;
+  if (pendingRemoteSignupUserId && data.method !== pendingRemoteSignupMethod) {
+    return (
+      <Redirect
+        href={{
+          pathname: '/signup/terms',
+          params: { method: pendingRemoteSignupMethod ?? 'kakao' },
+        }}
+      />
+    );
   }
 
   if (!currentUserId && !pendingRemoteSignupUserId && data.method === 'kakao') {
@@ -49,7 +64,7 @@ export function SignupFlowGuard({ children }: PropsWithChildren) {
   }
 
   if (status === 'loading') {
-    return children;
+    return <AuthSessionStateScreen loadingLabel="약관을 불러오고 있어요." />;
   }
 
   if (currentOrder !== undefined && currentOrder > allowedOrder) {

@@ -15,13 +15,11 @@ import {
 
 const KIND_LABELS = {
   market: '장터',
-  review: '리뷰',
   talk: '소통',
 } as const;
 
 const KIND_ICONS = {
   market: 'bag-handle-outline',
-  review: 'star-outline',
   talk: 'chatbubbles-outline',
 } as const;
 
