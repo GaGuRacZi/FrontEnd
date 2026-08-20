@@ -94,13 +94,6 @@ export function RecordingScreen() {
 
   const completeRecording = useCallback(async () => {
     if (!selectedPet || isUploading) return;
-    if (recorderState.isRecording) {
-      showAlert(
-        '아직 진료 기록 중이에요',
-        '녹음을 일시정지한 뒤 진료 완료 버튼을 눌러주세요.',
-      );
-      return;
-    }
     if (!hasRecording) {
       setErrorMessage('진료 내용을 녹음한 뒤 완료할 수 있어요.');
       return;
@@ -137,10 +130,8 @@ export function RecordingScreen() {
     hasRecording,
     isUploading,
     recorder,
-    recorderState.isRecording,
     reloadMedications,
     selectedPet,
-    showAlert,
   ]);
 
   useEffect(() => {
@@ -228,7 +219,7 @@ export function RecordingScreen() {
             ? '재생 버튼을 눌러 진료 내용 녹음을 시작해주세요.'
             : isPaused
               ? `녹음이 일시정지되었어요.${'\n'}계속 녹음하거나 진료 완료 버튼을 눌러주세요.`
-              : `대화를 듣고 있어요.${'\n'}진료를 잠시 멈추려면 하단 버튼을 눌러주세요.${'\n'}녹음을 멈춘 뒤 진료 완료 버튼을 눌러주세요.`}
+              : `대화를 듣고 있어요.${'\n'}진료를 잠시 멈추려면 하단 버튼을 눌러주세요.${'\n'}진료가 끝나면 진료 완료 버튼을 눌러주세요.`}
         </Text>
 
         <Pressable

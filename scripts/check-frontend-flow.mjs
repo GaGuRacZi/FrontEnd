@@ -24,9 +24,15 @@ const recording = read('src/features/dashboard/screens/RecordingScreen.tsx');
 assert.doesNotMatch(recording, /automaticStartRef/);
 assert.match(recording, /'음성을 인식하시겠습니까\?'/);
 assert.match(recording, /isAnimating=\{recorderState\.isRecording\}/);
-const recordingGuard = recording.indexOf('if (recorderState.isRecording)');
-assert.notEqual(recordingGuard, -1);
-assert.ok(recordingGuard < recording.indexOf('await recorder.stop()'));
+const completeRecording = recording.slice(
+  recording.indexOf('const completeRecording'),
+  recording.indexOf('useEffect', recording.indexOf('const completeRecording')),
+);
+assert.doesNotMatch(completeRecording, /if \(recorderState\.isRecording\)/);
+assert.match(completeRecording, /await recorder\.stop\(\)/);
+
+const aiProcessing = read('src/features/dashboard/screens/AiProcessingScreen.tsx');
+assert.match(aiProcessing, /failureReason \?\? '잠시 후 진료 요약에서 다시 확인해주세요'/);
 
 const recordingAnimation = read('src/features/dashboard/components/RecordingPetAnimation.tsx');
 assert.match(recordingAnimation, /if \(!isAnimating\)/);
