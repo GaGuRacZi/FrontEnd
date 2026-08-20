@@ -13,6 +13,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,6 +26,7 @@ import { AppScreen, ScreenLayout, TopHeader } from '@/src/components/layout';
 import { useAppAlert } from '@/src/components/modal';
 import { COLORS, RADIUS, SIZE, SPACING, TYPOGRAPHY } from '@/src/constants';
 import { useAuthSession } from '@/src/features/auth/session/AuthSessionStore';
+import { isSameKoreanCalendarDate } from '@/src/utils/koreanDateTime';
 import { formatCompactRegion } from '@/src/utils/location';
 
 import { formatChatDate, formatChatTime } from '../chatFormat';
@@ -41,6 +43,8 @@ type ChatRoomScreenProps = {
   roomId: string;
 };
 
+const REFRESH_PROMPT_INTERVAL_MS = 10_000;
+
 function ChatRoomState({
   children,
   onBack,
@@ -55,17 +59,6 @@ function ChatRoomState({
     >
       <View style={styles.centered}>{children}</View>
     </ScreenLayout>
-  );
-}
-
-function isSameCalendarDate(first: string, second?: string) {
-  if (!second) return false;
-  const firstDate = new Date(first);
-  const secondDate = new Date(second);
-  return (
-    firstDate.getFullYear() === secondDate.getFullYear() &&
-    firstDate.getMonth() === secondDate.getMonth() &&
-    firstDate.getDate() === secondDate.getDate()
   );
 }
 
@@ -174,6 +167,8 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
   const [sending, setSending] = useState(false);
   const [pickingImages, setPickingImages] = useState(false);
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [refreshPromptVisible, setRefreshPromptVisible] = useState(false);
   const composerInputRef = useRef<TextInput>(null);
   const initializedRoomRef = useRef('');
   const textRef = useRef('');
@@ -191,6 +186,10 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
     textRef.current = draft.text;
     setText(draft.text);
   }, [draft.text, isReady, room, roomSessionKey]);
+
+  useEffect(() => {
+    if (isReady) setHasLoadedOnce(true);
+  }, [isReady]);
 
   const persistDraftText = useCallback(
     (value: string) => {
@@ -249,6 +248,32 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
       [flushDraft, roomSessionKey],
     ),
   );
+
+  useFocusEffect(
+    useCallback(() => {
+      reloadChat();
+      return undefined;
+    }, [reloadChat]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const intervalId = setInterval(
+        () => setRefreshPromptVisible(true),
+        REFRESH_PROMPT_INTERVAL_MS,
+      );
+      return () => {
+        clearInterval(intervalId);
+        setRefreshPromptVisible(false);
+      };
+    }, []),
+  );
+
+  const refreshMessages = useCallback(() => {
+    if (!isReady) return;
+    setRefreshPromptVisible(false);
+    reloadChat();
+  }, [isReady, reloadChat]);
 
   useFocusEffect(
     useCallback(() => {
@@ -402,7 +427,7 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
     ].filter(Boolean).join(' · ');
   }, [participant]);
 
-  if (!isReady) {
+  if (!isReady && !hasLoadedOnce) {
     return (
       <ChatRoomState onBack={handleBack}>
         <LoadingView label="대화방을 불러오고 있어요." />
@@ -504,10 +529,23 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
                 nativeEvent.contentOffset.y <=
               80;
           }}
+          onScrollEndDrag={({ nativeEvent }) => {
+            if (nearBottomRef.current && (nativeEvent.velocity?.y ?? 0) > 0.5) {
+              refreshMessages();
+            }
+          }}
           ref={listRef}
+          refreshControl={(
+            <RefreshControl
+              colors={[COLORS.primary]}
+              onRefresh={refreshMessages}
+              refreshing={!isReady && hasLoadedOnce}
+              tintColor={COLORS.primary}
+            />
+          )}
           renderItem={({ index, item }) => {
             const previous = messages[index - 1];
-            const showDate = !previous || !isSameCalendarDate(item.createdAt, previous.createdAt);
+            const showDate = !previous || !isSameKoreanCalendarDate(item.createdAt, previous.createdAt);
             return (
               <View>
                 {showDate ? (
@@ -530,6 +568,18 @@ export function ChatRoomScreen({ roomId }: ChatRoomScreenProps) {
         />
 
         <View style={styles.composerArea}>
+          {refreshPromptVisible ? (
+            <Pressable
+              accessibilityLabel="새 메시지 확인"
+              accessibilityRole="button"
+              disabled={!isReady}
+              onPress={refreshMessages}
+              style={({ pressed }) => [styles.refreshPrompt, pressed && styles.pressed]}
+            >
+              <AppIcon color={COLORS.primary} name="refresh" size={16} />
+              <Text style={styles.refreshPromptText}>위로 쓸어올려 새 메시지 확인</Text>
+            </Pressable>
+          ) : null}
           {draft.images.length ? (
             <ScrollView
               contentContainerStyle={styles.draftImages}
@@ -778,6 +828,21 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xl,
     paddingHorizontal: SPACING.xxl,
     paddingTop: SPACING.xl,
+  },
+  refreshPrompt: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: COLORS.primarySoft,
+    borderRadius: RADIUS.round,
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+  },
+  refreshPromptText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
   },
   composer: {
     alignItems: 'flex-end',

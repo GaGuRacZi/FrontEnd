@@ -1,12 +1,13 @@
 // src/features/home/screens/HomeScreens.tsx
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { BrandLogoButton } from '@/src/components/common';
+import { BrandLogoButton, EmptyState, LoadingView } from '@/src/components/common';
 import { ScreenLayout } from '@/src/components/layout';
 import { SPACING } from '@/src/constants';
+import { useMedicationStore } from '../MedicationStore';
+import { useScheduleTodoStore } from '../ScheduleTodoStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
 
 import { EmergencyBanner } from '../components/EmergencyBanner';
@@ -18,30 +19,69 @@ import { RecentDiagnosisCard } from '../components/RecentDiagnosisCard';
 import { TodaySummaryCard } from '../components/TodaySummaryCard';
 import {
   MOCK_HEALTH_TIP,
-  MOCK_MEDICATIONS,
   MOCK_MONTHLY_HEALTH,
   MOCK_RECENT_DIAGNOSIS,
-  MOCK_TODOS,
 } from '../mock';
 import { mapPetEntityToSummary } from '../utils/mapPetToSummary';
 
 export function HomeScreen() {
   const router = useRouter();
   const { isReady, selectedPet } = usePetStore();
-  const [todos, setTodos] = useState(MOCK_TODOS);
+  const { medications } = useMedicationStore();
+  const { todos: allTodos, toggleTodo } = useScheduleTodoStore();
+
+  // 오늘 날짜 기준 투두만 추출
+  const todayDate = new Date();
+  const todayTodos = allTodos
+    .filter(
+      (t) =>
+        t.day === todayDate.getDate() &&
+        t.month === todayDate.getMonth() &&
+        t.year === todayDate.getFullYear(),
+    )
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      timeLabel: t.timeLabel,
+      status: t.status,
+      category: t.category,
+    }));
+
+  // 홈 카드에는 추가된 순서 기준 상위 3개만 표시
+  const homeMedications = medications.slice(0, 3).map((med) => ({
+    id: med.id,
+    name: med.name,
+    doseLabel: med.frequencyLabel,
+  }));
 
   const handleToggleTodo = (todoId: string) => {
-    setTodos((current) =>
-      current.map((todo) =>
-        todo.id === todoId
-          ? { ...todo, status: todo.status === 'done' ? 'pending' : 'done' }
-          : todo,
-      ),
-    );
+    toggleTodo(todoId);
   };
 
-  if (!isReady || !selectedPet) {
-    return null; // TODO: 로딩/빈 상태 UI는 추후 보완
+  if (!isReady) {
+    return (
+      <ScreenLayout headerFullWidth leftContent={<BrandLogoButton />}>
+        <View style={styles.stateContent}>
+          <LoadingView label="반려동물 정보를 불러오고 있어요." />
+        </View>
+      </ScreenLayout>
+    );
+  }
+
+  if (!selectedPet) {
+    return (
+      <ScreenLayout headerFullWidth leftContent={<BrandLogoButton />}>
+        <View style={styles.stateContent}>
+          <EmptyState
+            actionLabel="반려동물 등록"
+            description="반려동물 정보를 등록하면 홈에서 관리할 수 있어요."
+            onActionPress={() => router.push('/pet/add' as Href)}
+            title="등록된 반려동물이 없어요"
+          />
+        </View>
+      </ScreenLayout>
+    );
   }
 
   const activePet = mapPetEntityToSummary(selectedPet);
@@ -68,7 +108,7 @@ export function HomeScreen() {
         <TodaySummaryCard
           onPressMore={() => router.push('/schedule' as Href)}
           onToggleTodo={handleToggleTodo}
-          todos={todos}
+          todos={todayTodos}
         />
 
         <EmergencyBanner onPress={() => router.push('/emergency' as Href)} />
@@ -79,7 +119,7 @@ export function HomeScreen() {
             onPress={() => router.push('/dashboard' as Href)}
           />
           <MedicationSummaryCard
-            medications={MOCK_MEDICATIONS}
+            medications={homeMedications}
             onPress={() => router.push('/medication' as Href)}
           />
         </View>
@@ -99,4 +139,5 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { gap: SPACING.xxl, paddingBottom: SPACING.xxxl },
   row: { flexDirection: 'row', gap: SPACING.xl },
+  stateContent: { flex: 1, justifyContent: 'center' },
 });

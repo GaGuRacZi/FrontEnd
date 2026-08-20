@@ -45,6 +45,7 @@ export const COLORS = {
   confettiYellow: 'rgba(255, 242, 198, 0.75)',
   disabledPrimary: '#D0D8E8',
 
+  pageBackground: '#F5F7FC',
   gray100: '#F7F7F7',
   gray200: '#F0F0F0',
   gray300: '#E3E3E3',

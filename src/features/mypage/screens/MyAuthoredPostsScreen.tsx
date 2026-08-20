@@ -23,11 +23,10 @@ const FILTERS: { id: CommunityActivityFilter; label: string }[] = [
   { id: 'all', label: '전체' },
   { id: 'talk', label: '소통' },
   { id: 'market', label: '장터' },
-  { id: 'review', label: '리뷰' },
 ];
 
 function getAuthoredFilter(value?: string): CommunityActivityFilter {
-  return value === 'talk' || value === 'market' || value === 'review' ? value : 'all';
+  return value === 'talk' || value === 'market' ? value : 'all';
 }
 
 export function MyAuthoredPostsScreen({ initialFilter }: { initialFilter?: string }) {
@@ -39,14 +38,13 @@ export function MyAuthoredPostsScreen({ initialFilter }: { initialFilter?: strin
     isReady,
     posts,
     reloadCommunity,
-    reviewPosts,
   } = useCommunityStore();
   const [filter, setFilter] = useState<CommunityActivityFilter>(() =>
     getAuthoredFilter(initialFilter),
   );
   const items = useMemo(
-    () => selectAuthoredActivityItems({ posts, reviewPosts, userId: currentUserId }),
-    [currentUserId, posts, reviewPosts],
+    () => selectAuthoredActivityItems({ posts, userId: currentUserId }),
+    [currentUserId, posts],
   );
   const counts = useMemo(() => getActivityFilterCounts(items), [items]);
   const filteredItems = useMemo(() => filterActivityItems(items, filter), [filter, items]);
@@ -97,7 +95,7 @@ export function MyAuthoredPostsScreen({ initialFilter }: { initialFilter?: strin
       <CommunityActivityList
         emptyDescription={
           filter === 'all'
-            ? '소통·장터·리뷰에서 첫 글을 남겨보세요.'
+            ? '소통·장터에서 첫 글을 남겨보세요.'
             : `${FILTERS.find((item) => item.id === filter)?.label}에 작성한 글이 없어요.`
         }
         emptyTitle="작성한 글이 없어요"

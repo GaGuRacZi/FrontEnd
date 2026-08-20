@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, EmptyState, LoadingView } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
@@ -83,7 +83,7 @@ function ChatRoomRow({
 export function ChatListScreen() {
   const router = useRouter();
   const { currentUserId } = useAuthSession();
-  const { posts, reviewPosts, isReady: communityReady } = useCommunityStore();
+  const { posts, isReady: communityReady } = useCommunityStore();
   const { profile } = useMyPageStore();
   const { selectedPet } = usePetStore();
   const {
@@ -101,6 +101,7 @@ export function ChatListScreen() {
   const [searchOpen, setSearchOpen] = useState(Boolean(searchQuery));
   const [searchText, setSearchText] = useState(searchQuery);
   const [guideVisible, setGuideVisible] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const bootstrapRequestedUserRef = useRef<string | null>(null);
   const renderedUserIdRef = useRef(currentUserId);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -172,19 +173,30 @@ export function ChatListScreen() {
     }, [goBack]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      reloadChat();
+      return undefined;
+    }, [reloadChat]),
+  );
+
+  useEffect(() => {
+    if (isReady) setHasLoadedOnce(true);
+  }, [isReady]);
+
   useEffect(() => {
     if (
       bootstrapRequestedUserRef.current === currentUserId ||
       !currentUserId ||
       !isReady ||
       !communityReady ||
-      (!posts.length && !reviewPosts.length)
+      !posts.length
     ) {
       return;
     }
 
     const authorById = new Map(
-      [...posts, ...reviewPosts]
+      posts
         .filter((post) => post.author.userId !== currentUserId)
         .map((post) => [post.author.userId, post.author]),
     );
@@ -244,7 +256,6 @@ export function ChatListScreen() {
     isReady,
     posts,
     profile,
-    reviewPosts,
     selectedPet,
   ]);
 
@@ -322,7 +333,7 @@ export function ChatListScreen() {
           />
         ) : null}
 
-        {!isReady ? (
+        {!isReady && !hasLoadedOnce ? (
           <LoadingView label="채팅을 불러오고 있어요." />
         ) : hasLoadError ? (
           <EmptyState
@@ -360,6 +371,14 @@ export function ChatListScreen() {
             data={roomRows}
             keyboardShouldPersistTaps="handled"
             keyExtractor={({ room }) => room.id}
+            refreshControl={(
+              <RefreshControl
+                colors={[COLORS.primary]}
+                onRefresh={reloadChat}
+                refreshing={!isReady && hasLoadedOnce}
+                tintColor={COLORS.primary}
+              />
+            )}
             renderItem={({ item }) => (
               <ChatRoomRow
                 currentUserId={currentUserId ?? ''}

@@ -23,40 +23,26 @@ const market = (id, ownerId, createdAt) => ({
   id,
   kind: 'market',
 });
-const review = (id, ownerId, createdAt) => ({
-  author: author(ownerId),
-  createdAt,
-  id,
-});
-
 const myTalk = talk('shared-id', userId, '2026-08-01T00:00:00.000Z');
 const myMarket = market('shared-id', userId, '2026-08-02T00:00:00.000Z');
 const likedTalk = talk('talk-liked', 'user-other', '2026-08-03T00:00:00.000Z');
 const savedMarket = market('market-saved', 'user-other', '2026-08-04T00:00:00.000Z');
-const myReview = review('shared-id', userId, '2026-08-05T00:00:00.000Z');
 const posts = [myTalk, myMarket, likedTalk, savedMarket];
 
 const authored = selectAuthoredActivityItems({
   posts,
-  reviewPosts: [myReview],
   userId,
 });
-assert.deepEqual(authored.map(({ kind }) => kind), ['review', 'market', 'talk']);
+assert.deepEqual(authored.map(({ kind }) => kind), ['market', 'talk']);
 assert.deepEqual(authored.map(getCommunityActivityKey), [
-  'review:shared-id',
   'market:shared-id',
   'talk:shared-id',
 ]);
 assert.deepEqual(getActivityFilterCounts(authored), {
-  all: 3,
+  all: 2,
   market: 1,
-  review: 1,
   talk: 1,
 });
-assert.deepEqual(
-  filterActivityItems(authored, 'review').map(({ postId }) => postId),
-  ['shared-id'],
-);
 
 const saved = selectSavedActivityItems({
   isBookmarked: (postId) => postId === 'market-saved',
@@ -69,7 +55,6 @@ assert.deepEqual(saved.map(({ postId }) => postId), ['market-saved', 'talk-liked
 assert.deepEqual(getActivityFilterCounts(saved), {
   all: 2,
   market: 1,
-  review: 0,
   talk: 1,
 });
 assert.deepEqual(
@@ -135,7 +120,7 @@ const offsetPosts = [
   market('offset-newer', userId, '2026-08-15T02:00:00Z'),
 ];
 assert.deepEqual(
-  selectAuthoredActivityItems({ posts: offsetPosts, reviewPosts: [], userId }).map(
+  selectAuthoredActivityItems({ posts: offsetPosts, userId }).map(
     ({ postId }) => postId,
   ),
   ['offset-newer', 'offset-older'],

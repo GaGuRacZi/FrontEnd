@@ -1,6 +1,6 @@
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   AppButton,
@@ -16,12 +16,10 @@ import { useNavigationLock } from '@/src/hooks/useNavigationLock';
 
 import { PetAvatar } from '../components/PetAvatar';
 import {
-  PetCareInfoRow,
   PetChoiceButton,
   PetInfoCard,
   PetInfoRow,
 } from '../components/PetInfoLayout';
-import { PET_SELECTION_FIELDS } from '../petData';
 import { usePetStore } from '../PetStore';
 import type { PetEntity } from '../types';
 
@@ -80,24 +78,6 @@ function DetailProfile({ pet }: { pet: PetEntity }) {
       <Text numberOfLines={1} style={styles.profileDescription}>
         {getTypeLabel(pet)} · {pet.breed}
       </Text>
-    </View>
-  );
-}
-
-function CertificatePreview({ uri }: { uri: string | null }) {
-  return (
-    <View
-      accessibilityLabel={uri ? '등록된 동물등록증 사진' : '동물등록증 사진 없음'}
-      style={styles.certificatePreview}
-    >
-      {uri ? (
-        <Image resizeMode="cover" source={{ uri }} style={styles.certificateImage} />
-      ) : (
-        <>
-          <AppIcon color={COLORS.gray500} name="camera-outline" size={21} />
-          <Text style={styles.certificateLabel}>사진 없음</Text>
-        </>
-      )}
     </View>
   );
 }
@@ -291,9 +271,9 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
           </PetInfoCard>
 
           <PetInfoCard
-            description="성별, 중성화 여부와 혈액형을 기록해요"
-            minHeight={264}
-            title="성별·의료 정보"
+            description="성별과 중성화 여부를 기록해요"
+            minHeight={180}
+            title="성별 정보"
           >
             <PetInfoRow label="성별">
               <View style={styles.choiceRow}>
@@ -308,36 +288,6 @@ export function PetDetailScreen({ petId: petIdProp }: PetDetailScreenProps) {
                 <PetChoiceButton compact label="안 함" selected={!pet.neutered} />
               </View>
             </PetInfoRow>
-
-            <PetInfoRow label="혈액형">
-              <ReadOnlyField icon="water-outline" placeholder="선택 안 함" value={pet.bloodType} />
-            </PetInfoRow>
-          </PetInfoCard>
-
-          <PetInfoCard
-            description="등록증을 사진과 함께 보관하면 병원 방문 때 편해요"
-            minHeight={178}
-            title="동물등록증"
-          >
-            <View style={styles.registrationContent}>
-              <View style={styles.registrationInputs}>
-                <ReadOnlyField placeholder="보호자 이름 미등록" value={pet.ownerName} />
-                <ReadOnlyField placeholder="등록번호 미등록" value={pet.registrationNumber} />
-              </View>
-              <CertificatePreview uri={pet.certificateImageUri} />
-            </View>
-          </PetInfoCard>
-
-          <PetInfoCard
-            description="먹거리와 관리 정보를 한곳에서 확인할 수 있어요"
-            minHeight={335}
-            title="먹거리·관리 정보"
-          >
-            <View style={styles.careList}>
-              {PET_SELECTION_FIELDS.map((field) => (
-                <PetCareInfoRow field={field} key={field} values={pet[field]} />
-              ))}
-            </View>
           </PetInfoCard>
 
           <AppButton
@@ -475,42 +425,6 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.input,
     color: COLORS.gray800,
     paddingTop: 11,
-  },
-  registrationContent: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  registrationInputs: {
-    flex: 1,
-    flexBasis: 194,
-    gap: 10,
-    maxWidth: 194,
-    minWidth: 180,
-  },
-  certificatePreview: {
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.gray300,
-    borderRadius: RADIUS.md,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    gap: SPACING.md,
-    height: 98,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: 122,
-  },
-  certificateImage: {
-    height: '100%',
-    width: '100%',
-  },
-  certificateLabel: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.gray500,
-  },
-  careList: {
-    gap: SPACING.md,
   },
   deleteButton: {
     marginTop: SPACING.xxl,

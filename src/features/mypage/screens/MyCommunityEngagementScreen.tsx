@@ -53,6 +53,7 @@ export function MyCommunityEngagementScreen({
     isBookmarked,
     isReacted,
     isReady,
+    loadCommentActivity,
     posts,
     reloadCommunity,
     viewerId,
@@ -61,6 +62,7 @@ export function MyCommunityEngagementScreen({
   const [savedFilter, setSavedFilter] = useState<CommunityActivityFilter>(() =>
     getSavedFilter(initialFilter),
   );
+  const [loadingCommentActivity, setLoadingCommentActivity] = useState(false);
   const savedItems = useMemo(
     () =>
       selectSavedActivityItems({
@@ -88,6 +90,20 @@ export function MyCommunityEngagementScreen({
     setSavedFilter(getSavedFilter(initialFilter));
   }, [currentUserId, initialFilter, initialTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'commented' || !isReady || hasLoadError) return undefined;
+
+    let active = true;
+    setLoadingCommentActivity(true);
+    void loadCommentActivity().finally(() => {
+      if (active) setLoadingCommentActivity(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, hasLoadError, isReady, loadCommentActivity]);
+
   const openPost = (item: CommentedActivityItem | CommunityActivityItem) => {
     navigateOnce(() =>
       router.push({
@@ -104,7 +120,7 @@ export function MyCommunityEngagementScreen({
     );
   };
 
-  if (!isReady) {
+  if (!isReady || (activeTab === 'commented' && loadingCommentActivity)) {
     return (
       <MyPageHeader title={screenTitle}>
         <LoadingView label={`${screenTitle} 내역을 불러오고 있어요.`} />

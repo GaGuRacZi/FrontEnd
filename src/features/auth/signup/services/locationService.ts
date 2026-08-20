@@ -1,7 +1,17 @@
 import * as Location from 'expo-location';
+import { Platform } from 'react-native';
+
+import { resolveRemoteLocation } from '@/src/services/locationApi';
 
 export const MAX_LOCATION_ACCURACY_METERS = 500;
 const LOCATION_TIMEOUT_MS = 15000;
+
+export class LocationPermissionError extends Error {
+  constructor() {
+    super('Location permission is required.');
+    this.name = 'LocationPermissionError';
+  }
+}
 
 function withLocationTimeout<T>(request: Promise<T>) {
   return new Promise<T>((resolve, reject) => {
@@ -32,7 +42,15 @@ function getCurrentPosition() {
   );
 }
 
-export function geocodeAddress(address: string) {
+export async function geocodeAddress(address: string) {
+  if (Platform.OS === 'android') {
+    const existingPermission = await Location.getForegroundPermissionsAsync();
+    const permission = existingPermission.granted
+      ? existingPermission
+      : await Location.requestForegroundPermissionsAsync();
+    if (!permission.granted) throw new LocationPermissionError();
+  }
+
   return withLocationTimeout(Location.geocodeAsync(address));
 }
 
@@ -48,26 +66,9 @@ export async function getBestCurrentPosition() {
 }
 
 export async function getRegionFromPosition(position: Location.LocationObject) {
-  const addresses = await withLocationTimeout(
-    Location.reverseGeocodeAsync(position.coords),
+  const location = await resolveRemoteLocation(
+    position.coords.latitude,
+    position.coords.longitude,
   );
-  const address = addresses[0];
-
-  if (!address) return '';
-
-  const values = [address.region, address.city, address.district, address.subregion];
-  const isForeign = address.isoCountryCode
-    ? address.isoCountryCode.toUpperCase() !== 'KR'
-    : !values.some((value) => /[가-힣]/.test(value ?? ''));
-  const cityValue = [address.city, address.district, address.subregion].find(
-    (value): value is string => Boolean(value?.trim()),
-  );
-  const parts = (isForeign ? [cityValue, address.region] : values).filter(
-    (part): part is string => Boolean(part?.trim()),
-  );
-  const region = parts
-    .filter((part, index) => parts.indexOf(part) === index)
-    .join(isForeign ? ', ' : ' ');
-
-  return region || address.formattedAddress || address.name || '';
+  return location.regionName;
 }

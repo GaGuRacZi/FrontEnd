@@ -13,7 +13,6 @@ import {
   useAuthSession,
 } from '@/src/features/auth/session/AuthSessionStore';
 import { TermsProvider } from '@/src/features/auth/terms';
-import { RequiredTermsGuard } from '@/src/features/auth/terms/components/RequiredTermsGuard';
 import { ChatDataBridge } from '@/src/features/chat/ChatDataBridge';
 import { ChatProvider } from '@/src/features/chat/ChatStore';
 import { CommunityProvider } from '@/src/features/community/CommunityStore';
@@ -22,6 +21,8 @@ import {
   useMyPageStore,
 } from '@/src/features/mypage/MyPageStore';
 import { SupportProvider } from '@/src/features/mypage/support';
+import { MedicationProvider } from '@/src/features/home/MedicationStore';
+import { ScheduleTodoProvider } from '@/src/features/home/ScheduleTodoStore';
 import { PetProvider } from '@/src/features/pet/PetStore';
 import { useAccountLifecycle } from '@/src/hooks/useAccountLifecycle';
 
@@ -149,6 +150,8 @@ function SessionProviders({ children }: PropsWithChildren) {
 
   return (
     <TermsProvider scope="session" userId={termsUserId}>
+      <ScheduleTodoProvider>
+      <MedicationProvider>
       <PetProvider>
         <MyPageProvider>
           <SupportProvider>
@@ -156,15 +159,15 @@ function SessionProviders({ children }: PropsWithChildren) {
               <ChatProvider>
                 <AccountDataGuard>
                   <ChatDataBridge />
-                  <RequiredTermsGuard userId={termsUserId}>
-                    {children}
-                  </RequiredTermsGuard>
+                  {children}
                 </AccountDataGuard>
               </ChatProvider>
             </CommunityProvider>
           </SupportProvider>
         </MyPageProvider>
       </PetProvider>
+      </MedicationProvider>
+      </ScheduleTodoProvider>
     </TermsProvider>
   );
 }

@@ -31,6 +31,7 @@ import { toChatParticipant, toChatPostReference } from '@/src/features/chat/comm
 import { useChatStore } from '@/src/features/chat/ChatStore';
 import { useMyPageStore } from '@/src/features/mypage/MyPageStore';
 import { usePetStore } from '@/src/features/pet/PetStore';
+import { formatKoreanRelativeTime } from '@/src/utils/koreanDateTime';
 import { formatCompactRegion } from '@/src/utils/location';
 
 import {
@@ -39,14 +40,13 @@ import {
   MARKET_CATEGORIES,
   MARKET_STATUSES,
   MARKET_TRADE_TYPES,
-  REVIEW_CATEGORIES,
   TALK_CATEGORIES,
 } from '../communityData';
 import { useCommunityStore } from '../CommunityStore';
 import { getCommunityImageUris } from '../services/communityImageStorage';
 import { createCommunityAuthor } from '../utils/author';
+import { compareNewestFirst } from '../utils/date';
 import { getMarketTradeMethods } from '../utils/marketValidation';
-import { getReviewScoreLabels } from '../utils/reviewValidation';
 import type {
   CommunityAuthorSnapshot,
   CommunityComment,
@@ -56,9 +56,6 @@ import type {
   MarketStatus,
   MarketTradeType,
   PostKind,
-  ReactionKind,
-  ReviewCategory,
-  ReviewPost,
   TalkCategory,
   TalkPost,
 } from '../types';
@@ -71,16 +68,11 @@ type ModalState =
 
 type CommunitySearchResult =
   | { kind: 'market'; post: MarketPost }
-  | { kind: 'review'; post: ReviewPost }
   | { kind: 'talk'; post: TalkPost };
 
 type ToggleBookmark = ReturnType<typeof useCommunityStore>['toggleBookmark'];
 
 const PAW_LOGO = require('@/assets/images/paw-logo.png');
-const REVIEW_GOOD_ICON = require('@/assets/images/decorations/review-good.png');
-const REVIEW_NO_ICON = require('@/assets/images/decorations/review-no.png');
-
-const REVIEW_STAR_COLOR = COLORS.star;
 const COMMUNITY_BATCH_SIZE = 10;
 
 const CATEGORY_PILL_STYLE = {
@@ -108,23 +100,6 @@ const MARKET_TRADE_STYLES: Record<MarketTradeType, {
   판매: CATEGORY_PILL_STYLE,
 };
 
-const REVIEW_CATEGORY_STYLES: Record<Exclude<ReviewCategory, '전체'>, {
-  backgroundColor: string;
-  color: string;
-}> = {
-  미용실: CATEGORY_PILL_STYLE,
-  병원: CATEGORY_PILL_STYLE,
-  '산책 장소': CATEGORY_PILL_STYLE,
-  용품샵: CATEGORY_PILL_STYLE,
-};
-
-const REVIEW_CATEGORY_ICONS: Record<Exclude<ReviewCategory, '전체'>, Parameters<typeof AppIcon>[0]['name']> = {
-  미용실: 'cut-outline',
-  병원: 'add',
-  '산책 장소': 'leaf-outline',
-  용품샵: 'storefront-outline',
-};
-
 function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -135,7 +110,7 @@ function normalizeSearchText(value: string) {
 
 function useMarketBookmarkHandler(
   toggleBookmark: ToggleBookmark,
-  showError: () => void,
+  showError: (message?: string) => void,
 ) {
   const pendingPostIds = useRef(new Set<string>());
 
@@ -146,7 +121,7 @@ function useMarketBookmarkHandler(
 
       try {
         const result = await toggleBookmark(postId);
-        if (!result.ok) showError();
+        if (!result.ok) showError(result.message);
       } catch {
         showError();
       } finally {
@@ -155,16 +130,6 @@ function useMarketBookmarkHandler(
     },
     [showError, toggleBookmark],
   );
-}
-
-function getRelativeTime(isoDate: string) {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const minutes = Math.max(1, Math.floor(diff / 60000));
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  const days = Math.floor(hours / 24);
-  return `${days}일 전`;
 }
 
 function getMarketPriceParts(priceLabel: string) {
@@ -215,31 +180,6 @@ function hasCommunityPostSearchMatch(
     author.nickname,
     ...post.tags.filter((tag) => tag !== post.tradeType),
   ], query);
-}
-
-function hasReviewSearchMatch(
-  post: ReviewPost,
-  query: string,
-) {
-  return hasSearchValue([
-    post.targetName ?? '',
-    post.category,
-    post.title,
-  ], query);
-}
-
-function getReviewSearchRank(post: ReviewPost, query: string) {
-  const normalizedQuery = normalizeText(query);
-  const compactQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return 2;
-  if (!compactQuery) return 2;
-  const hasMatch = (value: string) =>
-    normalizeText(value).includes(normalizedQuery) ||
-    normalizeSearchText(value).includes(compactQuery);
-  if (hasMatch(post.targetName ?? '')) return 0;
-  if (hasMatch(post.category)) return 1;
-  if (hasMatch(post.title)) return 1;
-  return 2;
 }
 
 function HeaderIconButton({
@@ -447,7 +387,7 @@ function TalkCard({
           </Text>
         </View>
         <MetaItem color={COLORS.primary} icon="chatbubble-outline" prominent text={commentCount} />
-        <Text style={styles.cardTime}>{getRelativeTime(post.createdAt)}</Text>
+        <Text style={styles.cardTime}>{formatKoreanRelativeTime(post.createdAt)}</Text>
       </View>
     </Pressable>
   );
@@ -499,7 +439,7 @@ function MarketCard({
           {post.title}
         </Text>
         <Text ellipsizeMode="tail" numberOfLines={1} style={styles.marketMeta}>
-          {post.category} · {formatCompactRegion(post.location)} · {getRelativeTime(post.createdAt)}
+          {post.category} · {formatCompactRegion(post.location)} · {formatKoreanRelativeTime(post.createdAt)}
         </Text>
         <View style={styles.marketPriceRow}>
           <Text numberOfLines={1} style={styles.marketPrice}>{priceParts.price}</Text>
@@ -596,7 +536,7 @@ function CommentItem({
       <View style={styles.commentBody}>
         <View style={styles.commentHeader}>
           <Text style={styles.commentAuthor}>{author.nickname}</Text>
-          <Text style={styles.commentTime}>{getRelativeTime(comment.createdAt)}</Text>
+          <Text style={styles.commentTime}>{formatKoreanRelativeTime(comment.createdAt)}</Text>
         </View>
         <Text style={styles.commentText}>{comment.body}</Text>
         <View style={styles.commentActions}>
@@ -632,91 +572,6 @@ function CommunityEmptyPosts({ icon, title }: {
       </View>
       <Text style={styles.emptyPostsTitle}>{title}</Text>
     </View>
-  );
-}
-
-function ReviewCard({
-  author,
-  onPress,
-  post,
-}: {
-  author: CommunityAuthorSnapshot;
-  onPress: () => void;
-  post: ReviewPost;
-}) {
-  const categoryStyle = REVIEW_CATEGORY_STYLES[post.category];
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.reviewCard, pressed && styles.pressed]}
-    >
-      <View style={styles.cardHeaderRow}>
-        <Text
-          style={[
-            styles.reviewCategory,
-            { backgroundColor: categoryStyle.backgroundColor, color: categoryStyle.color },
-          ]}
-        >
-          {post.category}
-        </Text>
-        <View style={styles.reviewRating}>
-          <AppIcon color={REVIEW_STAR_COLOR} name="star" size={15} />
-          <Text style={styles.reviewRatingText}>{post.rating.toFixed(1)}</Text>
-        </View>
-      </View>
-      <Text numberOfLines={1} style={styles.cardTitle}>
-        {post.title}
-      </Text>
-      <Text ellipsizeMode="tail" numberOfLines={1} style={styles.cardDescription}>
-        {post.targetName?.trim() || '리뷰 대상'}
-      </Text>
-      <Text style={styles.cardTime}>{author.nickname} · {getRelativeTime(post.createdAt)}</Text>
-    </Pressable>
-  );
-}
-
-function ReviewReadyContent({
-  category,
-  onCategoryChange,
-  onOpenReview,
-  posts,
-  profile,
-  viewerId,
-}: {
-  category: ReviewCategory;
-  onCategoryChange: (category: ReviewCategory) => void;
-  onOpenReview: (postId: string) => void;
-  posts: ReviewPost[];
-  profile: ReturnType<typeof useMyPageStore>['profile'];
-  viewerId: string;
-}) {
-  return (
-    <>
-      <AdBanner />
-      <ChipRow
-        activeValue={category}
-        onChange={onCategoryChange}
-        roomy
-        values={REVIEW_CATEGORIES}
-      />
-      {posts.length ? (
-        posts.map((post) => {
-          const author = resolveAuthor(post.author, profile, viewerId);
-          return (
-            <ReviewCard
-              author={author}
-              key={post.id}
-              onPress={() => onOpenReview(post.id)}
-              post={post}
-            />
-          );
-        })
-      ) : (
-        <CommunityEmptyPosts icon="star-outline" title="아직 등록된 리뷰가 없어요" />
-      )}
-    </>
   );
 }
 
@@ -780,7 +635,6 @@ export function CommunityPostDetailScreen({
     addComment,
     deleteComment,
     deletePost,
-    deleteReviewPost,
     getCommentsByPostId,
     getPostById,
     getReactionCount,
@@ -788,9 +642,10 @@ export function CommunityPostDetailScreen({
     isBookmarked,
     isReady,
     isReacted,
+    loadComments,
+    loadPostDetail,
     posts,
     reloadCommunity,
-    reviewPosts,
     toggleBookmark,
     toggleReaction,
     updateComment,
@@ -810,9 +665,9 @@ export function CommunityPostDetailScreen({
   const commentDeletingRef = useRef(false);
   const [imageIndex, setImageIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>(null);
-  const showBookmarkError = useCallback(() => {
+  const showBookmarkError = useCallback((message?: string) => {
     setModal({
-      description: '잠시 후 다시 시도해주세요.',
+      description: message?.trim() || '잠시 후 다시 시도해주세요.',
       title: '찜을 저장하지 못했어요',
     });
   }, []);
@@ -834,30 +689,18 @@ export function CommunityPostDetailScreen({
   const chatOpeningRef = useRef(false);
   const [talkReactionSubmitting, setTalkReactionSubmitting] = useState(false);
   const talkReactionSubmittingRef = useRef(false);
-  const [reviewReactionSubmitting, setReviewReactionSubmitting] = useState(false);
-  const reviewReactionSubmittingRef = useRef(false);
-  const [reviewActionVisible, setReviewActionVisible] = useState(false);
-  const [reviewDeleteVisible, setReviewDeleteVisible] = useState(false);
-  const [reviewDeleting, setReviewDeleting] = useState(false);
-  const reviewDeletingRef = useRef(false);
+  const [postLoadError, setPostLoadError] = useState(false);
   const requiresPostKind = defaultOrigin === 'mypage-activity';
   const matchedPost = requiresPostKind
     ? posts.find((post) => post.id === postId && post.kind === postKind) ?? null
     : getPostById(postId);
-  const matchedReviewPost = reviewPosts.find((post) => post.id === postId) ?? null;
   const selectedPost = matchedPost;
-  const selectedReviewPost = requiresPostKind
-    ? postKind === 'review'
-      ? matchedReviewPost
-      : null
-    : matchedReviewPost;
+  const talkPostId = selectedPost?.kind === 'talk' ? selectedPost.id : null;
   const resolvedOrigin = origin ?? defaultOrigin;
   const detailBackAccessibilityLabel =
     resolvedOrigin === 'mypage-activity'
       ? '마이페이지 커뮤니티 활동으로 돌아가기'
-      : selectedReviewPost
-        ? '리뷰 목록으로 돌아가기'
-        : selectedPost?.kind === 'talk'
+      : selectedPost?.kind === 'talk'
           ? '소통 목록으로 돌아가기'
           : selectedPost?.kind === 'market'
             ? '장터 목록으로 돌아가기'
@@ -933,6 +776,23 @@ export function CommunityPostDetailScreen({
     setImageIndex((current) => Math.min(current, selectedMarketImageCount - 1));
   }, [selectedMarketImageCount]);
 
+  useEffect(() => {
+    if (!isReady) return;
+    let active = true;
+    setPostLoadError(false);
+    void loadPostDetail(postId).then((result) => {
+      if (active && !result.ok) setPostLoadError(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isReady, loadPostDetail, postId, postKind]);
+
+  useEffect(() => {
+    if (!talkPostId) return;
+    void loadComments(talkPostId);
+  }, [loadComments, talkPostId]);
+
   const goBack = useCallback(() => {
     if (resolvedOrigin === 'mypage-activity') {
       const rootState = rootNavigation.getState();
@@ -959,9 +819,7 @@ export function CommunityPostDetailScreen({
         pathname: '/mypage/activity/authored',
         params: {
           filter:
-            activityFilter === 'talk' ||
-            activityFilter === 'market' ||
-            activityFilter === 'review'
+            activityFilter === 'talk' || activityFilter === 'market'
               ? activityFilter
               : 'all',
         },
@@ -976,7 +834,7 @@ export function CommunityPostDetailScreen({
           search: '1',
           searchQuery: searchQuery ?? '',
           searchTab:
-            searchTab === 'talk' || searchTab === 'market' || searchTab === 'review'
+            searchTab === 'talk' || searchTab === 'market'
               ? searchTab
               : 'talk',
         },
@@ -987,7 +845,7 @@ export function CommunityPostDetailScreen({
     if (resolvedOrigin === 'community' && focusOnReturn === '1') {
       router.dismissTo({
         pathname: '/community',
-        params: { focusPostId: postId },
+        params: { focusPostId: postId, resetFilters: '1' },
       });
       return;
     }
@@ -1092,39 +950,6 @@ export function CommunityPostDetailScreen({
     }
   };
 
-  const handleDeleteReview = async () => {
-    if (!selectedReviewPost || reviewDeletingRef.current) return;
-
-    reviewDeletingRef.current = true;
-    setReviewDeleting(true);
-
-    try {
-      const result = await deleteReviewPost(selectedReviewPost.id);
-      setReviewDeleteVisible(false);
-
-      if (result.ok) {
-        goBack();
-        return;
-      }
-
-      setModal({
-        description: result.reason === 'not-yours'
-          ? '내가 작성한 리뷰만 삭제할 수 있어요.'
-          : '이미 삭제되었거나 다시 확인이 필요한 리뷰예요.',
-        title: '리뷰를 삭제하지 못했어요',
-      });
-    } catch {
-      setReviewDeleteVisible(false);
-      setModal({
-        description: '잠시 후 다시 시도해주세요.',
-        title: '리뷰를 삭제하지 못했어요',
-      });
-    } finally {
-      reviewDeletingRef.current = false;
-      setReviewDeleting(false);
-    }
-  };
-
   const handleDeleteTalkPost = async () => {
     if (!selectedPost || selectedPost.kind !== 'talk' || talkDeletingRef.current) return;
 
@@ -1192,7 +1017,32 @@ export function CommunityPostDetailScreen({
     );
   }
 
-  if (!selectedPost && !selectedReviewPost) {
+  if (postLoadError) {
+    return (
+      <ScreenLayout
+        headerFullWidth
+        headerVariant="auth"
+        leftAccessibilityLabel={detailBackAccessibilityLabel}
+        onLeftPress={goBack}
+        title="커뮤니티"
+      >
+        <EmptyState
+          actionLabel="다시 시도"
+          description="잠시 후 다시 게시글을 열어주세요."
+          icon={<AppIcon color={COLORS.primary} name="chatbubbles-outline" size={32} />}
+          onActionPress={() => {
+            setPostLoadError(false);
+            void loadPostDetail(postId).then((result) => {
+              if (!result.ok) setPostLoadError(true);
+            });
+          }}
+          title="게시글을 불러오지 못했어요."
+        />
+      </ScreenLayout>
+    );
+  }
+
+  if (!selectedPost) {
     return (
       <ScreenLayout
         headerFullWidth
@@ -1209,295 +1059,6 @@ export function CommunityPostDetailScreen({
       </ScreenLayout>
     );
   }
-
-  if (selectedReviewPost) {
-    const author = resolveAuthor(selectedReviewPost.author, profile, viewerId);
-    const isMine = selectedReviewPost.author.userId === viewerId;
-    const helpful = isReacted(selectedReviewPost.id, 'helpful');
-    const notHelpful = isReacted(selectedReviewPost.id, 'notHelpful');
-    const helpfulCount = getReactionCount(selectedReviewPost.id, 'helpful');
-    const notHelpfulCount = getReactionCount(selectedReviewPost.id, 'notHelpful');
-    const placeholderPhotoCount = selectedReviewPost.placeholderPhotoCount ?? 0;
-    const reviewPhotoUris = getCommunityImageUris(selectedReviewPost.images, selectedReviewPost.photoUris);
-    const reviewScoreLabels = getReviewScoreLabels(selectedReviewPost.category);
-    const reviewReactionDisabled = isMine || reviewReactionSubmitting;
-    const toggleReviewReaction = async (kind: ReactionKind) => {
-      if (isMine) {
-        setModal({
-          description: '내가 작성한 리뷰에는 반응을 남길 수 없어요.',
-          title: '반응할 수 없어요',
-        });
-        return;
-      }
-      if (reviewReactionSubmittingRef.current) return;
-
-      reviewReactionSubmittingRef.current = true;
-      setReviewReactionSubmitting(true);
-      try {
-        const result = await toggleReaction(selectedReviewPost.id, kind);
-        if (result.ok) return;
-
-        setModal({
-          description: result.reason === 'not-yours'
-            ? '내가 작성한 리뷰에는 반응을 남길 수 없어요.'
-            : '잠시 후 다시 시도해주세요.',
-          title: result.reason === 'not-yours' ? '반응할 수 없어요' : '반응을 저장하지 못했어요',
-        });
-      } catch {
-        setModal({
-          description: '잠시 후 다시 시도해주세요.',
-          title: '반응을 저장하지 못했어요',
-        });
-      } finally {
-        reviewReactionSubmittingRef.current = false;
-        setReviewReactionSubmitting(false);
-      }
-    };
-
-    return (
-      <ScreenLayout
-        headerFullWidth
-        headerVariant="auth"
-        leftAccessibilityLabel={detailBackAccessibilityLabel}
-        onLeftPress={goBack}
-        rightContent={
-          isMine ? (
-            <Pressable
-              accessibilityLabel="리뷰 관리"
-              accessibilityRole="button"
-              hitSlop={SPACING.md}
-              onPress={() => setReviewActionVisible(true)}
-              style={({ pressed }) => [styles.headerActionButton, pressed && styles.pressed]}
-            >
-              <AppIcon color={COLORS.black} name="ellipsis-horizontal" size={24} />
-            </Pressable>
-          ) : undefined
-        }
-        title="리뷰"
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.reviewDetailContent,
-            { paddingBottom: SPACING.xxxl + Math.max(SPACING.xl, insets.bottom) },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.reviewTargetCard}>
-            <View style={styles.reviewTargetIcon}>
-              {selectedReviewPost.category === '병원' ? (
-                <View style={styles.reviewHospitalCross}>
-                  <View style={styles.reviewHospitalCrossHorizontal} />
-                  <View style={styles.reviewHospitalCrossVertical} />
-                </View>
-              ) : (
-                <AppIcon color={COLORS.gray600} name={REVIEW_CATEGORY_ICONS[selectedReviewPost.category]} size={24} />
-              )}
-            </View>
-            <View style={styles.authorText}>
-              <Text style={styles.authorName}>{selectedReviewPost.targetName || '리뷰 대상'}</Text>
-              <Text style={styles.authorMeta}>{selectedReviewPost.category}</Text>
-            </View>
-          </View>
-
-          <View style={styles.reviewScoreCard}>
-            <View style={styles.reviewScoreHeader}>
-              <Text style={styles.reviewScoreValue}>{selectedReviewPost.rating.toFixed(1)}</Text>
-              <View style={styles.reviewScoreStars}>
-                {[1, 2, 3, 4, 5].map((score) => (
-                  <AppIcon
-                    color={REVIEW_STAR_COLOR}
-                    key={score}
-                    name={selectedReviewPost.rating >= score ? 'star' : selectedReviewPost.rating >= score - 0.5 ? 'star-half' : 'star-outline'}
-                    size={17}
-                  />
-                ))}
-              </View>
-            </View>
-            {selectedReviewPost.detailScores ? (
-              <View style={styles.reviewScoreRows}>
-                {[
-                  [reviewScoreLabels[0], selectedReviewPost.detailScores.kindness],
-                  [reviewScoreLabels[1], selectedReviewPost.detailScores.price],
-                  [reviewScoreLabels[2], selectedReviewPost.detailScores.revisit],
-                ].map(([label, value]) => (
-                  <View key={label as string} style={styles.reviewScoreRow}>
-                    <Text
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
-                      numberOfLines={1}
-                      style={styles.reviewScoreLabel}
-                    >
-                      {label as string}
-                    </Text>
-                    <View style={styles.reviewScoreTrack}>
-                      <View style={[styles.reviewScoreFill, { width: `${((value as number) / 5) * 100}%` }]} />
-                    </View>
-                    <Text style={styles.reviewScoreNumber}>{value as number}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.authorRow}>
-            <AuthorAvatar author={author} />
-            <View style={styles.authorText}>
-              <Text style={styles.authorName}>{author.nickname}</Text>
-              <Text style={styles.authorMeta}>
-                {selectedReviewPost.visitedAt || getRelativeTime(selectedReviewPost.createdAt)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.talkDetailBody}>
-            <Text style={styles.detailTitle}>{selectedReviewPost.title}</Text>
-            <Text style={styles.detailBody}>{selectedReviewPost.body}</Text>
-          </View>
-
-          {reviewPhotoUris.length || placeholderPhotoCount ? (
-            <View style={styles.detailPhotoGrid}>
-              {reviewPhotoUris.map((uri) => (
-                <Pressable
-                  accessibilityLabel="리뷰 사진 크게 보기"
-                  accessibilityRole="imagebutton"
-                  key={uri}
-                  onPress={() => setSelectedPhotoUri(uri)}
-                  style={({ pressed }) => pressed && styles.pressed}
-                >
-                  <Image source={{ uri }} style={styles.detailPhoto} />
-                </Pressable>
-              ))}
-              {Array.from({ length: placeholderPhotoCount }).map((_, index) => (
-                <View key={`review-placeholder-${index}`} style={styles.detailPhotoPlaceholder}>
-                  <Image source={PAW_LOGO} style={styles.detailPhotoPlaceholderLogo} />
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <View style={styles.reviewFeedbackRow}>
-            <Pressable
-              accessibilityLabel={helpful ? '도움돼요 취소' : '도움돼요'}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: reviewReactionDisabled, selected: helpful }}
-              disabled={reviewReactionDisabled}
-              onPress={() => void toggleReviewReaction('helpful')}
-              style={({ pressed }) => [
-                styles.reviewFeedbackButton,
-                helpful && styles.reviewFeedbackButtonActive,
-                reviewReactionDisabled && styles.reviewFeedbackButtonDisabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Image
-                source={REVIEW_GOOD_ICON}
-                style={[
-                  styles.reviewFeedbackIcon,
-                  { tintColor: helpful ? COLORS.primary : COLORS.gray600 },
-                ]}
-              />
-              <Text style={[styles.reviewFeedbackText, helpful && styles.reviewFeedbackTextActive]}>
-                도움돼요 {helpfulCount}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel={notHelpful ? '도움 안 돼요 취소' : '도움 안 돼요'}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: reviewReactionDisabled, selected: notHelpful }}
-              disabled={reviewReactionDisabled}
-              onPress={() => void toggleReviewReaction('notHelpful')}
-              style={({ pressed }) => [
-                styles.reviewFeedbackButton,
-                notHelpful && styles.reviewFeedbackButtonActive,
-                notHelpful && styles.reviewFeedbackButtonDangerActive,
-                reviewReactionDisabled && styles.reviewFeedbackButtonDisabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Image
-                source={REVIEW_NO_ICON}
-                style={[
-                  styles.reviewFeedbackIcon,
-                  { tintColor: notHelpful ? COLORS.danger : COLORS.gray600 },
-                ]}
-              />
-              <Text style={[styles.reviewFeedbackText, notHelpful && styles.reviewFeedbackTextDangerActive]}>
-                도움 안 돼요 {notHelpfulCount}
-              </Text>
-            </Pressable>
-          </View>
-        </ScrollView>
-        <AppModal
-          onClose={() => setReviewActionVisible(false)}
-          title="리뷰 관리"
-          variant="center"
-          visible={reviewActionVisible}
-        >
-          <View style={styles.reviewActionSheet}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setReviewActionVisible(false);
-                router.push({
-                  pathname: '/community/write',
-                  params: { origin: 'detail', postId: selectedReviewPost.id, type: 'review' },
-                });
-              }}
-              style={({ pressed }) => [styles.reviewActionItem, pressed && styles.pressed]}
-            >
-              <AppIcon color={COLORS.primary} name="create-outline" size={22} />
-              <Text style={styles.reviewActionText}>수정하기</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setReviewActionVisible(false);
-                setReviewDeleteVisible(true);
-              }}
-              style={({ pressed }) => [styles.reviewActionItem, pressed && styles.pressed]}
-            >
-              <AppIcon color={COLORS.danger} name="trash-outline" size={22} />
-              <Text style={[styles.reviewActionText, styles.reviewActionDangerText]}>삭제하기</Text>
-            </Pressable>
-          </View>
-        </AppModal>
-        <AppModal
-          onClose={() => {
-            if (!reviewDeletingRef.current) setReviewDeleteVisible(false);
-          }}
-          primaryAction={{
-            disabled: reviewDeleting,
-            label: reviewDeleting ? '삭제 중' : '삭제',
-            onPress: () => void handleDeleteReview(),
-            variant: 'danger',
-          }}
-          secondaryAction={{
-            disabled: reviewDeleting,
-            label: '취소',
-            onPress: () => {
-              if (!reviewDeletingRef.current) setReviewDeleteVisible(false);
-            },
-          }}
-          title="리뷰를 삭제할까요?"
-          variant="center"
-          visible={reviewDeleteVisible}
-        >
-          <Text style={styles.modalDescription}>삭제하면 도움돼요 기록과 사진도 함께 정리돼요.</Text>
-        </AppModal>
-        <AppModal
-          onClose={() => setModal(null)}
-          primaryAction={{ label: '확인', onPress: () => setModal(null) }}
-          title={modal?.title}
-          variant="center"
-          visible={Boolean(modal)}
-        >
-          <Text style={styles.modalDescription}>{modal?.description}</Text>
-        </AppModal>
-        <PhotoViewer onClose={() => setSelectedPhotoUri(null)} uri={selectedPhotoUri} />
-      </ScreenLayout>
-    );
-  }
-
-  if (!selectedPost) return null;
 
   if (selectedPost.kind === 'talk') {
     const author = resolveAuthor(selectedPost.author, profile, viewerId);
@@ -1579,7 +1140,7 @@ export function CommunityPostDetailScreen({
                   {selectedPost.showNeighborhood && author.location
                     ? `${formatCompactRegion(author.location)} · `
                     : ''}
-                  {getRelativeTime(selectedPost.createdAt)}
+                  {formatKoreanRelativeTime(selectedPost.createdAt)}
                 </Text>
               </View>
               <Text style={styles.detailCategory}>{selectedPost.category}</Text>
@@ -2094,7 +1655,7 @@ export function CommunityPostDetailScreen({
               ) : null}
             </View>
             <Text ellipsizeMode="tail" numberOfLines={1} style={styles.marketDetailMeta}>
-              {selectedPost.category} · {formatCompactRegion(selectedPost.location)} · {getRelativeTime(selectedPost.createdAt)}
+              {selectedPost.category} · {formatCompactRegion(selectedPost.location)} · {formatKoreanRelativeTime(selectedPost.createdAt)}
             </Text>
             {marketTradeMethods.length > 0 ? (
               <View style={styles.infoLine}>
@@ -2314,33 +1875,28 @@ export function CommunityScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     focusPostId?: string;
+    resetFilters?: string;
     search?: string;
     searchQuery?: string;
     searchTab?: string;
     tab?: string;
   }>();
-  const requestedTab =
-    params.tab === 'talk' || params.tab === 'market' || params.tab === 'review'
-      ? params.tab
-      : null;
+  const requestedTab = params.tab === 'talk' || params.tab === 'market' ? params.tab : null;
   const requestedSearchTab =
-    params.searchTab === 'talk' ||
-    params.searchTab === 'market' ||
-    params.searchTab === 'review'
-      ? params.searchTab
-      : null;
+    params.searchTab === 'talk' || params.searchTab === 'market' ? params.searchTab : null;
   const {
     filterSession,
     filterSessionGeneration,
     getCommentCount,
     getReactionCount,
+    hasMorePosts,
     hasLoadError,
     isReady,
     isBookmarked,
     isReacted,
+    loadMorePosts,
     posts,
     reloadCommunity,
-    reviewPosts,
     toggleBookmark,
     updateFilterSession,
     viewerId,
@@ -2350,7 +1906,6 @@ export function CommunityScreen() {
   const [activeTab, setActiveTab] = useState<CommunityTab>(filterSession.activeTab);
   const [talkCategory, setTalkCategory] = useState<TalkCategory>(filterSession.talkCategory);
   const [marketCategory, setMarketCategory] = useState<MarketCategory>(filterSession.marketCategory);
-  const [reviewCategory, setReviewCategory] = useState<ReviewCategory>(filterSession.reviewCategory);
   const [marketTradeTypes, setMarketTradeTypes] = useState<MarketTradeType[]>(filterSession.marketTradeTypes);
   const [marketStatuses, setMarketStatuses] = useState<MarketStatus[]>(filterSession.marketStatuses);
   const [filterVisible, setFilterVisible] = useState(false);
@@ -2363,14 +1918,13 @@ export function CommunityScreen() {
   );
   const [visibleCounts, setVisibleCounts] = useState<Record<CommunityTab, number>>({
     market: COMMUNITY_BATCH_SIZE,
-    review: COMMUNITY_BATCH_SIZE,
     talk: COMMUNITY_BATCH_SIZE,
   });
   const [searchVisibleCount, setSearchVisibleCount] = useState(COMMUNITY_BATCH_SIZE);
   const [modal, setModal] = useState<ModalState>(null);
-  const showBookmarkError = useCallback(() => {
+  const showBookmarkError = useCallback((message?: string) => {
     setModal({
-      description: '잠시 후 다시 시도해주세요.',
+      description: message?.trim() || '잠시 후 다시 시도해주세요.',
       title: '찜을 저장하지 못했어요',
     });
   }, []);
@@ -2455,7 +2009,6 @@ export function CommunityScreen() {
     setActiveTab(requestedTab ?? filterSession.activeTab);
     setTalkCategory(filterSession.talkCategory);
     setMarketCategory(filterSession.marketCategory);
-    setReviewCategory(filterSession.reviewCategory);
     setMarketTradeTypes(filterSession.marketTradeTypes);
     setMarketStatuses(filterSession.marketStatuses);
     setSearchOpen(params.search === '1');
@@ -2463,7 +2016,6 @@ export function CommunityScreen() {
     setSearchQuery(params.searchQuery ?? filterSession.searchQuery);
     setVisibleCounts({
       market: COMMUNITY_BATCH_SIZE,
-      review: COMMUNITY_BATCH_SIZE,
       talk: COMMUNITY_BATCH_SIZE,
     });
     setSearchVisibleCount(COMMUNITY_BATCH_SIZE);
@@ -2492,7 +2044,6 @@ export function CommunityScreen() {
       marketCategory,
       marketStatuses,
       marketTradeTypes,
-      reviewCategory,
       searchQuery,
       searchTab,
       talkCategory,
@@ -2520,7 +2071,6 @@ export function CommunityScreen() {
     marketCategory,
     marketStatuses,
     marketTradeTypes,
-    reviewCategory,
     flushFilterSession,
     searchQuery,
     searchTab,
@@ -2544,7 +2094,7 @@ export function CommunityScreen() {
       posts
         .filter((post): post is TalkPost => post.kind === 'talk')
         .filter((post) => talkCategory === '전체' || post.category === talkCategory)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        .sort(compareNewestFirst),
     [posts, talkCategory],
   );
 
@@ -2555,34 +2105,12 @@ export function CommunityScreen() {
         .filter((post) => marketCategory === '전체' || post.category === marketCategory)
         .filter((post) => marketTradeTypes.length === 0 || marketTradeTypes.includes(post.tradeType))
         .filter((post) => marketStatuses.length === 0 || marketStatuses.includes(post.status))
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        .sort(compareNewestFirst),
     [marketCategory, marketStatuses, marketTradeTypes, posts],
-  );
-
-  const filteredReviewPosts = useMemo(
-    () =>
-      reviewPosts
-        .filter(
-          (post) =>
-            reviewCategory === '전체' || post.category === reviewCategory,
-        )
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [reviewCategory, reviewPosts],
   );
 
   const searchResults = useMemo<CommunitySearchResult[]>(() => {
     if (!normalizeText(searchQuery)) return [];
-
-    if (searchTab === 'review') {
-      return reviewPosts
-        .filter((post) => hasReviewSearchMatch(post, searchQuery))
-        .sort((a, b) => {
-          const rankDiff = getReviewSearchRank(a, searchQuery) - getReviewSearchRank(b, searchQuery);
-          if (rankDiff !== 0) return rankDiff;
-          return b.createdAt.localeCompare(a.createdAt);
-        })
-        .map((post) => ({ kind: 'review', post }));
-    }
 
     if (searchTab === 'talk') {
       return posts
@@ -2590,7 +2118,7 @@ export function CommunityScreen() {
         .filter((post) =>
           hasCommunityPostSearchMatch(post, searchQuery, resolveAuthor(post.author, profile, viewerId)),
         )
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .sort(compareNewestFirst)
         .map((post) => ({ kind: 'talk', post }));
     }
 
@@ -2599,9 +2127,9 @@ export function CommunityScreen() {
       .filter((post) =>
         hasCommunityPostSearchMatch(post, searchQuery, resolveAuthor(post.author, profile, viewerId)),
       )
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .sort(compareNewestFirst)
       .map((post) => ({ kind: 'market', post }));
-  }, [posts, profile, reviewPosts, searchQuery, searchTab, viewerId]);
+  }, [posts, profile, searchQuery, searchTab, viewerId]);
 
   const visibleTalkPosts = useMemo(
     () => talkPosts.slice(0, visibleCounts.talk),
@@ -2610,10 +2138,6 @@ export function CommunityScreen() {
   const visibleMarketPosts = useMemo(
     () => marketPosts.slice(0, visibleCounts.market),
     [marketPosts, visibleCounts.market],
-  );
-  const visibleReviewPosts = useMemo(
-    () => filteredReviewPosts.slice(0, visibleCounts.review),
-    [filteredReviewPosts, visibleCounts.review],
   );
   const visibleSearchResults = useMemo(
     () => searchResults.slice(0, searchVisibleCount),
@@ -2636,6 +2160,8 @@ export function CommunityScreen() {
     searchScrollRef.current?.scrollTo({ animated: false, y: 0 });
   }, []);
 
+  const marketFilterCount = marketStatuses.length + marketTradeTypes.length;
+
   const handleListScroll = useCallback(
     (
       event: NativeSyntheticEvent<NativeScrollEvent>,
@@ -2646,21 +2172,22 @@ export function CommunityScreen() {
         return;
       }
 
-      const activeItemCount =
-        activeTab === 'talk'
-          ? talkPosts.length
-          : activeTab === 'market'
-            ? marketPosts.length
-            : filteredReviewPosts.length;
+      const activeItemCount = activeTab === 'talk' ? talkPosts.length : marketPosts.length;
+      const hasMoreRemotePosts = hasMorePosts[activeTab];
       const hasMore = target === 'search'
         ? searchVisibleCount < searchResults.length
-        : visibleCounts[activeTab] < activeItemCount;
+        : visibleCounts[activeTab] < activeItemCount || hasMoreRemotePosts;
       if (!hasMore || scrollLoadLockRef.current[target]) return;
 
       scrollLoadLockRef.current[target] = true;
       if (target === 'search') {
         setSearchVisibleCount((current) => current + COMMUNITY_BATCH_SIZE);
         return;
+      }
+      if (visibleCounts[activeTab] >= activeItemCount) {
+        void loadMorePosts(activeTab).finally(() => {
+          scrollLoadLockRef.current.main = false;
+        });
       }
       setVisibleCounts((current) => ({
         ...current,
@@ -2669,7 +2196,8 @@ export function CommunityScreen() {
     },
     [
       activeTab,
-      filteredReviewPosts.length,
+      hasMorePosts,
+      loadMorePosts,
       marketPosts.length,
       searchResults.length,
       searchVisibleCount,
@@ -2695,23 +2223,20 @@ export function CommunityScreen() {
     if (!isReady || hasLoadError || !params.focusPostId) return;
 
     const focusedPost = posts.find((post) => post.id === params.focusPostId) ?? null;
-    const focusedReview = reviewPosts.find((post) => post.id === params.focusPostId) ?? null;
     let focusedTab: CommunityTab | null = null;
+
+    const shouldResetFilters = params.resetFilters === '1';
 
     if (focusedPost?.kind === 'talk') {
       focusedTab = 'talk';
       setActiveTab('talk');
-      setTalkCategory(focusedPost.category);
+      setTalkCategory(shouldResetFilters ? '전체' : focusedPost.category);
     } else if (focusedPost?.kind === 'market') {
       focusedTab = 'market';
       setActiveTab('market');
-      setMarketCategory(focusedPost.category);
-      setMarketStatuses([focusedPost.status]);
-      setMarketTradeTypes([focusedPost.tradeType]);
-    } else if (focusedReview) {
-      focusedTab = 'review';
-      setActiveTab('review');
-      setReviewCategory(focusedReview.category);
+      setMarketCategory(shouldResetFilters ? '전체' : focusedPost.category);
+      setMarketStatuses(shouldResetFilters ? [] : [focusedPost.status]);
+      setMarketTradeTypes(shouldResetFilters ? [] : [focusedPost.tradeType]);
     }
 
     if (focusedTab) {
@@ -2721,14 +2246,14 @@ export function CommunityScreen() {
       });
     }
 
-    router.setParams({ focusPostId: undefined });
+    router.setParams({ focusPostId: undefined, resetFilters: undefined });
   }, [
     hasLoadError,
     isReady,
     params.focusPostId,
+    params.resetFilters,
     posts,
     resetVisibleCount,
-    reviewPosts,
     router,
   ]);
 
@@ -2828,7 +2353,7 @@ export function CommunityScreen() {
               setSearchQuery(value);
               resetSearchVisibleCount();
             }}
-            placeholder={searchTab === 'review' ? '병원, 장소, 샵 이름을 검색해보세요' : '검색어를 입력해주세요'}
+            placeholder="검색어를 입력해주세요"
             rightElement={
               searchQuery ? (
                 <Pressable
@@ -2855,11 +2380,7 @@ export function CommunityScreen() {
           />
           {!normalizeText(searchQuery) ? (
             <EmptyState
-              description={
-                searchTab === 'review'
-                  ? '대상명, 리뷰 종류, 제목으로 검색할 수 있어요.'
-                  : '제목, 내용, 카테고리, 태그, 지역으로 검색할 수 있어요.'
-              }
+              description="제목, 내용, 카테고리, 태그, 지역으로 검색할 수 있어요."
               icon={<AppIcon color={COLORS.primary} name="search-outline" size={32} />}
               title="검색어를 입력해주세요"
             />
@@ -2897,14 +2418,7 @@ export function CommunityScreen() {
                     onToggleBookmark={() => void handleToggleBookmark(result.post.id)}
                     post={result.post}
                   />
-                ) : (
-                  <ReviewCard
-                    author={resolveAuthor(result.post.author, profile, viewerId)}
-                    key={result.post.id}
-                    onPress={() => openPost(result.post.id, true)}
-                    post={result.post}
-                  />
-                ),
+                ) : null,
               )}
             </ScrollView>
           )}
@@ -2961,7 +2475,10 @@ export function CommunityScreen() {
                 />
               ))
             ) : (
-              <CommunityEmptyPosts icon="chatbubble-ellipses-outline" title="아직 등록된 소통 글이 없어요" />
+              <CommunityEmptyPosts
+                icon="chatbubble-ellipses-outline"
+                title={talkCategory !== '전체' ? '선택한 태그의 소통 글이 없어요' : '아직 등록된 소통 글이 없어요'}
+              />
             )}
           </>
         ) : null}
@@ -2986,7 +2503,9 @@ export function CommunityScreen() {
                 style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}
               >
                 <AppIcon color={COLORS.primary} name="options-outline" size={17} />
-                <Text style={styles.filterButtonText}>필터</Text>
+                <Text style={styles.filterButtonText}>
+                  {marketFilterCount > 0 ? `필터 ${marketFilterCount}` : '필터'}
+                </Text>
               </Pressable>
             </View>
             {marketPosts.length ? (
@@ -3000,42 +2519,18 @@ export function CommunityScreen() {
                 />
               ))
             ) : (
-              <CommunityEmptyPosts icon="bag-outline" title="아직 등록된 장터 글이 없어요" />
+              <CommunityEmptyPosts
+                icon="bag-outline"
+                title={marketCategory !== '전체' || marketFilterCount > 0 ? '선택한 조건의 장터 글이 없어요' : '아직 등록된 장터 글이 없어요'}
+              />
             )}
           </>
         ) : null}
 
-        {activeTab === 'review' ? (
-          <ReviewReadyContent
-            category={reviewCategory}
-            onCategoryChange={(category) => {
-              setReviewCategory(category);
-              resetVisibleCount('review');
-            }}
-            onOpenReview={openPost}
-            posts={visibleReviewPosts}
-            profile={profile}
-            viewerId={viewerId}
-          />
-        ) : null}
-
-        <Pressable
-          accessibilityLabel="커뮤니티 운영정책 보기"
-          accessibilityRole="button"
-          onPress={() => router.push('/community/policy')}
-          style={({ pressed }) => [
-            styles.policyLink,
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon color={COLORS.gray500} name="shield-checkmark-outline" size={18} />
-          <Text style={styles.policyLinkText}>커뮤니티 운영정책</Text>
-          <AppIcon color={COLORS.gray500} name="chevron-forward" size={16} />
-        </Pressable>
       </ScrollView>
 
       <Pressable
-        accessibilityLabel={activeTab === 'review' ? '리뷰 글쓰기' : '커뮤니티 글쓰기'}
+        accessibilityLabel="커뮤니티 글쓰기"
         accessibilityRole="button"
         onPress={() => {
           resetVisibleCount(activeTab);
@@ -3135,18 +2630,6 @@ const styles = StyleSheet.create({
     gap: SPACING.xl,
     paddingBottom: SIZE.tabBarHeight + SPACING.xxxl,
     paddingTop: SPACING.lg,
-  },
-  policyLink: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    minHeight: SIZE.touchTarget,
-    paddingHorizontal: SPACING.xl,
-  },
-  policyLinkText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.gray500,
   },
   headerTitle: {
     ...TYPOGRAPHY.title2,
@@ -3317,35 +2800,6 @@ const styles = StyleSheet.create({
   cardTime: {
     ...TYPOGRAPHY.small,
     color: COLORS.gray500,
-  },
-  reviewCard: {
-    backgroundColor: COLORS.gray100,
-    borderColor: COLORS.gray300,
-    borderRadius: 22,
-    borderWidth: 1,
-    gap: SPACING.xxs,
-    minHeight: 90,
-    paddingHorizontal: SPACING.xxl,
-    paddingVertical: SPACING.md,
-  },
-  reviewCategory: {
-    ...TYPOGRAPHY.smallButton,
-    backgroundColor: COLORS.primarySoft,
-    borderRadius: RADIUS.round,
-    color: COLORS.primary,
-    overflow: 'hidden',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xs,
-  },
-  reviewRating: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: SPACING.xs,
-  },
-  reviewRatingText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
-    fontFamily: TYPOGRAPHY.label.fontFamily,
   },
   marketCard: {
     alignItems: 'center',

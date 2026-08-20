@@ -1,16 +1,14 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon, type AppIconName } from '@/src/components/common';
 import { AppInput } from '@/src/components/form';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
-import { PET_SELECTION_FIELDS } from '../petData';
 import type { PetFormErrors } from '../petValidation';
 import type { PetImageField } from '../services/petImageStorage';
-import type { PetFormValues, PetSelectionField, PetType } from '../types';
+import type { PetFormValues, PetType } from '../types';
 import { PetAvatar } from './PetAvatar';
 import {
-  PetCareInfoRow,
   PetChoiceButton,
   PetInfoCard,
   PetInfoRow,
@@ -21,10 +19,8 @@ type PetFormFieldsProps = {
   errors: PetFormErrors;
   onBlur: (field: keyof PetFormErrors) => void;
   onChange: <K extends keyof PetFormValues>(field: K, value: PetFormValues[K]) => void;
-  onOpenBloodTypes: () => void;
   onOpenBreed: () => void;
   onOpenCalendar: () => void;
-  onOpenSelection: (field: PetSelectionField) => void;
   onPickImage: (field: PetImageField) => void;
   onRemoveImage: (field: PetImageField) => void;
   values: PetFormValues;
@@ -131,70 +127,13 @@ function ProfilePhoto({
   );
 }
 
-function CertificatePhoto({
-  disabled,
-  onPick,
-  onRemove,
-  uri,
-}: {
-  disabled: boolean;
-  onPick: () => void;
-  onRemove: () => void;
-  uri: string | null;
-}) {
-  return (
-    <View style={styles.certificateContainer}>
-      <Pressable
-        accessibilityLabel={uri ? '동물등록증 사진 변경' : '동물등록증 사진 첨부'}
-        accessibilityRole="button"
-        accessibilityState={{ disabled }}
-        disabled={disabled}
-        onPress={onPick}
-        style={({ pressed }) => [
-          styles.certificateButton,
-          disabled && styles.disabled,
-          pressed && styles.pressed,
-        ]}
-      >
-        {uri ? (
-          <Image resizeMode="cover" source={{ uri }} style={styles.certificateImage} />
-        ) : (
-          <>
-            <AppIcon color={COLORS.gray500} name="camera-outline" size={21} />
-            <Text style={styles.certificateLabel}>사진 첨부</Text>
-          </>
-        )}
-      </Pressable>
-      {uri ? (
-        <Pressable
-          accessibilityLabel="동물등록증 사진 삭제"
-          accessibilityRole="button"
-          accessibilityState={{ disabled }}
-          disabled={disabled}
-          hitSlop={SPACING.md}
-          onPress={onRemove}
-          style={({ pressed }) => [
-            styles.certificateRemove,
-            disabled && styles.disabled,
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon color={COLORS.background} name="close" size={14} />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
 export function PetFormFields({
   disabled = false,
   errors,
   onBlur,
   onChange,
-  onOpenBloodTypes,
   onOpenBreed,
   onOpenCalendar,
-  onOpenSelection,
   onPickImage,
   onRemoveImage,
   values,
@@ -306,9 +245,9 @@ export function PetFormFields({
       </PetInfoCard>
 
       <PetInfoCard
-        description="성별, 중성화 여부와 혈액형을 기록해요"
-        minHeight={264}
-        title="성별·의료 정보"
+        description="성별과 중성화 여부를 기록해요"
+        minHeight={180}
+        title="성별 정보"
       >
         <PetInfoRow label="성별" required>
           <View accessibilityRole="radiogroup" style={styles.choiceRow}>
@@ -349,71 +288,6 @@ export function PetFormFields({
           </View>
           {errors.neutered ? <Text style={styles.errorText}>{errors.neutered}</Text> : null}
         </PetInfoRow>
-
-        <PetInfoRow label="혈액형">
-          <PickerField
-            accessibilityLabel="혈액형 선택"
-            disabled={disabled || !values.type}
-            error={errors.bloodType}
-            icon="water-outline"
-            onDisabledPress={disabled ? undefined : () => onBlur('type')}
-            onPress={onOpenBloodTypes}
-            placeholder="선택 안 함"
-            value={values.bloodType}
-          />
-        </PetInfoRow>
-      </PetInfoCard>
-
-      <PetInfoCard
-        description="등록증을 사진과 함께 보관하면 병원 방문 때 편해요"
-        minHeight={178}
-        title="동물등록증"
-      >
-        <View style={styles.registrationContent}>
-          <View style={styles.registrationInputs}>
-            <AppInput
-              editable={!disabled}
-              maxLength={20}
-              onChangeText={(value) => onChange('ownerName', value)}
-              placeholder="보호자 이름"
-              size="compact"
-              value={values.ownerName}
-            />
-            <AppInput
-              editable={!disabled}
-              keyboardType="number-pad"
-              maxLength={20}
-              onChangeText={(value) => onChange('registrationNumber', value.replace(/\D/g, ''))}
-              placeholder="등록번호 입력"
-              size="compact"
-              value={values.registrationNumber}
-            />
-          </View>
-          <CertificatePhoto
-            disabled={disabled}
-            onPick={() => onPickImage('certificateImageUri')}
-            onRemove={() => onRemoveImage('certificateImageUri')}
-            uri={values.certificateImageUri}
-          />
-        </View>
-      </PetInfoCard>
-
-      <PetInfoCard
-        description="먹거리와 관리 정보를 한곳에서 확인할 수 있어요"
-        minHeight={335}
-        title="먹거리·관리 정보"
-      >
-        <View style={styles.careList}>
-          {PET_SELECTION_FIELDS.map((field) => (
-            <PetCareInfoRow
-              disabled={disabled}
-              field={field}
-              key={field}
-              onPress={() => onOpenSelection(field)}
-              values={values[field]}
-            />
-          ))}
-        </View>
       </PetInfoCard>
     </View>
   );
@@ -513,58 +387,6 @@ const styles = StyleSheet.create({
   },
   errorBorder: {
     borderColor: COLORS.error,
-  },
-  registrationContent: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  registrationInputs: {
-    flex: 1,
-    flexBasis: 194,
-    gap: 10,
-    maxWidth: 194,
-    minWidth: 180,
-  },
-  certificateContainer: {
-    height: 98,
-    position: 'relative',
-    width: 122,
-  },
-  certificateButton: {
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.gray300,
-    borderRadius: RADIUS.md,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    gap: SPACING.md,
-    height: '100%',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  certificateImage: {
-    height: '100%',
-    width: '100%',
-  },
-  certificateLabel: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.gray500,
-  },
-  certificateRemove: {
-    alignItems: 'center',
-    backgroundColor: COLORS.gray800,
-    borderRadius: RADIUS.round,
-    height: 22,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: -5,
-    top: -5,
-    width: 22,
-  },
-  careList: {
-    gap: SPACING.md,
   },
   disabled: {
     opacity: 0.45,

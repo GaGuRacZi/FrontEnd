@@ -3,18 +3,11 @@ export type PetGender = 'female' | 'male';
 
 export type PetFormValues = {
   birthDate: string;
-  bloodType: string | null;
   breed: string;
-  careAreas: string[];
-  certificateImageUri: string | null;
-  excludedIngredients: string[];
   gender: PetGender | null;
   name: string;
   neutered: boolean | null;
-  ownerName: string;
   profileImageUri: string | null;
-  registrationNumber: string;
-  surgeries: string[];
   type: PetType | null;
   weight: string;
 };
@@ -44,8 +37,3 @@ export type StoredPetState = {
   pets: PetEntity[];
   selectedPetId: string | null;
 };
-
-export type PetSelectionField =
-  | 'careAreas'
-  | 'excludedIngredients'
-  | 'surgeries';

@@ -1,3 +1,5 @@
+import { compareKoreanServerDates } from '@/src/utils/koreanDateTime';
+
 export function parseDateValue(value: string) {
   const match = /^(\d{4})\.(\d{2})\.(\d{2})$/.exec(value.trim());
   if (!match) return null;
@@ -43,4 +45,18 @@ export function isFutureDateValue(value: string) {
 export function isPastOrTodayDateValue(value: string) {
   const comparison = compareDateWithToday(value);
   return comparison !== null && comparison <= 0;
+}
+
+export function compareNewestFirst(
+  left: { createdAt: string },
+  right: { createdAt: string },
+) {
+  return compareKoreanServerDates(right.createdAt, left.createdAt);
+}
+
+export function compareOldestFirst(
+  left: { createdAt: string },
+  right: { createdAt: string },
+) {
+  return compareKoreanServerDates(left.createdAt, right.createdAt);
 }

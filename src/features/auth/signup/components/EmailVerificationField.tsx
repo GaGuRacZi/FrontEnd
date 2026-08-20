@@ -10,7 +10,8 @@ import { useTerms } from '@/src/features/auth/terms';
 
 import {
   confirmSignupEmailVerification,
-  getTemporarySignupEmailVerification,
+  getEmailVerificationExpiresAt,
+  isEmailVerificationExpired,
   normalizeSignupEmail,
   requestSignupEmailVerification,
   resolveEmailVerificationError,
@@ -27,8 +28,10 @@ export function EmailVerificationField() {
     updateFields,
   } = useSignup();
   const actionInFlight = useRef(false);
-  const isVerified = Boolean(data.emailVerificationToken);
-  const hasPendingVerification = Boolean(data.emailVerificationId) && !isVerified;
+  const normalizedEmail = normalizeSignupEmail(data.email);
+  const isVerified = data.emailVerified;
+  const hasPendingVerification =
+    emailVerification.requestedEmail === normalizedEmail && !isVerified;
   const emailError =
     emailVerification.error?.field === 'email'
       ? emailVerification.error.message
@@ -40,20 +43,24 @@ export function EmailVerificationField() {
   const helperText = isVerified
     ? '이메일 인증이 완료되었어요.'
     : hasPendingVerification
-      ? '인증번호를 전송했어요. 이메일을 확인해주세요.'
+      ? '인증번호를 전송했어요. 5분 안에 입력해주세요.'
       : undefined;
 
   const clearVerificationData = () => {
     updateFields({
       emailVerificationCode: '',
-      emailVerificationId: null,
-      emailVerificationToken: null,
+      emailVerified: false,
     });
   };
 
   const resetVerification = () => {
     clearVerificationData();
-    updateEmailVerification({ error: null, status: 'idle' });
+    updateEmailVerification({
+      error: null,
+      expiresAt: null,
+      requestedEmail: null,
+      status: 'idle',
+    });
   };
 
   const handleEmailChange = (value: string) => {
@@ -82,34 +89,24 @@ export function EmailVerificationField() {
     updateEmailVerification({ error: null, status: 'requesting' });
 
     try {
-      const normalizedEmail = normalizeSignupEmail(data.email);
-      const temporaryVerification = getTemporarySignupEmailVerification(normalizedEmail);
-
-      if (temporaryVerification) {
-        updateFields({
-          email: temporaryVerification.email,
-          emailVerificationCode: '',
-          emailVerificationId: null,
-          emailVerificationToken: temporaryVerification.verificationToken,
-        });
-        updateEmailVerification({ error: null, status: 'idle' });
-        return;
-      }
-
-      const response = await requestSignupEmailVerification(normalizedEmail);
+      const requestedEmail = await requestSignupEmailVerification(normalizedEmail);
 
       updateFields({
-        email: normalizedEmail,
+        email: requestedEmail,
         emailVerificationCode: '',
-        emailVerificationId: response.verificationId,
-        emailVerificationToken: null,
+        emailVerified: false,
       });
-      updateEmailVerification({ error: null, status: 'idle' });
+      updateEmailVerification({
+        error: null,
+        expiresAt: getEmailVerificationExpiresAt(),
+        requestedEmail,
+        status: 'idle',
+      });
     } catch (error) {
       const verificationError = resolveEmailVerificationError(error, 'request');
 
       if (verificationError.alreadyRegistered) {
-        clearVerificationData();
+        resetVerification();
       }
 
       updateEmailVerification({
@@ -124,9 +121,23 @@ export function EmailVerificationField() {
   const handleConfirm = async () => {
     if (signupIdentityFinalized) return;
 
-    if (!data.emailVerificationId) {
+    if (!hasPendingVerification) {
       updateEmailVerification({
         error: { field: 'code', message: '인증번호를 다시 요청해주세요.' },
+      });
+      return;
+    }
+
+    if (isEmailVerificationExpired(emailVerification.expiresAt)) {
+      clearVerificationData();
+      updateEmailVerification({
+        error: {
+          field: 'email',
+          message: '인증번호가 만료됐어요. 다시 인증해주세요.',
+        },
+        expiresAt: null,
+        requestedEmail: null,
+        status: 'idle',
       });
       return;
     }
@@ -146,25 +157,29 @@ export function EmailVerificationField() {
 
     try {
       const response = await confirmSignupEmailVerification(
-        data.emailVerificationId,
+        normalizedEmail,
         data.emailVerificationCode,
       );
 
-      if (normalizeSignupEmail(response.email) !== normalizeSignupEmail(data.email)) {
+      if (response !== normalizedEmail) {
         throw new Error('Email verification response does not match.');
       }
 
       updateFields({
         emailVerificationCode: '',
-        emailVerificationId: null,
-        emailVerificationToken: response.verificationToken,
+        emailVerified: true,
       });
-      updateEmailVerification({ error: null, status: 'idle' });
+      updateEmailVerification({
+        error: null,
+        expiresAt: null,
+        requestedEmail: normalizedEmail,
+        status: 'idle',
+      });
     } catch (error) {
       const verificationError = resolveEmailVerificationError(error, 'confirm');
 
       if (verificationError.alreadyRegistered) {
-        clearVerificationData();
+        resetVerification();
       }
 
       updateEmailVerification({
@@ -297,7 +312,8 @@ const styles = StyleSheet.create({
   action: {
     borderRadius: RADIUS.md,
     height: SIZE.inputHeight,
-    width: 100,
+    paddingHorizontal: SPACING.md,
+    width: 116,
   },
   completedAction: {
     opacity: 1,

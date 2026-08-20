@@ -59,34 +59,33 @@ export function TermsAgreementScreen() {
     }
   };
 
-  const handleSignupBack = useCallback(async () => {
+  const handleSignupBack = useCallback(() => {
+    if (!pendingRemoteSignupUserId) {
+      void clearSignupDraft().catch(() => undefined);
+      router.replace('/login');
+      return;
+    }
+
     if (savingRef.current) return;
 
-    savingRef.current = true;
-    setSaving(true);
-    setSaveError(undefined);
+    void (async () => {
+      savingRef.current = true;
+      setSaving(true);
+      setSaveError(undefined);
 
-    try {
-      if (pendingRemoteSignupUserId) {
+      try {
         await logoutRemoteSession().catch(() => undefined);
-      }
-      await clearSignupDraft();
-      if (pendingRemoteSignupUserId) {
+        await clearSignupDraft();
         await clearSession(pendingRemoteSignupUserId);
-        return;
-      }
-      if (router.canGoBack()) {
-        router.back();
-      } else {
         router.replace(data.method === 'kakao' ? '/' : '/login');
+      } catch {
+        resumeSignupDraft();
+        setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
       }
-    } catch {
-      resumeSignupDraft();
-      setSaveError('회원가입을 종료하지 못했어요. 다시 시도해주세요.');
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+    })();
   }, [clearSession, clearSignupDraft, data.method, pendingRemoteSignupUserId, resumeSignupDraft, router]);
 
   return (
@@ -181,7 +180,7 @@ export function TermsAgreementScreen() {
             asChild
             href={{
               pathname: '/signup/terms/[termId]',
-              params: { termId: TERM_IDS.privacyPolicy },
+              params: { termId: TERM_IDS.privacy },
             }}
           >
             <Pressable

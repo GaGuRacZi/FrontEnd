@@ -30,8 +30,6 @@ export type StoredSignupDraft = {
 
 type SignupDraftSource = PersistedSignupData & {
   emailVerificationCode?: string;
-  emailVerificationId?: string | null;
-  emailVerificationToken?: string | null;
   password?: string;
   passwordConfirm?: string;
 };
@@ -115,7 +113,7 @@ function isStoredSignupDraft(value: unknown): value is StoredSignupDraft {
     (value.method === 'kakao' || value.method === 'local') &&
     (value.remoteUserId === null ||
       (typeof value.remoteUserId === 'string' && Boolean(value.remoteUserId.trim()))) &&
-    (value.method === 'kakao' ? value.remoteUserId !== null : value.remoteUserId === null) &&
+    (value.method === 'kakao' ? value.remoteUserId !== null : true) &&
     isPersistedSignupData(value.data)
   );
 }
@@ -161,6 +159,19 @@ export function createSignupDraft(input: {
 export function isCurrentSignupDraft(draft: StoredSignupDraft, now = Date.now()) {
   const savedAt = Date.parse(draft.savedAt);
   return savedAt <= now + 60_000 && savedAt >= now - SIGNUP_DRAFT_RETENTION_MS;
+}
+
+export function canResumeLocalSignupDraft(
+  draft: StoredSignupDraft | null,
+  email: string,
+  remoteUserId: string,
+) {
+  return Boolean(
+    draft &&
+      draft.method === 'local' &&
+      draft.data.email.trim().toLowerCase() === email.trim().toLowerCase() &&
+      (draft.remoteUserId === null || draft.remoteUserId === remoteUserId),
+  );
 }
 
 export function parseStoredSignupDraft(value: string | null) {

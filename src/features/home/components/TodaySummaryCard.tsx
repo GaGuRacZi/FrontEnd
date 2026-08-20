@@ -1,7 +1,6 @@
-import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageSourcePropType, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppIcon } from '@/src/components/common';
-import type { AppIconName } from '@/src/components/common';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/src/constants';
 
 import type { TodoCategory, TodoSummaryItem } from '../types';
@@ -35,7 +34,11 @@ export function TodaySummaryCard({ onPressMore, onToggleTodo, todos }: TodaySumm
         </Pressable>
       </View>
 
-      <View style={styles.list}>
+      <ScrollView
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        style={styles.list}
+      >
         {todos.map((todo) => {
           const isDone = todo.status === 'done';
           const meta = CATEGORY_META[todo.category];
@@ -74,7 +77,7 @@ export function TodaySummaryCard({ onPressMore, onToggleTodo, todos }: TodaySumm
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -92,7 +95,8 @@ const styles = StyleSheet.create({
   headerTitle: { ...TYPOGRAPHY.title3, color: COLORS.black },
   headerAction: { alignItems: 'center', flexDirection: 'row', gap: 2 },
   headerActionLabel: { ...TYPOGRAPHY.label, color: COLORS.gray600 },
-  list: { gap: SPACING.md },
+  list: { maxHeight: 300 },
+  listContent: { gap: SPACING.md },
   row: {
     alignItems: 'center',
     flexDirection: 'row',
